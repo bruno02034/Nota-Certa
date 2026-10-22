@@ -110,9 +110,9 @@ try {
     # 89257: numero nunca autorizado -> em contingencia sem retorno, nada a copiar
     Confere $r $K89257b 'EM CONTINGÊNCIA' '' '' 'sem autorização'
     Verdade (@($r | Where-Object { $_.Numero -eq '89257' -and $_.Status -eq 'EM CONTINGÊNCIA' }).Count -eq 3) '89257: as 3 tentativas ficam em contingencia'
-    # 84643: o mesmo numero usado 14 vezes em contingencia em 05/10
+    # 84643: numero usado 14 vezes em 05/10, ja resolvido no Metre (nao tem ONTIGENCIA_ENVIA)
     $l = @($r | Where-Object { $_.Numero -eq '84643' })
-    Verdade ($l.Count -eq 14 -and @($l | Where-Object { $_.Status -eq 'PENDENTE' -and $_.Motivo.StartsWith('sem retorno 539') }).Count -eq 14) '84643: 14 tentativas sem 539, nenhuma copiada'
+    Verdade ($l.Count -eq 1 -and $l[0].Status -eq 'JÁ AUTORIZADA') '84643: sem ONTIGENCIA_ENVIA (fora da contingencia do Metre) nao entra na lista'
     # 85710: rejeitada com 537 e depois autorizada (cStat 150) com a mesma chave
     $l = @($r | Where-Object { $_.Numero -eq '85710' })
     Verdade ($l.Count -eq 1 -and $l[0].Status -eq 'JÁ AUTORIZADA' -and $l[0].Motivo.Contains('cStat 150')) '85710: rejeicao 537 depois autorizada -> JA AUTORIZADA'

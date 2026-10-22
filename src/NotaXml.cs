@@ -29,6 +29,7 @@ namespace DuplicidadeNfce
         public TipoArquivo Tipo;
         public long Tamanho;
         public string Sha256;
+        public DateTime ModificadoEm;
 
         public string Chave, Numero, Serie, DhEmi, TpEmis, Pedido;
         public decimal? VNF;
@@ -79,6 +80,7 @@ namespace DuplicidadeNfce
             nota.Tipo = Classificar(nota.Nome);
             try
             {
+                nota.ModificadoEm = File.GetLastWriteTime(caminho);
                 byte[] bytes = LerSomenteLeitura(caminho);
                 nota.Tamanho = bytes.LongLength;
                 nota.Sha256 = HashSha256(bytes);

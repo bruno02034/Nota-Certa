@@ -154,6 +154,28 @@ namespace DuplicidadeNfce
                 }
                 lista[n.Chave] = t;
             }
+            // Paliativo até ler o banco do Metre: só continua na contingência o número que o Metre reenviou
+            // no último reenvio (ONTIGENCIA_ENVIA regravado no dia do reenvio mais recente). Número sem ENVIA
+            // ou com ENVIA de dia anterior já saiu da aba Contingência (ex.: 6/84643, 6/89110).
+            var envia = notas.Where(x => x.Tipo == TipoArquivo.ContingenciaEnvia && x.Chave != null)
+                .GroupBy(x => ChaveNumero(x.Chave)).ToDictionary(g => g.Key, g => g.Max(x => x.ModificadoEm));
+            if (envia.Count > 0)
+            {
+                DateTime diaReenvio = envia.Values.Max().Date;
+                var fora = lista.Values.Where(t =>
+                {
+                    DateTime m;
+                    return !envia.TryGetValue(ChaveNumero(t.Chave), out m) || m.Date < diaReenvio;
+                }).ToList();
+                foreach (var t in fora)
+                {
+                    DateTime m;
+                    log.Info("Fora da contingência (Metre não reenviou em " + diaReenvio.ToString("dd/MM/yyyy") + "): " + t.Chave +
+                        (envia.TryGetValue(ChaveNumero(t.Chave), out m) ? " — último ENVIA em " + m.ToString("dd/MM/yyyy HH:mm") : " — sem ONTIGENCIA_ENVIA"));
+                    lista.Remove(t.Chave);
+                }
+                log.Info("Último reenvio da contingência: " + diaReenvio.ToString("dd/MM/yyyy") + "; " + fora.Count + " tentativa(s) fora da contingência ignorada(s)");
+            }
             log.Info("Chaves autorizadas nos arquivos: " + autorizadas.Count + "; tentativas em contingência não autorizadas: " + lista.Count +
                 " (" + string.Join(", ", lista.Values.GroupBy(t => t.Classificacao).Select(g => g.Count() + " " + g.Key)) + ")");
 
