@@ -65,6 +65,7 @@ namespace DuplicidadeNfce
         public NotaXml Indicado;        // só pelo protNFe local, quando a SEFAZ não respondeu (nunca é copiado)
         public decimal? ValorSefaz;
         public string MotivoPendente;   // null = escolhido
+        public bool ValorNaoConferido;  // nenhum arquivo conferiu com o digVal: vale o ASSINADA único da chave
         public string MotivoEscolha;
         public List<Candidato> Candidatos = new List<Candidato>();
     }
@@ -369,8 +370,10 @@ namespace DuplicidadeNfce
             if (escolhido == null) { sel.MotivoPendente = motivo; return sel; }
             sel.Escolhido = escolhido;
             sel.ValorSefaz = escolhido.VNF;
-            sel.MotivoEscolha = "ASSINADA da chave autorizada com o mesmo valor da SEFAZ (nProt " + sel.Sefaz.Prot.NProt + ")" +
-                (escolhido.DigestDeclarado == sel.Sefaz.Prot.DigVal ? ", conteúdo idêntico ao autorizado" : ", conteúdo assinado difere do XML autorizado") +
+            sel.MotivoEscolha = (sel.ValorNaoConferido
+                    ? "ASSINADA da chave autorizada (nProt " + sel.Sefaz.Prot.NProt + "); nenhum XML do computador confere com o digVal, valor não conferido pelo conteúdo"
+                    : "ASSINADA da chave autorizada com o mesmo valor da SEFAZ (nProt " + sel.Sefaz.Prot.NProt + ")" +
+                      (escolhido.DigestDeclarado == sel.Sefaz.Prot.DigVal ? ", conteúdo idêntico ao autorizado" : ", conteúdo assinado difere do XML autorizado")) +
                 (copias > 1 ? "; " + copias + " cópias idênticas" : "");
             log.Info("  Escolhido: " + escolhido.Caminho);
             return sel;
@@ -384,13 +387,14 @@ namespace DuplicidadeNfce
             string digVal = prot.DigVal;
             if (string.IsNullOrEmpty(digVal)) { motivoPendente = fonte + " sem digVal"; return null; }
 
+            // Qualquer arquivo da chave que confira com a SEFAZ (inclusive Temp/ENVIA/FALHA_SCHEMA) serve para
+            // fixar o valor autorizado; copiado é sempre o ASSINADA.
             var validos = new List<NotaXml>();
             sel.Candidatos.Clear();
             foreach (var a in arqs.OrderBy(x => x.Caminho))
             {
                 string motivo = null;
-                if (TiposDescartados.Contains(a.Tipo)) motivo = "descartado pelo tipo (" + a.Tipo + ")";
-                else if (a.Erro != null) motivo = "erro de leitura: " + a.Erro;
+                if (a.Erro != null) motivo = "erro de leitura: " + a.Erro;
                 else if (a.DigestDeclarado != digVal) motivo = "DigestValue " + a.DigestDeclarado + " ≠ digVal " + fonte;
                 else if (a.DigestCalculado != a.DigestDeclarado) motivo = "DigestValue declarado não confere com o conteúdo (calculado " + a.DigestCalculado + ")";
                 else if (a.Prot != null && a.Prot.NProt != null && a.Prot.NProt != prot.NProt) motivo = "protNFe local com nProt " + a.Prot.NProt + " ≠ " + fonte + " " + prot.NProt;
@@ -403,24 +407,44 @@ namespace DuplicidadeNfce
                 log.Info("  " + (motivo == null ? "[OK]  " : "[X]   ") + a.Caminho + " (" + a.Tamanho + " bytes, vNF " + Moeda(a.VNF) + ")" + (motivo == null ? "" : " - " + motivo));
             }
 
+            string chaveAut = prot.ChNFe ?? (arqs.Count > 0 ? arqs[0].Chave : null);
+            decimal valorAut;
+            sel.ValorNaoConferido = false;
             if (validos.Count == 0)
             {
-                motivoPendente = arqs.Count == 0
-                    ? "nenhum arquivo com a chave autorizada"
-                    : "nenhum dos " + arqs.Count + " arquivo(s) com a chave tem DigestValue igual ao digVal " + fonte;
-                return null;
+                // Nenhum arquivo confere com a SEFAZ (o Metre regravou o XML ao transmitir e não salvou o
+                // _NFCE, ex.: 6/89257). Fica o ASSINADA da própria chave autorizada, se houver um só.
+                if (arqs.Any(a => a.DigestDeclarado == digVal && a.DigestCalculado != a.DigestDeclarado))
+                {
+                    motivoPendente = "há arquivo com o DigestValue da SEFAZ mas conteúdo alterado; conferir manualmente";
+                    return null;
+                }
+                var unicos = arqs.Where(a => a.Tipo == TipoArquivo.Assinada && a.Erro == null && a.Chave == chaveAut && !a.TemSobra && a.VNF.HasValue)
+                    .GroupBy(a => a.Sha256).ToList();
+                if (unicos.Count != 1)
+                {
+                    motivoPendente = arqs.Count == 0
+                        ? "nenhum arquivo com a chave autorizada"
+                        : "nenhum dos " + arqs.Count + " arquivo(s) com a chave tem DigestValue igual ao digVal " + fonte +
+                          (unicos.Count > 1 ? " e há mais de um ASSINADA diferente dessa chave" : " e não há ASSINADA dessa chave");
+                    return null;
+                }
+                valorAut = unicos[0].First().VNF.Value;
+                sel.ValorNaoConferido = true;
             }
-            // Regra do Bruno (22/10): o arquivo copiado é o ASSINADA da chave autorizada com o mesmo valor
-            // da SEFAZ. É o que o Metre importa como solução da contingência; importar o _NFCE (que traz o
-            // protNFe) aumentou a contingência. Os válidos (digest = digVal) só fixam o valor autorizado.
-            var valores = validos.Where(a => a.VNF.HasValue).Select(a => a.VNF.Value).Distinct().ToList();
-            if (valores.Count != 1)
+            else
             {
-                motivoPendente = "valor autorizado indefinido entre os arquivos que conferem com a SEFAZ";
-                return null;
+                // Regra do Bruno (22/10): o arquivo copiado é o ASSINADA da chave autorizada com o mesmo valor
+                // da SEFAZ. É o que o Metre importa como solução da contingência; importar o _NFCE (que traz o
+                // protNFe) aumentou a contingência. Os válidos (digest = digVal) só fixam o valor autorizado.
+                var valores = validos.Where(a => a.VNF.HasValue).Select(a => a.VNF.Value).Distinct().ToList();
+                if (valores.Count != 1)
+                {
+                    motivoPendente = "valor autorizado indefinido entre os arquivos que conferem com a SEFAZ";
+                    return null;
+                }
+                valorAut = valores[0];
             }
-            decimal valorAut = valores[0];
-            string chaveAut = validos[0].Chave;
             var assinadas = arqs.Where(a => a.Tipo == TipoArquivo.Assinada && a.Erro == null && a.Chave == chaveAut).ToList();
             var preferidos = assinadas.Where(a => a.VNF == valorAut).ToList();
             foreach (var c in sel.Candidatos.Where(c => assinadas.Any(a => a.Caminho == c.Caminho)))

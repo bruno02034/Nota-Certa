@@ -183,7 +183,7 @@ try {
     $d = CopiaAmostras 'adulterada'
     $f = Join-Path $d 'NOTA_88868_SERIE_6_NFCE.xml'
     [IO.File]::WriteAllText($f, [IO.File]::ReadAllText($f).Replace('<vNF>5.00</vNF>', '<vNF>7.00</vNF>'))
-    Confere (Rodar $d) $K88868 'PENDENTE' '' '' 'nenhum dos'
+    Confere (Rodar $d) $K88868 'PENDENTE' '' '' 'conteúdo alterado'
 
     Write-Host '--- Valor do sistema igual ao da SEFAZ: ganha a sua copia como as outras linhas'
     $d = CopiaAmostras 'mesmovalor'
@@ -238,6 +238,9 @@ try {
     Copy-Item $amostras $dadosSefaz -Recurse
     "<protNFe versao=`"4.00`"><infProt><tpAmb>1</tpAmb><verAplic>TESTE</verAplic><chNFe>$K89257a</chNFe><dhRecbto>2026-10-21T08:45:00-03:00</dhRecbto><nProt>131262699999999</nProt><digVal>$DigVal89257a</digVal><cStat>100</cStat><xMotivo>Autorizado o uso da NF-e</xMotivo></infProt></protNFe>" |
         Set-Content (Join-Path $dadosSefaz 'protocolo_89257.xml') -Encoding UTF8
+    # 6/89258 das 08:42: autorizada com um conteúdo que nenhum XML do computador tem (o Metre regravou ao transmitir)
+    "<protNFe versao=`"4.00`"><infProt><tpAmb>1</tpAmb><verAplic>TESTE</verAplic><chNFe>$K89258a</chNFe><dhRecbto>2026-10-21T08:45:00-03:00</dhRecbto><nProt>131262699999998</nProt><digVal>ConteudoRegravadoPeloMetre00000=</digVal><cStat>100</cStat><xMotivo>Autorizado o uso da NF-e</xMotivo></infProt></protNFe>" |
+        Set-Content (Join-Path $dadosSefaz 'protocolo_89258.xml') -Encoding UTF8
     $servidor = Start-Process powershell -PassThru -WindowStyle Hidden -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass',
         '-File', (Join-Path $PSScriptRoot 'sefaz_simulada.ps1'), '-Porta', $porta, '-Amostras', $dadosSefaz,
         '-ArqChamadas', $chamadas, '-ArqPronto', $pronto, '-ArqParar', $parar)
@@ -315,6 +318,18 @@ try {
     Confere $r $K89257c 'COPIADO' $a57 '6,75' 'cópia conferida'
     Verdade ((Destino $r $K89257b) -like "*\importar-1\$a57" -and (Destino $r $K89257c) -like "*\importar-2\$a57") '89257: 08:58 em importar-1 e 09:58 em importar-2'
     Verdade (($r | Where-Object { $_.'Chave do sistema' -eq $K89257b }).Classificacao -like '*confirmada na SEFAZ*') '89257 classificada como autorizada sem XML, confirmada na SEFAZ'
+
+    Write-Host '--- 89258: autorizada sem _NFCE e nenhum XML confere com o digVal (vale o ASSINADA unico da chave)'
+    $csv58 = Join-Path $tmp 'contingencia_89258.csv'
+    @($cab,
+      "`"31`";`"89258`";`"6`";`"258979`";`"$K89258b`";`"13,50`";`"2026-10-21`";`"2026-10-21 08:59:40`";\N;\N;\N",
+      "`"32`";`"89258`";`"6`";`"259022`";`"$K89258c`";`"19,00`";`"2026-10-21`";`"2026-10-21 09:58:40`";\N;\N;\N"
+    ) | Set-Content $csv58 -Encoding UTF8
+    $r = Rodar $amostras "$cfgSefaz`r`nFonteContingencia=csv:$csv58" @('--notas', '6/89258', '--copiar') (Join-Path $tmp 'destino_89258')
+    $a58 = 'NOTA_89258_SERIE_6_ASSINADA_21_10_2026_08_42_22.xml'
+    Confere $r $K89258b 'COPIADO' $a58 '26,10' 'cópia conferida'
+    Confere $r $K89258c 'COPIADO' $a58 '26,10' 'cópia conferida'
+    Verdade ((Destino $r $K89258b) -like "*\importar-1\$a58" -and (Destino $r $K89258c) -like "*\importar-2\$a58") '89258: 08:59 em importar-1 e 09:58 em importar-2'
 
     Write-Host '--- Arquivo antigo na pasta do dia: nao e tocado (a copia vai na pasta da execucao)'
     $destX = Join-Path $tmp 'destino_existente'
