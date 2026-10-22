@@ -30,7 +30,20 @@ namespace DuplicidadeNfce
                 MessageBox.Show(e.Exception.Message, Program.NomeSistema, MessageBoxButton.OK, MessageBoxImage.Error);
                 e.Handled = true;
             };
-            var janela = new Janela(op);
+            AppDomain.CurrentDomain.UnhandledException += (s, e) =>
+                MessageBox.Show(((Exception)e.ExceptionObject).Message, Program.NomeSistema, MessageBoxButton.OK, MessageBoxImage.Error);
+            Janela janela;
+            try
+            {
+                janela = new Janela(op);
+            }
+            catch (Exception ex)
+            {
+                // Erro no duplicidade.ini (ex.: linhas emendadas) não pode derrubar o programa sem explicar.
+                MessageBox.Show("Não foi possível abrir o " + Program.NomeSistema + ":\n\n" + ex.Message +
+                    "\n\nConfira o arquivo " + op.ArqConfig, Program.NomeSistema, MessageBoxButton.OK, MessageBoxImage.Error);
+                return 2;
+            }
             return app.Run(janela.W);
         }
     }

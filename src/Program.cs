@@ -132,15 +132,8 @@ a cópia nunca move nem sobrescreve, e fica registrada em historico.csv na pasta
         static int TestarBanco(Opcoes op)
         {
             var cfg = op.CarregarConfig();
-            string arqLog = Path.Combine(Path.GetTempPath(), "notacerta_testar_banco.log");
-            using (var log = new Log(arqLog))
-            {
-                var lista = Banco.LerBanco(cfg, log);
-                foreach (var c in lista.Take(5))
-                    Console.WriteLine("  " + c.Serie + "/" + c.Numero + "  pedido " + (c.Pedido ?? "-") + "  R$ " + Analisador.Moeda(c.Valor) +
-                        "  " + (c.DtContingencia.HasValue ? c.DtContingencia.Value.ToString("dd/MM/yyyy HH:mm") : "-") + "  " + c.Chave);
-                if (lista.Count > 5) Console.WriteLine("  ... e mais " + (lista.Count - 5));
-            }
+            Console.WriteLine("Configuração: " + op.ArqConfig + (string.IsNullOrEmpty(cfg.DbSenha) ? "  (ATENÇÃO: DbSenha vazia)" : ""));
+            Banco.Testar(cfg, Console.WriteLine);
             return 0;
         }
 

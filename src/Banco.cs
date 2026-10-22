@@ -92,7 +92,6 @@ namespace DuplicidadeNfce
         [DllImport("libmariadb.dll", CallingConvention = CallingConvention.Cdecl)] static extern IntPtr mysql_store_result(IntPtr m);
         [DllImport("libmariadb.dll", CallingConvention = CallingConvention.Cdecl)] static extern uint mysql_num_fields(IntPtr r);
         [DllImport("libmariadb.dll", CallingConvention = CallingConvention.Cdecl)] static extern IntPtr mysql_fetch_row(IntPtr r);
-        [DllImport("libmariadb.dll", CallingConvention = CallingConvention.Cdecl)] static extern IntPtr mysql_fetch_lengths(IntPtr r);
         [DllImport("libmariadb.dll", CallingConvention = CallingConvention.Cdecl)] static extern void mysql_free_result(IntPtr r);
         [DllImport("libmariadb.dll", CallingConvention = CallingConvention.Cdecl)] static extern void mysql_close(IntPtr m);
         [DllImport("libmariadb.dll", CallingConvention = CallingConvention.Cdecl)] static extern IntPtr mysql_error(IntPtr m);
@@ -124,60 +123,110 @@ namespace DuplicidadeNfce
             foreach (string t in tentativas.Distinct(StringComparer.OrdinalIgnoreCase))
             {
                 if (!File.Exists(t)) continue;
-                if (LoadLibrary(t) != IntPtr.Zero) return;
+                if (LoadLibrary(t) != IntPtr.Zero) { DllCarregada = t; return; }
                 throw new Exception("não foi possível carregar " + t + " (erro " + Marshal.GetLastWin32Error() + "; o exe roda em " +
                     (Environment.Is64BitProcess ? "64" : "32") + " bits e a DLL precisa ser igual)");
             }
             throw new Exception("libmariadb.dll não encontrada (procurado em: " + string.Join("; ", tentativas) + "). Informe MariaDbDll no duplicidade.ini.");
         }
 
+        public static string DllCarregada;
+
         // Só SELECT, numa sessão marcada como somente leitura: nada é gravado no banco do Metre.
-        public static List<LinhaContingencia> LerBanco(Config cfg, Log log)
+        // 'passo' mostra o andamento (usado pelo --testar-banco para saber onde parou, se parar).
+        public static List<string[]> Consultar(Config cfg, IEnumerable<string> sqls, Action<string> passo)
         {
+            if (passo == null) passo = s => { };
+            passo("procurando libmariadb.dll");
             CarregarDll(cfg);
+            passo("DLL carregada: " + DllCarregada + " (processo " + (Environment.Is64BitProcess ? "64" : "32") + " bits)");
             IntPtr m = mysql_init(IntPtr.Zero);
             if (m == IntPtr.Zero) throw new Exception("mysql_init falhou");
             try
             {
+                passo("conectando em " + cfg.DbHost + ":" + cfg.DbPorta + " como " + cfg.DbUsuario);
                 if (mysql_real_connect(m, Z(cfg.DbHost), Z(cfg.DbUsuario), Z(cfg.DbSenha), Z(cfg.DbBanco), (uint)cfg.DbPorta, IntPtr.Zero, 0) == IntPtr.Zero)
                     throw new Exception("conexão com o banco " + cfg.DbHost + ":" + cfg.DbPorta + " falhou: " + Erro(m));
+                passo("conectado; abrindo sessão somente leitura");
                 mysql_set_character_set(m, Z("utf8mb4"));
-                if (mysql_query(m, Z("SET SESSION TRANSACTION READ ONLY")) != 0)
-                    throw new Exception("não foi possível abrir a sessão somente leitura: " + Erro(m));
-                IntPtr r0 = mysql_store_result(m);
-                if (r0 != IntPtr.Zero) mysql_free_result(r0);
-
-                string sql = "SELECT " + string.Join(", ", Colunas) + " FROM " + cfg.DbBanco + ".nota_saida WHERE situacao = '" +
-                    cfg.DbSituacao.Replace("'", "''") + "' ORDER BY data_contigencia";
-                if (mysql_query(m, Z(sql)) != 0) throw new Exception("consulta da contingência falhou: " + Erro(m));
-                IntPtr r = mysql_store_result(m);
-                if (r == IntPtr.Zero) throw new Exception("consulta da contingência sem resultado: " + Erro(m));
-                var lista = new List<LinhaContingencia>();
-                try
+                Executar(m, "SET SESSION TRANSACTION READ ONLY", false);
+                List<string[]> ultimo = null;
+                foreach (string sql in sqls)
                 {
-                    int n = (int)mysql_num_fields(r);
-                    IntPtr row;
-                    while ((row = mysql_fetch_row(r)) != IntPtr.Zero)
-                    {
-                        IntPtr lens = mysql_fetch_lengths(r);
-                        var v = new string[n];
-                        for (int i = 0; i < n; i++)
-                        {
-                            IntPtr p = Marshal.ReadIntPtr(row, i * IntPtr.Size);
-                            if (p == IntPtr.Zero) continue;
-                            int len = Marshal.ReadInt32(lens, i * 4);   // unsigned long = 32 bits no Windows
-                            var b = new byte[len];
-                            Marshal.Copy(p, b, 0, len);
-                            v[i] = Encoding.UTF8.GetString(b);
-                        }
-                        lista.Add(Montar(v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7], v[8], v[9]));
-                    }
+                    passo("consultando: " + (sql.Length > 70 ? sql.Substring(0, 70) + "..." : sql));
+                    ultimo = Executar(m, sql, true);
+                    passo(ultimo.Count + " linha(s) lida(s)");
                 }
-                finally { mysql_free_result(r); }
-                log.Tela("Contingência lida do banco " + cfg.DbBanco + " (" + cfg.DbHost + ":" + cfg.DbPorta + "): " + lista.Count + " nota(s)");
-                return lista;
+                return ultimo ?? new List<string[]>();
             }
             finally { mysql_close(m); }
+        }
+
+        static List<string[]> Executar(IntPtr m, string sql, bool comResultado)
+        {
+            if (mysql_query(m, Z(sql)) != 0) throw new Exception("consulta falhou: " + Erro(m));
+            IntPtr r = mysql_store_result(m);
+            var linhas = new List<string[]>();
+            if (r == IntPtr.Zero)
+            {
+                if (comResultado) throw new Exception("consulta sem resultado: " + Erro(m));
+                return linhas;
+            }
+            try
+            {
+                int n = (int)mysql_num_fields(r);
+                IntPtr row;
+                while ((row = mysql_fetch_row(r)) != IntPtr.Zero)
+                {
+                    var v = new string[n];
+                    for (int i = 0; i < n; i++)
+                    {
+                        IntPtr p = Marshal.ReadIntPtr(row, i * IntPtr.Size);
+                        if (p != IntPtr.Zero) v[i] = TextoC(p);
+                    }
+                    linhas.Add(v);
+                }
+            }
+            finally { mysql_free_result(r); }
+            return linhas;
+        }
+
+        // Valores de texto vêm terminados em zero (as colunas lidas não têm binário).
+        static string TextoC(IntPtr p)
+        {
+            var b = new List<byte>();
+            for (int i = 0; ; i++) { byte x = Marshal.ReadByte(p, i); if (x == 0) break; b.Add(x); }
+            return Encoding.UTF8.GetString(b.ToArray());
+        }
+
+        static string SqlContingencia(Config cfg)
+        {
+            return "SELECT " + string.Join(", ", Colunas) + " FROM " + cfg.DbBanco + ".nota_saida WHERE situacao = '" +
+                cfg.DbSituacao.Replace("'", "''") + "' ORDER BY data_contigencia";
+        }
+
+        public static List<LinhaContingencia> LerBanco(Config cfg, Log log)
+        {
+            var linhas = Consultar(cfg, new[] { SqlContingencia(cfg) }, s => log.Info("Banco: " + s));
+            var lista = linhas.Select(v => Montar(v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7], v[8], v[9])).ToList();
+            log.Tela("Contingência lida do banco " + cfg.DbBanco + " (" + cfg.DbHost + ":" + cfg.DbPorta + "): " + lista.Count + " nota(s)");
+            return lista;
+        }
+
+        // --testar-banco: mostra cada passo e um resumo por situação (sem dados de clientes).
+        public static void Testar(Config cfg, Action<string> mostrar)
+        {
+            var resumo = Consultar(cfg, new[] { "SELECT situacao, COUNT(*) FROM " + cfg.DbBanco + ".nota_saida GROUP BY situacao ORDER BY 2 DESC" },
+                s => mostrar("  > " + s));
+            mostrar("Notas por situação em " + cfg.DbBanco + ".nota_saida:");
+            foreach (var v in resumo) mostrar("  " + (v[0] ?? "(vazio)") + ": " + v[1]);
+            var lista = Consultar(cfg, new[] { SqlContingencia(cfg) }, s => mostrar("  > " + s))
+                .Select(v => Montar(v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7], v[8], v[9])).ToList();
+            mostrar("Contingência ('" + cfg.DbSituacao + "'): " + lista.Count + " nota(s)");
+            foreach (var c in lista.Take(5))
+                mostrar("  " + c.Serie + "/" + c.Numero + "  pedido " + (c.Pedido ?? "-") + "  R$ " + Analisador.Moeda(c.Valor) +
+                    "  " + (c.DtContingencia.HasValue ? c.DtContingencia.Value.ToString("dd/MM/yyyy HH:mm") : "-"));
+            if (lista.Count > 5) mostrar("  ... e mais " + (lista.Count - 5));
         }
     }
 }
