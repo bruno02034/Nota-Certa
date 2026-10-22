@@ -185,14 +185,14 @@ try {
     [IO.File]::WriteAllText($f, [IO.File]::ReadAllText($f).Replace('<vNF>5.00</vNF>', '<vNF>7.00</vNF>'))
     Confere (Rodar $d) $K88868 'PENDENTE' '' '' 'nenhum dos'
 
-    Write-Host '--- Valor do sistema igual ao da SEFAZ'
+    Write-Host '--- Valor do sistema igual ao da SEFAZ: ganha a sua copia como as outras linhas'
     $d = CopiaAmostras 'mesmovalor'
     # Todos os arquivos da tentativa (chave ...9846322375) passam a ter 5,00, senão a divergência gera PENDENTE.
     foreach ($n in 'NOTA_88868_SERIE_6_REJEICAO_NOTA.xml', 'NOTA_88868_SERIE_6_ASSINADA_19_10_2026_17_22_32.xml', 'NOTA_ONTIGENCIA_ENVIA_88868_SERIE_6_Temp.xml') {
         $f = Join-Path $d $n
         [IO.File]::WriteAllText($f, [IO.File]::ReadAllText($f).Replace('<vNF>70.00</vNF>', '<vNF>5.00</vNF>'))
     }
-    Confere (Rodar $d) $K88868 'AJUSTE_CHAVE_BANCO (fora do escopo)' 'NOTA_88868_SERIE_6_ASSINADA_19_10_2026_17_07_37.xml' '5,00' 'nenhuma ação'
+    Confere (Rodar $d) $K88868 'A COPIAR' 'NOTA_88868_SERIE_6_ASSINADA_19_10_2026_17_07_37.xml' '5,00' 'mesmo valor'
 
     Write-Host '--- Sem .pfx: SEFAZ nao consultada'
     $emp = Join-Path $tmp 'Empresa'

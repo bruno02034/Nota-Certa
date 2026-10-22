@@ -40,7 +40,6 @@ marque as notas → *Processar marcadas* (consulta a SEFAZ, escolhe o arquivo e 
 | A COPIAR | arquivo autorizado encontrado (linha de comando sem `--copiar`) |
 | COPIADO | copiado e conferido (tamanho e SHA-256) |
 | JÁ PROCESSADA | já consta como copiada no `historico.csv` |
-| AJUSTE_CHAVE_BANCO (fora do escopo) | valor do sistema = valor SEFAZ; nada é feito |
 | PENDENTE | dúvida: SEFAZ não consultada, sem retorno 539, nenhum ou mais de um candidato, destino já existe… |
 | ERRO_COPIA | a cópia não conferiu com o original |
 

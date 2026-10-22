@@ -666,13 +666,9 @@ namespace DuplicidadeNfce
                 l.CaminhoOrigem = sel.Escolhido.Caminho;
                 if (avisos.Count > 0) { Pendente(l, "verificar manualmente", avisos); continue; }
                 if (!t.Valor.HasValue) { Pendente(l, "valor do sistema não encontrado", avisos); continue; }
-                if (t.Valor == sel.ValorSefaz)
-                {
-                    // Mesmo valor: o arquivo autorizado não resolve; a chave precisa ser ajustada no banco do Metre.
-                    l.Status = Status.AjusteChave;
-                    l.Motivo = "valor do sistema igual ao da SEFAZ (" + Moeda(t.Valor) + "); ajustar a chave no banco do Metre; nenhuma ação tomada";
-                    continue;
-                }
+                // Mesmo valor do sistema e da SEFAZ também ganha a sua cópia: cada importação no Metre tira uma
+                // linha da contingência, sem olhar o valor (decisão do Bruno, 22/10, caso 6/89248 09:22).
+                bool mesmoValor = t.Valor == sel.ValorSefaz;
                 // Uma cópia por linha da contingência: a 2ª tentativa do mesmo número se resolve importando
                 // de novo o mesmo ASSINADA, então cada rodada vai numa pasta (importar-1, importar-2...).
                 int rodada;
@@ -687,7 +683,8 @@ namespace DuplicidadeNfce
                 }
                 l.Fonte = sel.Escolhido;
                 l.Status = Status.ACopiar;
-                l.Motivo = "sistema " + Moeda(t.Valor) + " ≠ SEFAZ " + Moeda(sel.ValorSefaz) + "; " + sel.MotivoEscolha;
+                l.Motivo = (mesmoValor ? "sistema " + Moeda(t.Valor) + " = SEFAZ (mesmo valor); " : "sistema " + Moeda(t.Valor) + " ≠ SEFAZ " + Moeda(sel.ValorSefaz) + "; ") +
+                    sel.MotivoEscolha;
             }
             if (progresso != null) progresso(escolhidas.Count, escolhidas.Count);
             return linhas.OrderBy(x => int.Parse(x.Serie)).ThenBy(x => long.Parse(x.Numero)).ThenBy(x => x.DhEmiSistema).ToList();
