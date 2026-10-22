@@ -129,10 +129,20 @@ namespace DuplicidadeNfce
             return Analisador.Listar(Historico);
         }
 
+        // Cada processamento copia numa pasta própria (Duplicidade\AAAA-MM-DD\16h50m12s\importar-N\...), para
+        // nunca esbarrar nas cópias de uma execução anterior que ainda vão ser importadas.
+        public string UltimaPastaExecucao;
+
+        public string NovaPastaExecucao()
+        {
+            UltimaPastaExecucao = Path.Combine(PastaCopia, DateTime.Now.ToString("HH'h'mm'm'ss's'"));
+            return UltimaPastaExecucao;
+        }
+
         public List<LinhaRelatorio> Processar(Func<Tentativa, bool> incluir, IEnumerable<string> notasSemTentativa, bool copiar, Action<int, int> progresso)
         {
             if (copiar && SemSefaz) throw new Exception("a cópia exige a confirmação da SEFAZ (modo --sem-sefaz)");
-            var linhas = Analisador.Analisar(PastaCopia, incluir, notasSemTentativa, Historico, progresso);
+            var linhas = Analisador.Analisar(NovaPastaExecucao(), incluir, notasSemTentativa, Historico, progresso);
             if (copiar)
             {
                 Log.Info("");

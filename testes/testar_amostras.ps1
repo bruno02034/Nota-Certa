@@ -62,6 +62,7 @@ function CopiaAmostras($nome) {
 }
 
 function Hash($f) { (Get-FileHash $f -Algorithm SHA256).Hash }
+function Destino($linhas, $chave) { ($linhas | Where-Object { $_.'Chave do sistema' -eq $chave }).'Caminho destino' }
 
 # Certificado autoassinado em memória, exportado para .pfx (não toca no repositório do Windows).
 function NovoPfx($arquivo, $cnpj, $senha) {
@@ -257,8 +258,8 @@ try {
     Confere $r $K88867 'COPIADO' 'NOTA_88867_SERIE_6_ASSINADA_19_10_2026_17_06_37.xml' '10,00' 'cópia conferida'
     Confere $r $K88868 'COPIADO' 'NOTA_88868_SERIE_6_ASSINADA_19_10_2026_17_07_37.xml' '5,00' 'cópia conferida'
     Confere $r $K88867sem539 'PENDENTE' '' '' 'sem retorno 539'
-    Verdade ((Hash (Join-Path $destC "$hoje\NOTA_88867_SERIE_6_ASSINADA_19_10_2026_17_06_37.xml")) -eq (Hash (Join-Path $amostras 'NOTA_88867_SERIE_6_ASSINADA_19_10_2026_17_06_37.xml'))) 'copia da 88867 identica ao original'
-    Verdade ((Hash (Join-Path $destC "$hoje\NOTA_88868_SERIE_6_ASSINADA_19_10_2026_17_07_37.xml")) -eq (Hash (Join-Path $amostras 'NOTA_88868_SERIE_6_ASSINADA_19_10_2026_17_07_37.xml'))) 'copia da 88868 identica ao original'
+    Verdade ((Hash (Destino $r $K88867)) -eq (Hash (Join-Path $amostras 'NOTA_88867_SERIE_6_ASSINADA_19_10_2026_17_06_37.xml'))) 'copia da 88867 identica ao original'
+    Verdade ((Hash (Destino $r $K88868)) -eq (Hash (Join-Path $amostras 'NOTA_88868_SERIE_6_ASSINADA_19_10_2026_17_07_37.xml'))) 'copia da 88868 identica ao original'
     Verdade (Test-Path (Join-Path $amostras 'NOTA_88868_SERIE_6_ASSINADA_19_10_2026_17_07_37.xml')) 'original continua no lugar (copia, nao move)'
     $hist = Import-Csv (Join-Path $destC 'historico.csv') -Delimiter ';' -Encoding UTF8
     Verdade (@($hist | Where-Object { $_.Status -eq 'COPIADO' }).Count -eq 2) 'historico com 2 registros COPIADO'
@@ -275,15 +276,35 @@ try {
 
     $r = Rodar $amostras $cfgSefaz @('--notas', '6/88869', '--copiar') $destC
     Confere $r $K88869 'COPIADO' 'NOTA_88869_SERIE_6_ASSINADA_19_10_2026_17_12_40.xml' '14,00' 'cópia conferida'
-    Verdade ((Hash (Join-Path $destC "$hoje\NOTA_88869_SERIE_6_ASSINADA_19_10_2026_17_12_40.xml")) -eq (Hash (Join-Path $amostras 'NOTA_88869_SERIE_6_ASSINADA_19_10_2026_17_12_40.xml'))) 'copia da 88869 e o ASSINADA da chave autorizada'
+    Verdade ((Hash (Destino $r $K88869)) -eq (Hash (Join-Path $amostras 'NOTA_88869_SERIE_6_ASSINADA_19_10_2026_17_12_40.xml'))) 'copia da 88869 e o ASSINADA da chave autorizada'
 
-    Write-Host '--- Destino ja tem o arquivo (sem historico): nao sobrescreve'
+    Write-Host '--- Mesmo numero 3 vezes na contingencia: uma copia por rodada (importar-1, -2, -3)'
+    $csv3 = Join-Path $tmp 'contingencia_89244.csv'
+    @($cab,
+      "`"11`";`"89244`";`"6`";`"258958`";`"$K89244b`";`"13,95`";`"2026-10-21`";`"2026-10-21 08:45:08`";\N;\N;\N",
+      "`"12`";`"89244`";`"6`";`"258986`";`"$K89244c`";`"11,25`";`"2026-10-21`";`"2026-10-21 09:08:05`";\N;\N;\N",
+      "`"13`";`"89244`";`"6`";`"259000`";`"$K89244d`";`"46,35`";`"2026-10-21`";`"2026-10-21 09:27:51`";\N;\N;\N"
+    ) | Set-Content $csv3 -Encoding UTF8
+    $destR = Join-Path $tmp 'destino_rodadas'
+    $r = Rodar $amostras "$cfgSefaz`r`nFonteContingencia=csv:$csv3" @('--notas', '6/89244', '--copiar') $destR
+    $assinada = 'NOTA_89244_SERIE_6_ASSINADA_21_10_2026_08_23_20.xml'
+    $ok = $true
+    $i = 1
+    foreach ($k in @($K89244b, $K89244c, $K89244d)) {
+        $l = $r | Where-Object { $_.'Chave do sistema' -eq $k }
+        if (-not ($l.Status -eq 'COPIADO' -and $l.'Caminho destino' -like "*\importar-$i\$assinada" -and (Hash $l.'Caminho destino') -eq (Hash (Join-Path $amostras $assinada)))) { $ok = $false }
+        $i++
+    }
+    Verdade $ok '89244: 08:45 em importar-1, 09:08 em importar-2, 09:27 em importar-3, todas com o ASSINADA autorizado'
+
+    Write-Host '--- Arquivo antigo na pasta do dia: nao e tocado (a copia vai na pasta da execucao)'
     $destX = Join-Path $tmp 'destino_existente'
     New-Item -ItemType Directory -Path (Join-Path $destX $hoje) | Out-Null
     $alvo = Join-Path $destX "$hoje\NOTA_88868_SERIE_6_ASSINADA_19_10_2026_17_07_37.xml"
     Set-Content $alvo 'conteudo antigo'
     $r = Rodar $amostras $cfgSefaz @('--notas', '6/88868', '--copiar') $destX
-    Confere $r $K88868 'PENDENTE' 'NOTA_88868_SERIE_6_ASSINADA_19_10_2026_17_07_37.xml' '5,00' 'já existe no destino'
+    Confere $r $K88868 'COPIADO' 'NOTA_88868_SERIE_6_ASSINADA_19_10_2026_17_07_37.xml' '5,00' 'cópia conferida'
+    Verdade ((Destino $r $K88868) -like (Join-Path $destX "$hoje\*\importar-1\*")) 'copia vai na pasta da execucao (horario\importar-1), nao em cima do arquivo antigo'
     Verdade ((Get-Content $alvo -Raw).Trim() -eq 'conteudo antigo') 'arquivo existente nao foi alterado'
 
     New-Item -ItemType File -Path $parar | Out-Null

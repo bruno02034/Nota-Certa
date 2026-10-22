@@ -167,7 +167,7 @@ a cópia nunca move nem sobrescreve, e fica registrada em historico.csv na pasta
                 log.Tela("Período: " + motor.DescricaoPeriodo);
 
                 motor.Varrer();
-                var linhas = motor.Analisador.AnalisarNotas(motor.PastaCopia, notasAlvo, motor.Historico, null);
+                var linhas = motor.Analisador.AnalisarNotas(motor.NovaPastaExecucao(), notasAlvo, motor.Historico, null);
                 if (op.Copiar)
                 {
                     log.Info("");
@@ -184,7 +184,7 @@ a cópia nunca move nem sobrescreve, e fica registrada em historico.csv na pasta
                 log.Tela("");
                 log.Tela(linhas.Count + " linha(s): " +
                     string.Join(", ", linhas.GroupBy(l => l.Status).Select(g => g.Count() + " " + g.Key)));
-                if (op.Copiar) log.Tela("Cópias:    " + motor.PastaCopia);
+                if (op.Copiar) log.Tela("Cópias:    " + motor.UltimaPastaExecucao + "  (importe importar-1, depois importar-2...)");
                 if (op.Copiar) log.Tela("Histórico: " + motor.Historico.Caminho);
                 log.Tela("Relatório: " + arqCsv);
                 log.Tela("Log:       " + motor.ArqLog);

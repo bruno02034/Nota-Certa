@@ -414,7 +414,7 @@ namespace DuplicidadeNfce
                 var res = t.Result.Item1;
                 MostrarStatus("Processadas " + res.Count + ": " +
                     string.Join(", ", res.GroupBy(r => r.Status).Select(gr => gr.Count() + " " + gr.Key)) +
-                    (copiar ? " · cópias em " + m.PastaCopia : " · modo teste: nada copiado") + " · relatório " + System.IO.Path.GetFileName(t.Result.Item2));
+                    (copiar ? " · cópias em " + m.UltimaPastaExecucao + " (importe importar-1, depois importar-2...)" : " · modo teste: nada copiado") + " · relatório " + System.IO.Path.GetFileName(t.Result.Item2));
                 if (op.Captura != null) Capturar();
             }, TaskScheduler.FromCurrentSynchronizationContext());
         }
@@ -527,7 +527,7 @@ namespace DuplicidadeNfce
         void AbrirPastaDuplicidade()
         {
             if (motor == null) return;
-            string p = Directory.Exists(motor.PastaCopia) ? motor.PastaCopia : motor.Destino;
+            string p = motor.UltimaPastaExecucao != null && Directory.Exists(motor.UltimaPastaExecucao) ? motor.UltimaPastaExecucao : Directory.Exists(motor.PastaCopia) ? motor.PastaCopia : motor.Destino;
             if (!Directory.Exists(p)) { Aviso("A pasta " + motor.Destino + " ainda não existe: nenhuma nota foi copiada."); return; }
             Abrir("explorer.exe", p);
         }

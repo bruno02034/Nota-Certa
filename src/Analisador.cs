@@ -556,6 +556,7 @@ namespace DuplicidadeNfce
             }
 
             var escolhidas = Tentativas.Where(incluir).ToList();
+            var rodadas = new Dictionary<string, int>();
             int feitas = 0;
             foreach (var t in escolhidas)
             {
@@ -615,7 +616,12 @@ namespace DuplicidadeNfce
                     l.Motivo = "valor do sistema igual ao da SEFAZ (" + Moeda(t.Valor) + "); ajustar a chave no banco do Metre; nenhuma ação tomada";
                     continue;
                 }
-                l.CaminhoDestino = Path.Combine(pastaCopia, sel.Escolhido.Nome);
+                // Uma cópia por linha da contingência: a 2ª tentativa do mesmo número se resolve importando
+                // de novo o mesmo ASSINADA, então cada rodada vai numa pasta (importar-1, importar-2...).
+                int rodada;
+                rodadas.TryGetValue(t.ChaveAutorizada, out rodada);
+                rodadas[t.ChaveAutorizada] = ++rodada;
+                l.CaminhoDestino = Path.Combine(pastaCopia, "importar-" + rodada, sel.Escolhido.Nome);
                 if (File.Exists(l.CaminhoDestino))
                 {
                     bool igual = NotaXml.HashSha256(NotaXml.LerSomenteLeitura(l.CaminhoDestino)) == sel.Escolhido.Sha256;

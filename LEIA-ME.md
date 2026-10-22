@@ -51,6 +51,12 @@ assim), por uma sessão **somente leitura** (só `SELECT`), usando a `libmariadb
 no `duplicidade.ini` do servidor e confira com `.\NotaCerta.exe --testar-banco`. Linhas cuja chave já está autorizada
 (criadas ao importar um NFCE) aparecem como JÁ AUTORIZADA e não são tocadas.
 
+## Pastas das cópias
+
+Cada processamento copia em `Duplicidade\AAAA-MM-DD\<hora>\importar-N\`. Quando o mesmo número aparece várias
+vezes na contingência, o mesmo ASSINADA autorizado vai em `importar-1`, `importar-2`, `importar-3`… (uma cópia
+por linha). Importe no Metre `importar-1`, depois `importar-2` e assim por diante.
+
 ## Como as duplicidades são achadas
 
 Toda tentativa em contingência (`tpEmis=9`) ainda não autorizada é listada. Só as que têm **retorno 539**
