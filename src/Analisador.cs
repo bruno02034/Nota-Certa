@@ -7,15 +7,36 @@ using System.Text.RegularExpressions;
 
 namespace DuplicidadeNfce
 {
-    // Uma tentativa do sistema (chave própria) que usou um número já autorizado com outra chave.
+    enum Classe
+    {
+        Duplicidade,    // número já autorizado com outra chave (por 539 ou deduzido dos arquivos)
+        SemRetorno,     // em contingência, número ainda sem autorização
+        OutroErro       // rejeição com outro código (ex.: 537)
+    }
+
+    // Uma tentativa do sistema (chave própria) emitida em contingência e ainda não autorizada.
     class Tentativa
     {
-        public string Chave, Numero, Serie, Pedido, DhEmi, ChaveAutorizada, NRec;
+        public string Chave, Numero, Serie, Pedido, DhEmi, ChaveAutorizada, NRec, Erro;
         public decimal? Valor;
         public bool Rejeicao539;
+        public Classe Classe = Classe.Duplicidade;
         public List<string> Origens = new List<string>();
         public List<string> Avisos = new List<string>();
         public string Nota { get { return Serie + "/" + Numero; } }
+
+        public string Classificacao
+        {
+            get
+            {
+                switch (Classe)
+                {
+                    case Classe.SemRetorno: return "Em contingência sem retorno";
+                    case Classe.OutroErro: return "Outro erro";
+                    default: return Rejeicao539 ? "Duplicidade (retorno 539)" : "Duplicidade (deduzida pelos arquivos)";
+                }
+            }
+        }
     }
 
     class LinhaRelatorio
@@ -23,7 +44,7 @@ namespace DuplicidadeNfce
         public string Numero, Serie, Pedido, DhEmiSistema, ChaveSistema, Origem;
         public decimal? ValorSistema, ValorSefaz;
         public string ChaveAutorizada, NRec, SituacaoSefaz, NProtSefaz, DigValSefaz;
-        public string ArquivoEscolhido, CaminhoOrigem, CaminhoDestino, Status, Motivo;
+        public string ArquivoEscolhido, CaminhoOrigem, CaminhoDestino, Status, Motivo, Classificacao;
         public NotaXml Fonte;   // arquivo autorizado a copiar (só nas linhas "A COPIAR")
         public Selecao Sel;     // decisão sobre os candidatos (null antes de processar)
         public List<string> ArquivosChaveAutorizada = new List<string>();
@@ -63,6 +84,7 @@ namespace DuplicidadeNfce
         readonly Dictionary<string, List<NotaXml>> porChave;
         readonly Dictionary<string, Selecao> selecoes = new Dictionary<string, Selecao>();
         List<Tentativa> tentativas;
+        readonly Dictionary<string, string> autorizadaPorNota = new Dictionary<string, string>();
 
         public Analisador(List<NotaXml> notas, Func<string, List<NotaXml>, RespostaSefaz> consultar, Log log)
         {
@@ -86,29 +108,60 @@ namespace DuplicidadeNfce
             var lista = new Dictionary<string, Tentativa>();
             var autorizadasPorNumero = new Dictionary<string, HashSet<string>>();
 
-            // 1) Retornos 539 nos REJEICAO_NOTA (documento principal e restos de gravações anteriores).
+            // 0) Chaves autorizadas: XML com protNFe 100/150 da própria chave (o NFCE da pasta Autorizadas).
+            var autorizadas = new HashSet<string>();
+            foreach (var n in notas.Where(x => x.Chave != null && x.Tipo != TipoArquivo.Rejeicao && x.Prot != null
+                && (x.Prot.CStat == "100" || x.Prot.CStat == "150") && x.Prot.ChNFe == x.Chave))
+            {
+                autorizadas.Add(n.Chave);
+                AdicionarAutorizada(autorizadasPorNumero, n.Chave);
+                autorizadaPorNota[SerieDaChave(n.Chave) + "/" + NumeroDaChave(n.Chave)] = n.Chave + " (cStat " + n.Prot.CStat + ")";
+            }
+
+            // 1) Retornos nos REJEICAO_NOTA (documento principal e restos de gravações anteriores).
+            //    O arquivo só existe para parte das rejeições: o Metre guarda a maioria no banco.
             foreach (var rej in notas.Where(n => n.Tipo == TipoArquivo.Rejeicao && n.NaFaixaPrincipal && n.Chave != null))
             {
                 if (rej.Prot != null && rej.Prot.CStat == "539")
                     Registrar539(lista, autorizadasPorNumero, rej.Prot, rej, "539 em " + rej.Nome);
-                else
-                    log.Info("Ignorado (sem cStat 539 no retorno principal): " + rej.Caminho +
-                        (rej.Prot != null ? " cStat " + rej.Prot.CStat : ""));
+                else if (rej.Prot != null && rej.Prot.CStat != null && !autorizadas.Contains(rej.Chave) && !lista.ContainsKey(rej.Chave))
+                {
+                    var t = new Tentativa { Chave = rej.Chave, Classe = Classe.OutroErro, Erro = rej.Prot.CStat + " - " + rej.Prot.XMotivo };
+                    t.Origens.Add("rejeição " + rej.Prot.CStat + " em " + rej.Nome);
+                    lista[rej.Chave] = t;
+                }
                 foreach (var p in rej.ProtsNaSobra.Where(p => p.CStat == "539" && p.ChNFe != null && p.ChNFe != rej.Chave))
                     Registrar539(lista, autorizadasPorNumero, p, rej, "539 em resto de gravação anterior de " + rej.Nome);
             }
 
-            // 2) Outras tentativas do mesmo número/série/CNPJ com chave diferente da autorizada.
-            foreach (var n in notas.Where(x => x.Chave != null && x.NaFaixaPrincipal))
+            // 2) Tentativas em contingência (tpEmis 9) ainda não autorizadas. Se o número já tem uma
+            //    autorização com outra chave, é duplicidade mesmo sem o arquivo de retorno 539.
+            foreach (var n in notas.Where(x => x.Chave != null && x.NaFaixaPrincipal && x.TpEmis == "9"
+                && !autorizadas.Contains(x.Chave) && !lista.ContainsKey(x.Chave)).OrderBy(x => x.Caminho))
             {
-                HashSet<string> ks;
-                if (!autorizadasPorNumero.TryGetValue(ChaveNumero(n.Chave), out ks)) continue;
-                if (ks.Contains(n.Chave) || lista.ContainsKey(n.Chave)) continue;
                 var t = new Tentativa { Chave = n.Chave };
-                t.Origens.Add("tentativa sem retorno 539 registrado (vista em " + n.Nome + ")");
-                if (ks.Count == 1) t.ChaveAutorizada = ks.First();
-                else t.Avisos.Add("mais de uma chave autorizada para o mesmo número: " + string.Join(", ", ks));
+                HashSet<string> ks;
+                if (autorizadasPorNumero.TryGetValue(ChaveNumero(n.Chave), out ks) && !ks.Contains(n.Chave))
+                {
+                    t.Origens.Add("número já autorizado com outra chave, sem arquivo de retorno 539 (tentativa vista em " + n.Nome + ")");
+                    if (ks.Count == 1) t.ChaveAutorizada = ks.First();
+                    else t.Avisos.Add("mais de uma chave autorizada para o mesmo número: " + string.Join(", ", ks));
+                }
+                else
+                {
+                    t.Classe = Classe.SemRetorno;
+                    t.Origens.Add("em contingência, número ainda sem autorização (vista em " + n.Nome + ")");
+                }
                 lista[n.Chave] = t;
+            }
+            log.Info("Chaves autorizadas nos arquivos: " + autorizadas.Count + "; tentativas em contingência não autorizadas: " + lista.Count +
+                " (" + string.Join(", ", lista.Values.GroupBy(t => t.Classificacao).Select(g => g.Count() + " " + g.Key)) + ")");
+
+            // FALHA_SCHEMA não traz código nem motivo; só registra que o envio falhou na validação.
+            foreach (var f in notas.Where(x => x.Tipo == TipoArquivo.FalhaSchema && x.Chave != null))
+            {
+                Tentativa t;
+                if (lista.TryGetValue(f.Chave, out t)) t.Origens.Add("envio com FALHA_SCHEMA (" + f.Nome + ")");
             }
 
             // 3) Dados de cada tentativa vindos dos arquivos com a mesma chave.
@@ -161,10 +214,15 @@ namespace DuplicidadeNfce
             t.ChaveAutorizada = t.ChaveAutorizada ?? k;
             t.NRec = t.NRec ?? m.Groups[2].Value;
 
-            string num = ChaveNumero(k);
+            AdicionarAutorizada(autPorNum, k);
+        }
+
+        static void AdicionarAutorizada(Dictionary<string, HashSet<string>> autPorNum, string chave)
+        {
+            string num = ChaveNumero(chave);
             HashSet<string> ks;
             if (!autPorNum.TryGetValue(num, out ks)) autPorNum[num] = ks = new HashSet<string>();
-            ks.Add(k);
+            ks.Add(chave);
         }
 
         // Escolhe o arquivo da nota autorizada. Qualquer dúvida → MotivoPendente preenchido.
@@ -288,7 +346,7 @@ namespace DuplicidadeNfce
             {
                 Numero = t.Numero, Serie = t.Serie, Pedido = t.Pedido, DhEmiSistema = t.DhEmi,
                 ValorSistema = t.Valor, ChaveSistema = t.Chave, ChaveAutorizada = t.ChaveAutorizada,
-                NRec = t.NRec, Origem = string.Join("; ", t.Origens)
+                NRec = t.NRec, Origem = string.Join("; ", t.Origens), Classificacao = t.Classificacao
             };
             List<NotaXml> arqs;
             if (t.ChaveAutorizada != null && porChave.TryGetValue(t.ChaveAutorizada, out arqs))
@@ -296,7 +354,25 @@ namespace DuplicidadeNfce
             return l;
         }
 
-        // Lista todas as notas com 539 do período, sem consultar a SEFAZ (tela inicial da interface).
+        // Sem retorno ou com outro erro: nada a consultar nem copiar.
+        static bool ForaDoFluxo(Tentativa t, LinhaRelatorio l)
+        {
+            if (t.Classe == Classe.SemRetorno)
+            {
+                l.Status = Status.EmContingencia;
+                l.Motivo = "número ainda sem autorização nos arquivos; aguardando transmissão da contingência";
+                return true;
+            }
+            if (t.Classe == Classe.OutroErro)
+            {
+                l.Status = Status.OutroErro;
+                l.Motivo = "rejeição " + t.Erro;
+                return true;
+            }
+            return false;
+        }
+
+        // Lista as tentativas em contingência não autorizadas do período, sem consultar a SEFAZ (tela inicial da interface).
         public List<LinhaRelatorio> Listar(Historico historico)
         {
             var linhas = new List<LinhaRelatorio>();
@@ -305,8 +381,7 @@ namespace DuplicidadeNfce
                 var l = NovaLinha(t);
                 linhas.Add(l);
                 var reg = historico.BuscarCopiado(t.ChaveAutorizada);
-                if (!t.Rejeicao539)
-                    Pendente(l, "sem retorno 539", new List<string>(t.Avisos));
+                if (ForaDoFluxo(t, l)) { }
                 else if (t.ChaveAutorizada == null)
                     Pendente(l, "chave autorizada não identificada", new List<string>(t.Avisos));
                 else if (reg != null)
@@ -343,11 +418,19 @@ namespace DuplicidadeNfce
             foreach (string alvo in notasSemTentativa)
             {
                 string[] sn = alvo.Split('/');
-                linhas.Add(new LinhaRelatorio
-                {
-                    Serie = sn[0], Numero = sn[1], Status = Status.Pendente,
-                    Motivo = "sem retorno 539 (nenhum REJEICAO_NOTA com cStat 539 para esta nota no período)"
-                });
+                string aut;
+                if (autorizadaPorNota.TryGetValue(alvo, out aut))
+                    linhas.Add(new LinhaRelatorio
+                    {
+                        Serie = sn[0], Numero = sn[1], Status = Status.JaAutorizada, Classificacao = "Já autorizada",
+                        Motivo = "nota autorizada (chave " + aut + ") e sem tentativa em contingência pendente; nada a fazer"
+                    });
+                else
+                    linhas.Add(new LinhaRelatorio
+                    {
+                        Serie = sn[0], Numero = sn[1], Status = Status.Pendente, Classificacao = "Não encontrada",
+                        Motivo = "nenhuma tentativa em contingência nem autorização para esta nota no período"
+                    });
             }
 
             var escolhidas = Tentativas.Where(incluir).ToList();
@@ -360,6 +443,7 @@ namespace DuplicidadeNfce
                 linhas.Add(l);
                 var avisos = new List<string>(t.Avisos);
 
+                if (ForaDoFluxo(t, l)) continue;
                 if (t.ChaveAutorizada == null)
                 {
                     Pendente(l, "chave autorizada não identificada", avisos);
@@ -372,12 +456,6 @@ namespace DuplicidadeNfce
                     l.ArquivoEscolhido = reg.Arquivo;
                     l.CaminhoOrigem = reg.CaminhoOrigem;
                     l.CaminhoDestino = reg.CaminhoDestino;
-                    if (!t.Rejeicao539)
-                    {
-                        avisos.Add("arquivo autorizado desta numeração já copiado em " + reg.DataHora);
-                        Pendente(l, "sem retorno 539", avisos);
-                        continue;
-                    }
                     l.Status = Status.JaProcessada;
                     l.Motivo = "copiado em " + reg.DataHora + " (" + historico.Caminho + ")";
                     continue;
@@ -404,7 +482,6 @@ namespace DuplicidadeNfce
 
                 l.ArquivoEscolhido = sel.Escolhido.Nome;
                 l.CaminhoOrigem = sel.Escolhido.Caminho;
-                if (!t.Rejeicao539) { Pendente(l, "sem retorno 539", avisos); continue; }
                 if (avisos.Count > 0) { Pendente(l, "verificar manualmente", avisos); continue; }
                 if (!t.Valor.HasValue) { Pendente(l, "valor do sistema não encontrado", avisos); continue; }
                 if (t.Valor == sel.ValorSefaz)

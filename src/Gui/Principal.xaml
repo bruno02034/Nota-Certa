@@ -265,6 +265,8 @@
         <DataTrigger Binding="{Binding Tipo}" Value="Ajuste"><Setter TargetName="b" Property="Background" Value="#FFEDE3"/><Setter TargetName="t" Property="Foreground" Value="#D9480F"/></DataTrigger>
         <DataTrigger Binding="{Binding Tipo}" Value="Pendente"><Setter TargetName="b" Property="Background" Value="#FDE8E8"/><Setter TargetName="t" Property="Foreground" Value="#C81E1E"/></DataTrigger>
         <DataTrigger Binding="{Binding Tipo}" Value="Erro"><Setter TargetName="b" Property="Background" Value="#C81E1E"/><Setter TargetName="t" Property="Foreground" Value="White"/></DataTrigger>
+        <DataTrigger Binding="{Binding Tipo}" Value="Contingencia"><Setter TargetName="b" Property="Background" Value="#FFF7E0"/><Setter TargetName="t" Property="Foreground" Value="#9A6700"/></DataTrigger>
+        <DataTrigger Binding="{Binding Tipo}" Value="OutroErro"><Setter TargetName="b" Property="Background" Value="#F3E8FF"/><Setter TargetName="t" Property="Foreground" Value="#7E22CE"/></DataTrigger>
         <DataTrigger Binding="{Binding Tipo}" Value="Ja"><Setter TargetName="b" Property="Background" Value="#EEF0F3"/><Setter TargetName="t" Property="Foreground" Value="#6B7280"/></DataTrigger>
       </DataTemplate.Triggers>
     </DataTemplate>
@@ -372,6 +374,7 @@
               <RadioButton x:Name="PilCopiadas" Style="{StaticResource Pilula}" Content="Copiadas"/>
               <RadioButton x:Name="PilAjuste" Style="{StaticResource Pilula}" Content="Ajuste de chave"/>
               <RadioButton x:Name="PilPendentes" Style="{StaticResource Pilula}" Content="Pendentes"/>
+              <RadioButton x:Name="PilContingencia" Style="{StaticResource Pilula}" Content="Sem retorno"/>
               <RadioButton x:Name="PilJa" Style="{StaticResource Pilula}" Content="Já processadas"/>
             </StackPanel>
           </Grid>
@@ -414,7 +417,7 @@
                 <DatePicker x:Name="DataDe" Width="130" VerticalContentAlignment="Center" Height="34"/>
                 <TextBlock Text="até" VerticalAlignment="Center" Foreground="{StaticResource TextoSec}" Margin="12,0,8,0"/>
                 <DatePicker x:Name="DataAte" Width="130" VerticalContentAlignment="Center" Height="34"/>
-                <Button x:Name="BtnListar" Style="{StaticResource BtnAzul}" Content="Listar notas com 539" Margin="14,0,0,0"/>
+                <Button x:Name="BtnListar" Style="{StaticResource BtnAzul}" Content="Listar contingência" Margin="14,0,0,0"/>
                 <Button x:Name="BtnProcessar" Style="{StaticResource BtnPrimario}" Content="Processar marcadas" Margin="10,0,0,0"/>
               </StackPanel>
               <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,0,6">
@@ -524,7 +527,7 @@
                   <TextBlock Text="  ·  " Foreground="#9CA3AF"/>
                   <Button x:Name="BtnDesmarcar" Style="{StaticResource BtnLink}" Content="Desmarcar todas"/>
                 </StackPanel>
-                <TextBlock Style="{StaticResource TituloCard}" Text="NOTAS COM REJEIÇÃO 539" VerticalAlignment="Center"/>
+                <TextBlock Style="{StaticResource TituloCard}" Text="NOTAS EM CONTINGÊNCIA" VerticalAlignment="Center"/>
               </DockPanel>
               <Grid>
                 <DataGrid x:Name="Grade" HorizontalScrollBarVisibility="Auto">
@@ -545,7 +548,7 @@
                     <DataGridTemplateColumn Header="STATUS" Width="150" MinWidth="150" CellTemplate="{StaticResource Etiqueta}" SortMemberPath="Status"/>
                   </DataGrid.Columns>
                 </DataGrid>
-                <TextBlock x:Name="GradeVazia" Text="Nenhuma nota com rejeição 539 no período." HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="#9CA3AF" Visibility="Collapsed"/>
+                <TextBlock x:Name="GradeVazia" Text="Nenhuma nota em contingência não autorizada no período." HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="#9CA3AF" Visibility="Collapsed"/>
               </Grid>
             </DockPanel>
           </Grid>
@@ -576,9 +579,9 @@
                         <TextBlock x:Name="DetValorSefaz" FontSize="17" FontWeight="SemiBold" Foreground="#1E7BFF"/>
                       </StackPanel>
                     </Grid>
-                    <TextBlock Style="{StaticResource Rotulo}" Text="Chave do sistema (rejeitada)"/>
+                    <TextBlock Style="{StaticResource Rotulo}" Text="Chave do sistema (tentativa em contingência)"/>
                     <TextBox x:Name="DetChaveSistema" Style="{StaticResource CampoChave}"/>
-                    <TextBlock Style="{StaticResource Rotulo}" Text="Chave autorizada (retorno 539)"/>
+                    <TextBlock Style="{StaticResource Rotulo}" Text="Chave autorizada (mesmo número)"/>
                     <TextBox x:Name="DetChaveAut" Style="{StaticResource CampoChave}" Foreground="#1D5FD1"/>
                     <TextBlock Style="{StaticResource Rotulo}" Text="Situação na SEFAZ"/>
                     <TextBlock x:Name="DetSefaz" TextWrapping="Wrap" FontSize="12"/>
@@ -622,7 +625,9 @@
                         </DataTemplate>
                       </ItemsControl.ItemTemplate>
                     </ItemsControl>
-                    <TextBlock Style="{StaticResource Rotulo}" Text="Origem da duplicidade"/>
+                    <TextBlock Style="{StaticResource Rotulo}" Text="Classificação"/>
+                    <TextBlock x:Name="DetClassificacao" TextWrapping="Wrap" FontSize="12" FontWeight="SemiBold"/>
+                    <TextBlock Style="{StaticResource Rotulo}" Text="Origem"/>
                     <TextBlock x:Name="DetOrigem" TextWrapping="Wrap" FontSize="11.5" Foreground="#4B5563" Margin="0,0,0,8"/>
                   </StackPanel>
                 </ScrollViewer>

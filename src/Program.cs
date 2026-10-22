@@ -170,7 +170,7 @@ a cópia nunca move nem sobrescreve, e fica registrada em historico.csv na pasta
                         l.ValorSefaz.HasValue ? Analisador.Moeda(l.ValorSefaz) : "-", l.Status,
                         l.ArquivoEscolhido ?? l.Motivo));
                 log.Tela("");
-                log.Tela(linhas.Count + " tentativa(s) com duplicidade: " +
+                log.Tela(linhas.Count + " linha(s): " +
                     string.Join(", ", linhas.GroupBy(l => l.Status).Select(g => g.Count() + " " + g.Key)));
                 if (op.Copiar) log.Tela("Cópias:    " + motor.PastaCopia);
                 if (op.Copiar) log.Tela("Histórico: " + motor.Historico.Caminho);

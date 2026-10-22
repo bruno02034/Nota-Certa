@@ -16,6 +16,9 @@ namespace DuplicidadeNfce
         public const string JaProcessada = "JÁ PROCESSADA";
         public const string Pendente = "PENDENTE";
         public const string AjusteChave = "AJUSTE_CHAVE_BANCO (fora do escopo)";
+        public const string EmContingencia = "EM CONTINGÊNCIA";
+        public const string OutroErro = "OUTRO ERRO";
+        public const string JaAutorizada = "JÁ AUTORIZADA";
     }
 
     class Log : IDisposable
@@ -88,7 +91,7 @@ namespace DuplicidadeNfce
         {
             "Numero", "Serie", "Pedido", "Emissao sistema", "Valor sistema", "Chave do sistema", "Origem",
             "Chave autorizada", "nRec", "Situacao SEFAZ", "nProt SEFAZ", "digVal SEFAZ", "Valor SEFAZ",
-            "Arquivo escolhido", "Caminho origem", "Caminho destino", "Status", "Motivo"
+            "Arquivo escolhido", "Caminho origem", "Caminho destino", "Status", "Classificacao", "Motivo"
         };
 
         // CSV com ';' e UTF-8 com BOM para abrir direto no Excel em português.
@@ -102,7 +105,7 @@ namespace DuplicidadeNfce
                 {
                     l.Numero, l.Serie, l.Pedido, DataHora(l.DhEmiSistema), Valor(l.ValorSistema), Csv.Formula(l.ChaveSistema), l.Origem,
                     Csv.Formula(l.ChaveAutorizada), Csv.Formula(l.NRec), l.SituacaoSefaz, Csv.Formula(l.NProtSefaz), l.DigValSefaz, Valor(l.ValorSefaz),
-                    l.ArquivoEscolhido, l.CaminhoOrigem, l.CaminhoDestino, l.Status, l.Motivo
+                    l.ArquivoEscolhido, l.CaminhoOrigem, l.CaminhoDestino, l.Status, l.Classificacao, l.Motivo
                 }.Select(Csv.Campo)));
             }
             File.WriteAllText(caminho, sb.ToString(), new UTF8Encoding(true));

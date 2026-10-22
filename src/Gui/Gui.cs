@@ -57,7 +57,7 @@ namespace DuplicidadeNfce
             set { marcada = value && PodeMarcar; Avisar("Marcada"); if (AoMarcar != null) AoMarcar(); }
         }
         public Action AoMarcar;
-        public bool PodeMarcar { get { return Linha.Status != DuplicidadeNfce.Status.JaProcessada && Linha.Status != DuplicidadeNfce.Status.Copiado; } }
+        public bool PodeMarcar { get { var s = Linha.Status; return s != DuplicidadeNfce.Status.JaProcessada && s != DuplicidadeNfce.Status.Copiado && s != DuplicidadeNfce.Status.EmContingencia && s != DuplicidadeNfce.Status.OutroErro; } }
         public string Nota { get { return Linha.Serie + "/" + Linha.Numero; } }
         public string Pedido { get { return Linha.Pedido ?? "-"; } }
         public string Data { get { return DataCurta(Linha.DhEmiSistema); } }
@@ -77,6 +77,9 @@ namespace DuplicidadeNfce
                 case DuplicidadeNfce.Status.AjusteChave: return "Ajuste";
                 case DuplicidadeNfce.Status.ErroCopia: return "Erro";
                 case DuplicidadeNfce.Status.JaProcessada: return "Ja";
+                case DuplicidadeNfce.Status.JaAutorizada: return "Ja";
+                case DuplicidadeNfce.Status.EmContingencia: return "Contingencia";
+                case DuplicidadeNfce.Status.OutroErro: return "OutroErro";
                 default: return "Pendente";
             }
         }
@@ -186,7 +189,7 @@ namespace DuplicidadeNfce
                 visao.Refresh();
                 AtualizarContagens();
             };
-            foreach (var p in new[] { "PilTodas", "PilAProcessar", "PilCopiadas", "PilAjuste", "PilPendentes", "PilJa" })
+            foreach (var p in new[] { "PilTodas", "PilAProcessar", "PilCopiadas", "PilAjuste", "PilPendentes", "PilContingencia", "PilJa" })
                 G<RadioButton>(p).Checked += (s, e) => visao.Refresh();
             G<RadioButton>("MenuDuplicidades").Checked += (s, e) => Pagina("PagDuplicidades", "Processamento");
             G<RadioButton>("MenuHistorico").Checked += (s, e) => { Pagina("PagHistorico", "Histórico"); CarregarHistorico(); };
@@ -345,7 +348,7 @@ namespace DuplicidadeNfce
                 }
                 G<TextBlock>("GradeVazia").Visibility = linhas.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
                 AtualizarContagens();
-                ultimoResumo = linhas.Count + " tentativa(s) com 539 em " + linhas.Select(x => x.Nota).Distinct().Count() + " nota(s) · " + motor.DescricaoPeriodo;
+                ultimoResumo = linhas.Count + " tentativa(s) em contingência não autorizadas em " + linhas.Select(x => x.Nota).Distinct().Count() + " nota(s) · " + motor.DescricaoPeriodo;
                 MostrarStatus(ultimoResumo + (op.SemSefaz ? " · MODO TESTE: SEFAZ simulada, nada é copiado" : ""));
                 G<ProgressBar>("Progresso").Value = 0;
                 if (linhas.Count > 0) G<DataGrid>("Grade").SelectedIndex = 0;
@@ -429,7 +432,8 @@ namespace DuplicidadeNfce
             if (Marcado("PilAProcessar") && tipo != "AProcessar" && tipo != "ACopiar") return false;
             if (Marcado("PilCopiadas") && tipo != "Copiado") return false;
             if (Marcado("PilAjuste") && tipo != "Ajuste") return false;
-            if (Marcado("PilPendentes") && tipo != "Pendente" && tipo != "Erro") return false;
+            if (Marcado("PilPendentes") && tipo != "Pendente" && tipo != "Erro" && tipo != "OutroErro") return false;
+            if (Marcado("PilContingencia") && tipo != "Contingencia") return false;
             if (Marcado("PilJa") && tipo != "Ja") return false;
             string q = G<TextBox>("CaixaPesquisa").Text.Trim();
             if (q == "") return true;
@@ -443,17 +447,19 @@ namespace DuplicidadeNfce
         void AtualizarContagens()
         {
             Func<string[], int> conta = tipos => linhas.Count(l => tipos.Contains(l.Tipo));
-            G<TextBlock>("NumEncontradas").Text = linhas.Count.ToString();
-            G<TextBlock>("SubEncontradas").Text = linhas.Select(x => x.Nota).Distinct().Count() + " nota(s) no período";
+            var dup = linhas.Where(l => l.Linha.Classificacao != null && l.Linha.Classificacao.StartsWith("Duplicidade")).ToList();
+            G<TextBlock>("NumEncontradas").Text = dup.Count.ToString();
+            G<TextBlock>("SubEncontradas").Text = dup.Select(x => x.Nota).Distinct().Count() + " nota(s) · " + conta(new[] { "Contingencia" }) + " sem retorno";
             G<TextBlock>("NumCopiadas").Text = conta(new[] { "Copiado", "Ja" }).ToString();
             G<TextBlock>("SubCopiadas").Text = copiadasSessao + " nesta sessão · " + conta(new[] { "Ja" }) + " anteriores";
             G<TextBlock>("NumAjuste").Text = conta(new[] { "Ajuste" }).ToString();
-            G<TextBlock>("NumPendentes").Text = conta(new[] { "Pendente", "Erro" }).ToString();
+            G<TextBlock>("NumPendentes").Text = conta(new[] { "Pendente", "Erro", "OutroErro" }).ToString();
             Pilula("PilTodas", "Todas", linhas.Count);
             Pilula("PilAProcessar", "A processar", conta(new[] { "AProcessar", "ACopiar" }));
             Pilula("PilCopiadas", "Copiadas", conta(new[] { "Copiado" }));
             Pilula("PilAjuste", "Ajuste de chave", conta(new[] { "Ajuste" }));
-            Pilula("PilPendentes", "Pendentes", conta(new[] { "Pendente", "Erro" }));
+            Pilula("PilPendentes", "Pendentes", conta(new[] { "Pendente", "Erro", "OutroErro" }));
+            Pilula("PilContingencia", "Sem retorno", conta(new[] { "Contingencia" }));
             Pilula("PilJa", "Já processadas", conta(new[] { "Ja" }));
             AtualizarBotoes();
         }
@@ -478,6 +484,7 @@ namespace DuplicidadeNfce
             G<TextBox>("DetArquivo").Text = l.CaminhoOrigem == null ? "-" : l.CaminhoOrigem + (l.CaminhoDestino != null ? "\n→ " + l.CaminhoDestino : "");
             G<TextBlock>("DetMotivo").Text = l.Motivo ?? "";
             G<TextBlock>("DetOrigem").Text = string.IsNullOrEmpty(l.Origem) ? "-" : l.Origem;
+            G<TextBlock>("DetClassificacao").Text = l.Classificacao ?? "-";
 
             List<CandidatoView> cands;
             if (l.Sel != null && l.Sel.Candidatos.Count > 0)

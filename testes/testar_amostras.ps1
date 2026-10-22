@@ -88,13 +88,37 @@ try {
     Confere $r $K88868 'A COPIAR' 'NOTA_88868_SERIE_6_NFCE.xml' '5,00'
     Confere $r $K88866a 'A COPIAR' 'NOTA_88866_SERIE_6_NFCE.xml' '10,00'
     Confere $r $K88866b 'A COPIAR' 'NOTA_88866_SERIE_6_NFCE.xml' '10,00'
-    Confere $r $K88867sem539 'PENDENTE' 'NOTA_88867_SERIE_6_NFCE.xml' '10,00' 'sem retorno 539'
+    Confere $r $K88867sem539 'A COPIAR' 'NOTA_88867_SERIE_6_NFCE.xml' '10,00' 'sistema 15,50'
     Verdade (-not ($r | Where-Object { $_.'Arquivo escolhido' -like '*ASSINADA*' })) 'nenhum ASSINADA escolhido'
 
     Write-Host '--- 88869: ASSINADA e NFCE com o mesmo conteudo autorizado (vale o ASSINADA)'
     $r = Rodar $amostras '' @('--sem-sefaz', '--notas', '6/88869')
     Confere $r $K88869 'A COPIAR' 'NOTA_88869_SERIE_6_ASSINADA_19_10_2026_17_12_40.xml' '14,00' 'escolhido NOTA_88869_SERIE_6_ASSINADA_19_10_2026_17_12_40.xml'
-    Confere $r $K88869sem539 'PENDENTE' 'NOTA_88869_SERIE_6_ASSINADA_19_10_2026_17_12_40.xml' '14,00' 'sem retorno 539'
+    Confere $r $K88869sem539 'A COPIAR' 'NOTA_88869_SERIE_6_ASSINADA_19_10_2026_17_12_40.xml' '14,00' 'sistema 27,00'
+
+    Write-Host '--- Contingencia sem arquivo 539 (casos do zip de outubro)'
+    $r = Rodar $amostras '' @('--sem-sefaz', '--notas', '6/89244,6/89098,6/89090,6/89257,6/84643,6/85710')
+    # 89244: autorizada a de 08:23 (R$ 18,90); o ASSINADA dela difere do autorizado, vale o NFCE
+    Confere $r $K89244b 'A COPIAR' 'NOTA_89244_SERIE_6_NFCE.xml' '18,90' 'sistema 13,95'
+    Confere $r $K89244c 'A COPIAR' 'NOTA_89244_SERIE_6_NFCE.xml' '18,90' 'sistema 11,25'
+    Confere $r $K89244d 'A COPIAR' 'NOTA_89244_SERIE_6_NFCE.xml' '18,90' 'sistema 46,35'
+    $l = $r | Where-Object { $_.'Chave do sistema' -eq $K89244b }
+    Verdade ($l.Classificacao -eq 'Duplicidade (deduzida pelos arquivos)') '89244 classificada como duplicidade deduzida (sem REJEICAO)'
+    # 89098: o ASSINADA da autorizada (15:57) e igual ao autorizado, vale o ASSINADA
+    Confere $r $K89098b 'A COPIAR' 'NOTA_89098_SERIE_6_ASSINADA_20_10_2026_15_57_05.xml' '4,00' 'sistema 17,00'
+    Confere $r $K89090b 'A COPIAR' 'NOTA_89090_SERIE_6_NFCE.xml' '10,00' 'sistema 7,50'
+    # 89257: numero nunca autorizado -> em contingencia sem retorno, nada a copiar
+    Confere $r $K89257b 'EM CONTINGÊNCIA' '' '' 'sem autorização'
+    Verdade (@($r | Where-Object { $_.Numero -eq '89257' -and $_.Status -eq 'EM CONTINGÊNCIA' }).Count -eq 3) '89257: as 3 tentativas ficam em contingencia'
+    # 84643: o mesmo numero usado 14 vezes em contingencia em 05/10
+    $l = @($r | Where-Object { $_.Numero -eq '84643' })
+    Verdade ($l.Count -eq 14 -and @($l | Where-Object { $_.Status -eq 'A COPIAR' -and $_.'Valor SEFAZ' -eq '11,02' }).Count -eq 14) '84643: 14 tentativas, todas para o mesmo XML autorizado (R$ 11,02)'
+    # 85710: rejeitada com 537 e depois autorizada (cStat 150) com a mesma chave
+    $l = @($r | Where-Object { $_.Numero -eq '85710' })
+    Verdade ($l.Count -eq 1 -and $l[0].Status -eq 'JÁ AUTORIZADA' -and $l[0].Motivo.Contains('cStat 150')) '85710: rejeicao 537 depois autorizada -> JA AUTORIZADA'
+    $r = Rodar $amostras '' @('--sem-sefaz', '--notas', '6/88867')
+    $l = $r | Where-Object { $_.'Chave do sistema' -eq $K88867 }
+    Verdade ($l.Classificacao -eq 'Duplicidade (retorno 539)') '88867 17:20 continua classificada pelo retorno 539'
 
     Write-Host '--- Temp_ANTES_ENVIO envolto em enviNFe e lido sem erro'
     $d = CopiaAmostras 'envinfe'
@@ -102,7 +126,7 @@ try {
     [IO.File]::WriteAllText((Join-Path $d 'NOTA_88868_SERIE_6_CHAVE_X_Temp_ANTES_ENVIO_19_10_2026_17_22_33.xml'),
         '<?xml version="1.0" encoding="UTF-8"?><enviNFe versao="4.00" xmlns="http://www.portalfiscal.inf.br/nfe"><idLote>1</idLote><indSinc>0</indSinc>' + $nfe + '</enviNFe>')
     $r = Rodar $d '' @('--sem-sefaz', '--notas', '6/88868')
-    Verdade ($ultimaSaida.Contains('0 com erro de leitura')) 'enviNFe lido sem erro de leitura'
+    Verdade (-not $ultimaSaida.Contains('Temp_ANTES_ENVIO_19_10_2026_17_22_33.xml -')) 'enviNFe lido sem erro de leitura'
     Confere $r $K88868 'A COPIAR' 'NOTA_88868_SERIE_6_NFCE.xml' '5,00'
 
     Write-Host '--- Lista restringe as notas'
@@ -113,7 +137,7 @@ try {
     $r = Rodar $amostras '' @('--sem-sefaz', '--notas-arquivo', $lista)
     Confere $r $K88868 'A COPIAR' 'NOTA_88868_SERIE_6_NFCE.xml' '5,00'
     $l = $r | Where-Object { $_.Numero -eq '99999' }
-    Verdade ($l -and $l.Status -eq 'PENDENTE' -and $l.Motivo.StartsWith('sem retorno 539')) 'nota sem REJEICAO 539 sai PENDENTE "sem retorno 539"'
+    Verdade ($l -and $l.Status -eq 'PENDENTE' -and $l.Motivo.StartsWith('nenhuma tentativa')) 'nota inexistente sai PENDENTE "nenhuma tentativa"'
     Verdade (-not ($r | Where-Object { $_.Numero -eq '88867' })) 'notas fora do arquivo ignoradas'
 
     Write-Host '--- XMLs soltos na raiz, filtrados pela data de emissao'
@@ -125,7 +149,7 @@ try {
     Verdade ($ultimaSaida.Contains('solto(s) na raiz')) 'log informa os XMLs soltos lidos'
     $r = Rodar $d '' @('--sem-sefaz', '--notas', '6/88867', '--de', '20/10/2026', '--ate', '22/10/2026')
     $l = @($r | Where-Object { $_.Numero -eq '88867' })
-    Verdade ($l.Count -eq 1 -and $l[0].Motivo.StartsWith('sem retorno 539')) 'fora do periodo de emissao (20 a 22/10) a nota nao entra'
+    Verdade ($l.Count -eq 1 -and $l[0].Motivo.StartsWith('nenhuma tentativa')) 'fora do periodo de emissao (20 a 22/10) a nota nao entra'
     $r = Rodar $d '' @('--sem-sefaz', '--notas', '6/88867', '--de', '17/10/2026', '--ate', '18/10/2026')
     Verdade (@($r | Where-Object { $_.Status -eq 'A COPIAR' }).Count -eq 0) 'periodo anterior (17 a 18/10) tambem nao pega a nota do dia 19'
 
@@ -207,7 +231,7 @@ try {
     $r = Rodar $amostras $cfgSefaz ($Lista + '--copiar') $destC
     Confere $r $K88867 'COPIADO' 'NOTA_88867_SERIE_6_NFCE.xml' '10,00' 'cópia conferida'
     Confere $r $K88868 'COPIADO' 'NOTA_88868_SERIE_6_NFCE.xml' '5,00' 'cópia conferida'
-    Confere $r $K88867sem539 'PENDENTE' 'NOTA_88867_SERIE_6_NFCE.xml' '10,00' 'sem retorno 539'
+    Confere $r $K88867sem539 'COPIADO' 'NOTA_88867_SERIE_6_NFCE.xml' '10,00' 'mesmo arquivo autorizado'
     Verdade ((Hash (Join-Path $destC "$hoje\NOTA_88867_SERIE_6_NFCE.xml")) -eq (Hash (Join-Path $amostras 'NOTA_88867_SERIE_6_NFCE.xml'))) 'copia da 88867 identica ao original'
     Verdade ((Hash (Join-Path $destC "$hoje\NOTA_88868_SERIE_6_NFCE.xml")) -eq (Hash (Join-Path $amostras 'NOTA_88868_SERIE_6_NFCE.xml'))) 'copia da 88868 identica ao original'
     Verdade (Test-Path (Join-Path $amostras 'NOTA_88868_SERIE_6_NFCE.xml')) 'original continua no lugar (copia, nao move)'
@@ -220,7 +244,7 @@ try {
     $r = Rodar $amostras $cfgSefaz ($Lista + '--copiar') $destC
     Confere $r $K88867 'JÁ PROCESSADA' 'NOTA_88867_SERIE_6_NFCE.xml' '' 'copiado em'
     Confere $r $K88868 'JÁ PROCESSADA' 'NOTA_88868_SERIE_6_NFCE.xml' '' 'copiado em'
-    Confere $r $K88867sem539 'PENDENTE' 'NOTA_88867_SERIE_6_NFCE.xml' '' 'sem retorno 539'
+    Confere $r $K88867sem539 'JÁ PROCESSADA' 'NOTA_88867_SERIE_6_NFCE.xml' '' 'copiado em'
     Verdade (@(Get-Content $chamadas).Count -eq $antes) 'ja processadas nao consultam a SEFAZ de novo'
     Verdade (@(Import-Csv (Join-Path $destC 'historico.csv') -Delimiter ';').Count -eq 2) 'historico nao ganhou linhas novas'
 

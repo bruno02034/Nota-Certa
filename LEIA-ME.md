@@ -32,13 +32,23 @@ marque as notas → *Processar marcadas* (consulta a SEFAZ, escolhe o arquivo e 
 
 | Status | Significado |
 |---|---|
-| A PROCESSAR | listada, aguardando consulta à SEFAZ |
+| A PROCESSAR | duplicidade listada, aguardando consulta à SEFAZ |
+| EM CONTINGÊNCIA | tentativa em contingência cujo número ainda não tem autorização; nada a fazer |
+| OUTRO ERRO | rejeição com outro código (ex.: 537) |
+| JÁ AUTORIZADA | a nota pedida já está autorizada e não tem tentativa pendente |
 | A COPIAR | arquivo autorizado encontrado (linha de comando sem `--copiar`) |
 | COPIADO | copiado e conferido (tamanho e SHA-256) |
 | JÁ PROCESSADA | já consta como copiada no `historico.csv` |
 | AJUSTE_CHAVE_BANCO (fora do escopo) | valor do sistema = valor SEFAZ; nada é feito |
 | PENDENTE | dúvida: SEFAZ não consultada, sem retorno 539, nenhum ou mais de um candidato, destino já existe… |
 | ERRO_COPIA | a cópia não conferiu com o original |
+
+## Como as duplicidades são achadas
+
+Toda tentativa em contingência (`tpEmis=9`) ainda não autorizada é listada. Se o mesmo série/número já tem
+um XML autorizado (NFCE com protNFe 100/150) com **outra chave**, é duplicidade, mesmo sem arquivo
+`REJEICAO_NOTA` (o Metre guarda a maior parte das rejeições 539 só no banco). Sem autorização para o número,
+fica EM CONTINGÊNCIA.
 
 ## Regras de segurança
 
