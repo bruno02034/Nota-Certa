@@ -134,7 +134,7 @@ try {
     Verdade ($r.Count -eq 4) 'so as 4 notas da contingencia do Metre entram (as outras tentativas dos XMLs ficam de fora)'
     Confere $r $K89244b 'A COPIAR' 'NOTA_89244_SERIE_6_ASSINADA_21_10_2026_08_23_20.xml' '18,90' 'sistema 13,95'
     Verdade (($r | Where-Object { $_.'Chave do sistema' -eq $K89244b }).Pedido -eq '258958') 'pedido vem do Metre'
-    Confere $r $K89257b 'EM CONTINGÊNCIA' '' '' 'sem autorização'
+    Confere $r $K89257b 'PENDENTE' '' '' 'número sem XML autorizado'
     Confere $r $Aut89244 'JÁ AUTORIZADA' '' '' 'criada ao importar'
     Confere $r $K88867sem539 'A COPIAR' 'NOTA_88867_SERIE_6_ASSINADA_19_10_2026_17_06_37.xml' '10,00' 'sistema 15,50'
 
@@ -232,8 +232,14 @@ try {
     Write-Host '--- SEFAZ simulada local: relatorio, copia e historico'
     $l = New-Object Net.Sockets.TcpListener([Net.IPAddress]::Loopback, 0); $l.Start(); $porta = $l.LocalEndpoint.Port; $l.Stop()
     $chamadas = Join-Path $tmp 'chamadas.txt'; $pronto = Join-Path $tmp 'pronto'; $parar = Join-Path $tmp 'parar'
+    # A SEFAZ simulada responde com os protNFe das amostras e, como no servidor, também autoriza a 6/89257
+    # das 08:42, cujo _NFCE o Metre nunca gravou (digVal = DigestValue do ASSINADA dessa tentativa).
+    $dadosSefaz = Join-Path $tmp 'dados_sefaz'
+    Copy-Item $amostras $dadosSefaz -Recurse
+    "<protNFe versao=`"4.00`"><infProt><tpAmb>1</tpAmb><verAplic>TESTE</verAplic><chNFe>$K89257a</chNFe><dhRecbto>2026-10-21T08:45:00-03:00</dhRecbto><nProt>131262699999999</nProt><digVal>$DigVal89257a</digVal><cStat>100</cStat><xMotivo>Autorizado o uso da NF-e</xMotivo></infProt></protNFe>" |
+        Set-Content (Join-Path $dadosSefaz 'protocolo_89257.xml') -Encoding UTF8
     $servidor = Start-Process powershell -PassThru -WindowStyle Hidden -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass',
-        '-File', (Join-Path $PSScriptRoot 'sefaz_simulada.ps1'), '-Porta', $porta, '-Amostras', $amostras,
+        '-File', (Join-Path $PSScriptRoot 'sefaz_simulada.ps1'), '-Porta', $porta, '-Amostras', $dadosSefaz,
         '-ArqChamadas', $chamadas, '-ArqPronto', $pronto, '-ArqParar', $parar)
     for ($i = 0; $i -lt 200 -and -not (Test-Path $pronto); $i++) { Start-Sleep -Milliseconds 50 }
     # Senha e caminho do .pfx lidos de um NFCe.ini no formato de INI comum (nomes de chave provisórios).
@@ -296,6 +302,19 @@ try {
         $i++
     }
     Verdade $ok '89244: 08:45 em importar-1, 09:08 em importar-2, 09:27 em importar-3, todas com o ASSINADA autorizado'
+
+    Write-Host '--- 89257: autorizada na SEFAZ sem _NFCE no computador (confirmada pela consulta)'
+    $csv57 = Join-Path $tmp 'contingencia_89257.csv'
+    @($cab,
+      "`"21`";`"89257`";`"6`";`"258976`";`"$K89257b`";`"7,00`";`"2026-10-21`";`"2026-10-21 08:58:36`";\N;\N;\N",
+      "`"22`";`"89257`";`"6`";`"259021`";`"$K89257c`";`"31,00`";`"2026-10-21`";`"2026-10-21 09:58:05`";\N;\N;\N"
+    ) | Set-Content $csv57 -Encoding UTF8
+    $r = Rodar $amostras "$cfgSefaz`r`nFonteContingencia=csv:$csv57" @('--notas', '6/89257', '--copiar') (Join-Path $tmp 'destino_89257')
+    $a57 = 'NOTA_89257_SERIE_6_ASSINADA_21_10_2026_08_42_18.xml'
+    Confere $r $K89257b 'COPIADO' $a57 '6,75' 'cópia conferida'
+    Confere $r $K89257c 'COPIADO' $a57 '6,75' 'cópia conferida'
+    Verdade ((Destino $r $K89257b) -like "*\importar-1\$a57" -and (Destino $r $K89257c) -like "*\importar-2\$a57") '89257: 08:58 em importar-1 e 09:58 em importar-2'
+    Verdade (($r | Where-Object { $_.'Chave do sistema' -eq $K89257b }).Classificacao -like '*confirmada na SEFAZ*') '89257 classificada como autorizada sem XML, confirmada na SEFAZ'
 
     Write-Host '--- Arquivo antigo na pasta do dia: nao e tocado (a copia vai na pasta da execucao)'
     $destX = Join-Path $tmp 'destino_existente'

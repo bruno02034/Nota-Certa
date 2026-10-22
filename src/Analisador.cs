@@ -24,6 +24,9 @@ namespace DuplicidadeNfce
         public Classe Classe = Classe.Duplicidade;
         public List<string> Origens = new List<string>();
         public List<string> Avisos = new List<string>();
+        // Número sem XML autorizado no computador: tentativas que não estão na contingência do Metre e
+        // podem ter sido autorizadas (o Metre nem sempre grava o _NFCE). Confirmadas na SEFAZ ao processar.
+        public List<string> Candidatas = new List<string>();
         public string Nota { get { return Serie + "/" + Numero; } }
 
         public string Classificacao
@@ -32,7 +35,9 @@ namespace DuplicidadeNfce
             {
                 switch (Classe)
                 {
-                    case Classe.SemRetorno: return "Em contingência sem retorno";
+                    case Classe.SemRetorno: return Candidatas.Count > 0
+                    ? "Duplicidade provável (autorizada sem XML na pasta Autorizadas; confirmar na SEFAZ)"
+                    : "Em contingência sem retorno";
                     case Classe.OutroErro: return "Outro erro";
                     case Classe.AutorizadaNaContingencia: return "Já autorizada (entrada criada por importação)";
                     default: return Rejeicao539 ? "Duplicidade (retorno 539)" : "Duplicidade (deduzida pelos arquivos)";
@@ -186,6 +191,19 @@ namespace DuplicidadeNfce
                 else
                     t.Classe = Classe.SemRetorno;
                 lista[c.Chave] = t;
+            }
+
+            // Números sem nenhuma autorização nos arquivos: as outras tentativas desse número que NÃO estão
+            // na contingência do Metre (ex.: 6/89257 das 08:42) são candidatas a ter sido autorizadas.
+            var naContingencia = new HashSet<string>(lista.Keys);
+            foreach (var t in lista.Values.Where(x => x.Classe == Classe.SemRetorno))
+            {
+                string num = ChaveNumero(t.Chave);
+                t.Candidatas = notas.Where(n => n.Chave != null && n.Tipo == TipoArquivo.Assinada && ChaveNumero(n.Chave) == num
+                        && !naContingencia.Contains(n.Chave))
+                    .OrderBy(n => n.DhEmi).Select(n => n.Chave).Distinct().ToList();
+                if (t.Candidatas.Count > 0)
+                    t.Origens.Add("número sem XML autorizado; tentativa(s) fora da contingência a confirmar na SEFAZ: " + string.Join(", ", t.Candidatas));
             }
             return lista;
         }
@@ -458,6 +476,38 @@ namespace DuplicidadeNfce
             return l;
         }
 
+        // Número sem XML autorizado no computador: pergunta à SEFAZ qual das tentativas fora da contingência
+        // foi autorizada. Achou: vira duplicidade com essa chave autorizada. Não achou: fica na linha 'l'.
+        bool ConfirmarCandidata(Tentativa t, LinhaRelatorio l)
+        {
+            var semResposta = new List<string>();
+            foreach (string cand in t.Candidatas)
+            {
+                var s = Selecionar(cand);
+                if (s.Sefaz != null && s.Sefaz.Autorizada && s.Sefaz.Prot != null && s.Sefaz.Prot.ChNFe == cand)
+                {
+                    t.ChaveAutorizada = cand;
+                    t.Classe = Classe.Duplicidade;
+                    t.Origens.Add("autorização confirmada na SEFAZ para a tentativa " + cand + " (o Metre não gravou o XML autorizado)");
+                    l.ChaveAutorizada = cand;
+                    l.Classificacao = "Duplicidade (autorizada sem XML na pasta Autorizadas, confirmada na SEFAZ)";
+                    l.Origem = string.Join("; ", t.Origens);
+                    List<NotaXml> arqs;
+                    if (porChave.TryGetValue(cand, out arqs)) l.ArquivosChaveAutorizada = arqs.Select(a => a.Caminho).OrderBy(c => c).ToList();
+                    return true;
+                }
+                if (s.Sefaz == null || !s.Sefaz.Ok) semResposta.Add(cand + " (" + (s.Sefaz != null ? s.Sefaz.Situacao + ": " + s.Sefaz.Erro : "sem consulta") + ")");
+            }
+            if (semResposta.Count > 0)
+                Pendente(l, "número sem XML autorizado e a SEFAZ não respondeu para: " + string.Join("; ", semResposta), new List<string>());
+            else
+            {
+                l.Status = Status.EmContingencia;
+                l.Motivo = "a SEFAZ não tem autorização para nenhuma tentativa deste número (" + string.Join(", ", t.Candidatas) + "); aguardando transmissão";
+            }
+            return false;
+        }
+
         // Sem retorno ou com outro erro: nada a consultar nem copiar.
         bool ForaDoFluxo(Tentativa t, LinhaRelatorio l)
         {
@@ -468,7 +518,7 @@ namespace DuplicidadeNfce
                     "Não transmitir nem importar de novo: tratar no Metre";
                 return true;
             }
-            if (t.Classe == Classe.SemRetorno)
+            if (t.Classe == Classe.SemRetorno && t.Candidatas.Count == 0)
             {
                 l.Status = Status.EmContingencia;
                 l.Motivo = "número ainda sem autorização nos arquivos; aguardando transmissão da contingência";
@@ -504,6 +554,11 @@ namespace DuplicidadeNfce
                 // o histórico não bloqueia (ele pode ter cópias erradas, como os _NFCE de 22/10).
                 var reg = contingencia == null ? historico.BuscarCopiado(t.ChaveAutorizada) : null;
                 if (ForaDoFluxo(t, l)) { }
+                else if (t.ChaveAutorizada == null && t.Candidatas.Count > 0)
+                {
+                    l.Status = Status.AProcessar;
+                    l.Motivo = "número sem XML autorizado no computador; ao processar, a SEFAZ confirma qual tentativa foi autorizada";
+                }
                 else if (t.ChaveAutorizada == null)
                     Pendente(l, "chave autorizada não identificada", new List<string>(t.Avisos));
                 else if (reg != null)
@@ -567,6 +622,8 @@ namespace DuplicidadeNfce
                 var avisos = new List<string>(t.Avisos);
 
                 if (ForaDoFluxo(t, l)) continue;
+                if (t.ChaveAutorizada == null && t.Candidatas.Count > 0 && !ConfirmarCandidata(t, l))
+                    continue;
                 if (t.ChaveAutorizada == null)
                 {
                     Pendente(l, "chave autorizada não identificada", avisos);
