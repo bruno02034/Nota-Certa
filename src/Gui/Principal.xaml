@@ -267,6 +267,7 @@
         <DataTrigger Binding="{Binding Tipo}" Value="Erro"><Setter TargetName="b" Property="Background" Value="#C81E1E"/><Setter TargetName="t" Property="Foreground" Value="White"/></DataTrigger>
         <DataTrigger Binding="{Binding Tipo}" Value="Contingencia"><Setter TargetName="b" Property="Background" Value="#FFF7E0"/><Setter TargetName="t" Property="Foreground" Value="#9A6700"/></DataTrigger>
         <DataTrigger Binding="{Binding Tipo}" Value="OutroErro"><Setter TargetName="b" Property="Background" Value="#F3E8FF"/><Setter TargetName="t" Property="Foreground" Value="#7E22CE"/></DataTrigger>
+        <DataTrigger Binding="{Binding Tipo}" Value="JaAutorizada"><Setter TargetName="b" Property="Background" Value="#E0F2FE"/><Setter TargetName="t" Property="Foreground" Value="#0369A1"/></DataTrigger>
         <DataTrigger Binding="{Binding Tipo}" Value="Ja"><Setter TargetName="b" Property="Background" Value="#EEF0F3"/><Setter TargetName="t" Property="Foreground" Value="#6B7280"/></DataTrigger>
       </DataTemplate.Triggers>
     </DataTemplate>

@@ -58,7 +58,7 @@ namespace DuplicidadeNfce
         }
         public Action AoMarcar;
         // Só duplicidade com retorno 539 pode ser processada (as deduzidas ficam PENDENTE "sem retorno 539").
-        public bool PodeMarcar { get { var s = Linha.Status; return s != DuplicidadeNfce.Status.JaProcessada && s != DuplicidadeNfce.Status.Copiado && s != DuplicidadeNfce.Status.EmContingencia && s != DuplicidadeNfce.Status.OutroErro && !(s == DuplicidadeNfce.Status.Pendente && Linha.Motivo != null && Linha.Motivo.StartsWith("sem retorno 539")); } }
+        public bool PodeMarcar { get { var s = Linha.Status; return s != DuplicidadeNfce.Status.JaProcessada && s != DuplicidadeNfce.Status.Copiado && s != DuplicidadeNfce.Status.EmContingencia && s != DuplicidadeNfce.Status.OutroErro && s != DuplicidadeNfce.Status.JaAutorizada && !(s == DuplicidadeNfce.Status.Pendente && Linha.Motivo != null && Linha.Motivo.StartsWith("sem retorno 539")); } }
         public string Nota { get { return Linha.Serie + "/" + Linha.Numero; } }
         public string Pedido { get { return Linha.Pedido ?? "-"; } }
         public string Data { get { return DataCurta(Linha.DhEmiSistema); } }
@@ -78,7 +78,7 @@ namespace DuplicidadeNfce
                 case DuplicidadeNfce.Status.AjusteChave: return "Ajuste";
                 case DuplicidadeNfce.Status.ErroCopia: return "Erro";
                 case DuplicidadeNfce.Status.JaProcessada: return "Ja";
-                case DuplicidadeNfce.Status.JaAutorizada: return "Ja";
+                case DuplicidadeNfce.Status.JaAutorizada: return "JaAutorizada";
                 case DuplicidadeNfce.Status.EmContingencia: return "Contingencia";
                 case DuplicidadeNfce.Status.OutroErro: return "OutroErro";
                 default: return "Pendente";
@@ -337,6 +337,11 @@ namespace DuplicidadeNfce
                 Ocupado(false, null);
                 if (t.IsFaulted) { Erro(t.Exception.InnerException.Message); return; }
                 motor = t.Result.Item1;
+                if (!cfg.TodasDatas && cfg.DataInicial.HasValue)
+                {
+                    G<DatePicker>("DataDe").SelectedDate = cfg.DataInicial;
+                    G<DatePicker>("DataAte").SelectedDate = cfg.DataFinal;
+                }
                 linhas.Clear();
                 copiadasSessao = 0;
                 foreach (var l in t.Result.Item2)
@@ -433,7 +438,7 @@ namespace DuplicidadeNfce
             if (Marcado("PilAProcessar") && tipo != "AProcessar" && tipo != "ACopiar") return false;
             if (Marcado("PilCopiadas") && tipo != "Copiado") return false;
             if (Marcado("PilAjuste") && tipo != "Ajuste") return false;
-            if (Marcado("PilPendentes") && tipo != "Pendente" && tipo != "Erro" && tipo != "OutroErro") return false;
+            if (Marcado("PilPendentes") && tipo != "Pendente" && tipo != "Erro" && tipo != "OutroErro" && tipo != "JaAutorizada") return false;
             if (Marcado("PilContingencia") && tipo != "Contingencia") return false;
             if (Marcado("PilJa") && tipo != "Ja") return false;
             string q = G<TextBox>("CaixaPesquisa").Text.Trim();
@@ -454,12 +459,12 @@ namespace DuplicidadeNfce
             G<TextBlock>("NumCopiadas").Text = conta(new[] { "Copiado", "Ja" }).ToString();
             G<TextBlock>("SubCopiadas").Text = copiadasSessao + " nesta sessão · " + conta(new[] { "Ja" }) + " anteriores";
             G<TextBlock>("NumAjuste").Text = conta(new[] { "Ajuste" }).ToString();
-            G<TextBlock>("NumPendentes").Text = conta(new[] { "Pendente", "Erro", "OutroErro" }).ToString();
+            G<TextBlock>("NumPendentes").Text = conta(new[] { "Pendente", "Erro", "OutroErro", "JaAutorizada" }).ToString();
             Pilula("PilTodas", "Todas", linhas.Count);
             Pilula("PilAProcessar", "A processar", conta(new[] { "AProcessar", "ACopiar" }));
             Pilula("PilCopiadas", "Copiadas", conta(new[] { "Copiado" }));
             Pilula("PilAjuste", "Ajuste de chave", conta(new[] { "Ajuste" }));
-            Pilula("PilPendentes", "Pendentes", conta(new[] { "Pendente", "Erro", "OutroErro" }));
+            Pilula("PilPendentes", "Pendentes", conta(new[] { "Pendente", "Erro", "OutroErro", "JaAutorizada" }));
             Pilula("PilContingencia", "Sem retorno", conta(new[] { "Contingencia" }));
             Pilula("PilJa", "Já processadas", conta(new[] { "Ja" }));
             AtualizarBotoes();

@@ -62,8 +62,23 @@ namespace DuplicidadeNfce
             }
         }
 
+        public List<LinhaContingencia> Contingencia;
+
         public void Varrer()
         {
+            // Lista da aba Contingência do Metre (banco ou CSV). Com ela, o período de leitura dos XMLs
+            // passa a ser o das próprias notas pendentes.
+            Contingencia = Banco.Ler(Cfg, Log);
+            if (Contingencia != null && Contingencia.Count > 0 && !Cfg.TodasDatas)
+            {
+                var datas = Contingencia.Select(c => c.DtEmissao ?? c.DtContingencia).Where(d => d.HasValue).Select(d => d.Value.Date).ToList();
+                if (datas.Count > 0)
+                {
+                    Cfg.DataInicial = datas.Min();
+                    Cfg.DataFinal = datas.Max();
+                    Log.Tela("Período ajustado pela contingência do Metre: " + DescricaoPeriodo);
+                }
+            }
             Notas = new List<NotaXml>();
             if (Cfg.TodasDatas)
                 foreach (var f in Arquivos(Raiz)) Notas.Add(NotaXml.Ler(f));
@@ -106,7 +121,7 @@ namespace DuplicidadeNfce
             Log.Tela(Notas.Count + " arquivo(s) NOTA_* lido(s); " + Notas.Count(n => n.Erro != null) + " com erro de leitura; " +
                 Notas.Count(n => n.TemSobra) + " com conteúdo residual após </nfeProc>");
             foreach (var n in Notas.Where(n => n.Erro != null)) Log.Info("Erro de leitura: " + n.Caminho + " - " + n.Erro);
-            Analisador = new Analisador(Notas, consultar, Log);
+            Analisador = new Analisador(Notas, consultar, Log, Contingencia);
         }
 
         public List<LinhaRelatorio> Listar()

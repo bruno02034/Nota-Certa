@@ -44,6 +44,13 @@ marque as notas → *Processar marcadas* (consulta a SEFAZ, escolhe o arquivo e 
 | PENDENTE | dúvida: SEFAZ não consultada, sem retorno 539, nenhum ou mais de um candidato, destino já existe… |
 | ERRO_COPIA | a cópia não conferiu com o original |
 
+## Lista da contingência (banco do Metre)
+
+Com `FonteContingencia=banco`, a lista vem de `chef.nota_saida` com `situacao = 'Em contigencia'` (o Metre grava
+assim), por uma sessão **somente leitura** (só `SELECT`), usando a `libmariadb.dll` do HeidiSQL. Preencha `DbSenha`
+no `duplicidade.ini` do servidor e confira com `.\NotaCerta.exe --testar-banco`. Linhas cuja chave já está autorizada
+(criadas ao importar um NFCE) aparecem como JÁ AUTORIZADA e não são tocadas.
+
 ## Como as duplicidades são achadas
 
 Toda tentativa em contingência (`tpEmis=9`) ainda não autorizada é listada. Só as que têm **retorno 539**

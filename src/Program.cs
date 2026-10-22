@@ -11,7 +11,7 @@ namespace DuplicidadeNfce
     class Opcoes
     {
         public string ArqConfig, Captura;
-        public bool SemSefaz, Copiar, TodasDatas, Gui;
+        public bool SemSefaz, Copiar, TodasDatas, Gui, TestarBanco;
         public List<KeyValuePair<string, string>> Sobrepor = new List<KeyValuePair<string, string>>();
         public List<string> TextoNotas = new List<string>();
         public string ArqNotas;
@@ -50,6 +50,7 @@ Sem argumentos abre a interface gráfica. Linha de comando:
   --senha-certificado <s>  senha do .pfx (normalmente vem do C:\Chef\NFCe.ini)
   --sem-sefaz        TESTE: usa o protNFe dos XMLs locais no lugar da SEFAZ (não combina com --copiar)
   --gui              abre a interface gráfica com as opções acima
+  --testar-banco     só conecta no banco do Metre (somente leitura) e mostra a contingência
 
 Sem --copiar: só relatório. Os arquivos do emissor são abertos somente para leitura;
 a cópia nunca move nem sobrescreve, e fica registrada em historico.csv na pasta base.";
@@ -118,6 +119,7 @@ a cópia nunca move nem sobrescreve, e fica registrada em historico.csv na pasta
                     case "--notas": op.TextoNotas.Add(prox()); break;
                     case "--notas-arquivo": op.ArqNotas = prox(); break;
                     case "--gui": op.Gui = true; break;
+                    case "--testar-banco": op.TestarBanco = true; break;
                     case "--captura": op.Captura = prox(); op.Gui = true; break;
                     case "--ajuda": case "-h": case "/?": return null;
                     default: throw new Exception("opção desconhecida: " + args[i] + " (use --ajuda)");
@@ -126,8 +128,25 @@ a cópia nunca move nem sobrescreve, e fica registrada em historico.csv na pasta
             return op;
         }
 
+        // Confere a conexão com o banco do Metre: só lê e mostra a contingência (sem senha na tela).
+        static int TestarBanco(Opcoes op)
+        {
+            var cfg = op.CarregarConfig();
+            string arqLog = Path.Combine(Path.GetTempPath(), "notacerta_testar_banco.log");
+            using (var log = new Log(arqLog))
+            {
+                var lista = Banco.LerBanco(cfg, log);
+                foreach (var c in lista.Take(5))
+                    Console.WriteLine("  " + c.Serie + "/" + c.Numero + "  pedido " + (c.Pedido ?? "-") + "  R$ " + Analisador.Moeda(c.Valor) +
+                        "  " + (c.DtContingencia.HasValue ? c.DtContingencia.Value.ToString("dd/MM/yyyy HH:mm") : "-") + "  " + c.Chave);
+                if (lista.Count > 5) Console.WriteLine("  ... e mais " + (lista.Count - 5));
+            }
+            return 0;
+        }
+
         static int ExecutarLinhaDeComando(Opcoes op)
         {
+            if (op.TestarBanco) return TestarBanco(op);
             if (op.ArqNotas != null)
             {
                 if (!File.Exists(op.ArqNotas)) throw new Exception("arquivo de notas não existe: " + op.ArqNotas);

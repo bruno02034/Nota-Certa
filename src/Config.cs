@@ -23,6 +23,17 @@ namespace DuplicidadeNfce
         // Opcional: se vazia, a senha vem dos INIs do sistema emissor (IniMetre).
         public string CertificadoSenha = "";
         public string IniMetre = @"C:\Chef\NFCe.ini;C:\Chef\Config.ini";
+
+        // De onde vem a lista da contingência: "banco" (chef.nota_saida, só leitura), "csv:<arquivo>" (exportado do
+        // HeidiSQL) ou "arquivos" (deduzida dos XMLs, sem saber o que já foi resolvido no Metre).
+        public string FonteContingencia = "arquivos";
+        public string DbHost = "127.0.0.1";
+        public int DbPorta = 3307;
+        public string DbUsuario = "metre";
+        public string DbSenha = "";
+        public string DbBanco = "chef";
+        public string DbSituacao = "Em contigencia";
+        public string MariaDbDll = "";
         public bool ValidarCertificadoServidor = true;
         public int TimeoutSegundos = 30;
 
@@ -60,6 +71,14 @@ namespace DuplicidadeNfce
                 case "pastaempresas": PastaEmpresas = valor; break;
                 case "certificadosenha": CertificadoSenha = valor; break;
                 case "inimetre": IniMetre = valor; break;
+                case "fontecontingencia": FonteContingencia = valor; break;
+                case "dbhost": DbHost = valor; break;
+                case "dbporta": DbPorta = int.Parse(valor); break;
+                case "dbusuario": DbUsuario = valor; break;
+                case "dbsenha": DbSenha = valor; break;
+                case "dbbanco": DbBanco = valor; break;
+                case "dbsituacao": DbSituacao = valor; break;
+                case "mariadbdll": MariaDbDll = valor; break;
                 case "validarcertificadoservidor": ValidarCertificadoServidor = Sim(valor); break;
                 case "timeoutsegundos": TimeoutSegundos = int.Parse(valor); break;
                 default: throw new Exception(origem + ": opção desconhecida '" + chave + "'");

@@ -120,6 +120,23 @@ try {
     $l = $r | Where-Object { $_.'Chave do sistema' -eq $K88867 }
     Verdade ($l.Classificacao -eq 'Duplicidade (retorno 539)') '88867 17:20 continua classificada pelo retorno 539'
 
+    Write-Host '--- Lista da contingencia vinda do Metre (CSV exportado do HeidiSQL)'
+    $csvMetre = Join-Path $tmp 'contingencia_metre.csv'
+    $cab = '"id_nota_saida";"numero";"serie";"num_pedido";"chave_acesso";"valor_total_nota";"dt_emissao";"data_contigencia";"dt_tentativa_emissao";"motivo_nao_transmissao";"notas_importadas"'
+    @($cab,
+      "`"1`";`"89244`";`"6`";`"258958`";`"$K89244b`";`"13,95`";`"2026-10-21`";`"2026-10-21 08:45:08`";`"2026-10-22 16:23:13`";`"Lote processado`";\N",
+      "`"2`";`"89257`";`"6`";`"258976`";`"$K89257b`";`"7,00`";`"2026-10-21`";`"2026-10-21 08:58:36`";`"2026-10-22 16:23:11`";`"Lote processado`";\N",
+      "`"3`";`"89244`";`"6`";\N;`"$Aut89244`";`"18,90`";`"2026-10-21`";`"2026-10-21 08:23:20`";`"2026-10-22 15:51:37`";\N;\N",
+      "`"4`";`"88867`";`"6`";`"258155`";`"$K88867sem539`";`"15,50`";`"2026-10-19`";`"2026-10-19 17:56:51`";`"2026-10-22 16:22:13`";`"Lote processado`";\N"
+    ) | Set-Content $csvMetre -Encoding UTF8
+    $r = Rodar $amostras "FonteContingencia=csv:$csvMetre" @('--sem-sefaz', '--notas', '6/89244,6/89257,6/88867')
+    Verdade ($r.Count -eq 4) 'so as 4 notas da contingencia do Metre entram (as outras tentativas dos XMLs ficam de fora)'
+    Confere $r $K89244b 'A COPIAR' 'NOTA_89244_SERIE_6_ASSINADA_21_10_2026_08_23_20.xml' '18,90' 'sistema 13,95'
+    Verdade (($r | Where-Object { $_.'Chave do sistema' -eq $K89244b }).Pedido -eq '258958') 'pedido vem do Metre'
+    Confere $r $K89257b 'EM CONTINGÊNCIA' '' '' 'sem autorização'
+    Confere $r $Aut89244 'JÁ AUTORIZADA' '' '' 'criada ao importar'
+    Confere $r $K88867sem539 'A COPIAR' 'NOTA_88867_SERIE_6_ASSINADA_19_10_2026_17_06_37.xml' '10,00' 'sistema 15,50'
+
     Write-Host '--- Temp_ANTES_ENVIO envolto em enviNFe e lido sem erro'
     $d = CopiaAmostras 'envinfe'
     $nfe = [regex]::Match([IO.File]::ReadAllText((Join-Path $d 'NOTA_88868_SERIE_6_ASSINADA_19_10_2026_17_22_32.xml')), '<NFe .*</NFe>', 'Singleline').Value

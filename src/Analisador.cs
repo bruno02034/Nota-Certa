@@ -11,13 +11,14 @@ namespace DuplicidadeNfce
     {
         Duplicidade,    // número já autorizado com outra chave (por 539 ou deduzido dos arquivos)
         SemRetorno,     // em contingência, número ainda sem autorização
-        OutroErro       // rejeição com outro código (ex.: 537)
+        OutroErro,      // rejeição com outro código (ex.: 537)
+        AutorizadaNaContingencia  // a própria chave já está autorizada (linha criada ao importar um NFCE)
     }
 
     // Uma tentativa do sistema (chave própria) emitida em contingência e ainda não autorizada.
     class Tentativa
     {
-        public string Chave, Numero, Serie, Pedido, DhEmi, ChaveAutorizada, NRec, Erro;
+        public string Chave, Numero, Serie, Pedido, DhEmi, ChaveAutorizada, NRec, Erro, IdMetre;
         public decimal? Valor;
         public bool Rejeicao539;
         public Classe Classe = Classe.Duplicidade;
@@ -33,6 +34,7 @@ namespace DuplicidadeNfce
                 {
                     case Classe.SemRetorno: return "Em contingência sem retorno";
                     case Classe.OutroErro: return "Outro erro";
+                    case Classe.AutorizadaNaContingencia: return "Já autorizada (entrada criada por importação)";
                     default: return Rejeicao539 ? "Duplicidade (retorno 539)" : "Duplicidade (deduzida pelos arquivos)";
                 }
             }
@@ -86,8 +88,12 @@ namespace DuplicidadeNfce
         List<Tentativa> tentativas;
         readonly Dictionary<string, string> autorizadaPorNota = new Dictionary<string, string>();
 
-        public Analisador(List<NotaXml> notas, Func<string, List<NotaXml>, RespostaSefaz> consultar, Log log)
+        readonly List<LinhaContingencia> contingencia;   // lista do Metre (banco/CSV); null = deduzir dos XMLs
+
+        public Analisador(List<NotaXml> notas, Func<string, List<NotaXml>, RespostaSefaz> consultar, Log log,
+            List<LinhaContingencia> contingencia = null)
         {
+            this.contingencia = contingencia;
             this.notas = notas;
             this.consultar = consultar;
             this.log = log;
@@ -134,6 +140,60 @@ namespace DuplicidadeNfce
                     Registrar539(lista, autorizadasPorNumero, p, rej, "539 em resto de gravação anterior de " + rej.Nome);
             }
 
+            if (contingencia != null)
+                lista = DaContingenciaDoMetre(lista, autorizadas, autorizadasPorNumero);
+            else
+                DeduzirDosArquivos(lista, autorizadas, autorizadasPorNumero);
+            log.Info("Chaves autorizadas nos arquivos: " + autorizadas.Count + "; tentativas em contingência não autorizadas: " + lista.Count +
+                " (" + string.Join(", ", lista.Values.GroupBy(t => t.Classificacao).Select(g => g.Count() + " " + g.Key)) + ")");
+            return Completar(lista);
+        }
+
+        // A lista exata da aba Contingência (banco do Metre): cada linha é uma tentativa; os XMLs só classificam.
+        Dictionary<string, Tentativa> DaContingenciaDoMetre(Dictionary<string, Tentativa> do539, HashSet<string> autorizadas,
+            Dictionary<string, HashSet<string>> autorizadasPorNumero)
+        {
+            var lista = new Dictionary<string, Tentativa>();
+            foreach (var c in contingencia)
+            {
+                if (string.IsNullOrEmpty(c.Chave) || c.Chave.Length != 44)
+                {
+                    log.Info("Contingência do Metre sem chave válida (id " + c.Id + ", nota " + c.Serie + "/" + c.Numero + "): ignorada");
+                    continue;
+                }
+                Tentativa t;
+                if (!do539.TryGetValue(c.Chave, out t)) t = new Tentativa { Chave = c.Chave };
+                t.IdMetre = c.Id;
+                t.Pedido = c.Pedido;
+                t.Valor = c.Valor;
+                if (c.DtContingencia.HasValue || c.DtEmissao.HasValue)
+                    t.DhEmi = (c.DtContingencia ?? c.DtEmissao).Value.ToString("yyyy-MM-ddTHH:mm:ss");
+                t.Origens.Insert(0, "aba Contingência do Metre (id_nota_saida " + c.Id + ")");
+
+                HashSet<string> ks;
+                if (autorizadas.Contains(c.Chave))
+                {
+                    t.Classe = Classe.AutorizadaNaContingencia;
+                    t.ChaveAutorizada = c.Chave;
+                }
+                else if (t.Rejeicao539) { }
+                else if (autorizadasPorNumero.TryGetValue(ChaveNumero(c.Chave), out ks) && !ks.Contains(c.Chave))
+                {
+                    t.Origens.Add("número já autorizado com outra chave");
+                    if (ks.Count == 1) t.ChaveAutorizada = ks.First();
+                    else t.Avisos.Add("mais de uma chave autorizada para o mesmo número: " + string.Join(", ", ks));
+                }
+                else
+                    t.Classe = Classe.SemRetorno;
+                lista[c.Chave] = t;
+            }
+            return lista;
+        }
+
+        // Sem acesso ao Metre: deduz as tentativas pendentes pelos XMLs.
+        void DeduzirDosArquivos(Dictionary<string, Tentativa> lista, HashSet<string> autorizadas,
+            Dictionary<string, HashSet<string>> autorizadasPorNumero)
+        {
             // 2) Tentativas em contingência (tpEmis 9) ainda não autorizadas. Se o número já tem uma
             //    autorização com outra chave, é duplicidade mesmo sem o arquivo de retorno 539.
             foreach (var n in notas.Where(x => x.Chave != null && x.NaFaixaPrincipal && x.TpEmis == "9"
@@ -176,9 +236,10 @@ namespace DuplicidadeNfce
                 }
                 log.Info("Último reenvio da contingência: " + diaReenvio.ToString("dd/MM/yyyy") + "; " + fora.Count + " tentativa(s) fora da contingência ignorada(s)");
             }
-            log.Info("Chaves autorizadas nos arquivos: " + autorizadas.Count + "; tentativas em contingência não autorizadas: " + lista.Count +
-                " (" + string.Join(", ", lista.Values.GroupBy(t => t.Classificacao).Select(g => g.Count() + " " + g.Key)) + ")");
+        }
 
+        List<Tentativa> Completar(Dictionary<string, Tentativa> lista)
+        {
             // FALHA_SCHEMA não traz código nem motivo; só registra que o envio falhou na validação.
             foreach (var f in notas.Where(x => x.Tipo == TipoArquivo.FalhaSchema && x.Chave != null))
             {
@@ -193,18 +254,19 @@ namespace DuplicidadeNfce
                 if (!porChave.TryGetValue(t.Chave, out arqs)) arqs = new List<NotaXml>();
                 var ordenados = arqs.OrderBy(a => Array.IndexOf(PrioridadeValor, a.Tipo)).ThenBy(a => a.Caminho).ToList();
                 var comValor = ordenados.Where(a => a.VNF.HasValue).ToList();
+                // Valor, pedido e data do Metre (banco) têm prioridade; os XMLs completam o que faltar.
                 if (comValor.Count > 0)
                 {
-                    t.Valor = comValor[0].VNF;
-                    var distintos = comValor.Select(a => a.VNF.Value).Distinct().ToList();
+                    if (!t.Valor.HasValue) t.Valor = comValor[0].VNF;
+                    var distintos = comValor.Select(a => a.VNF.Value).Concat(new[] { t.Valor.Value }).Distinct().ToList();
                     if (distintos.Count > 1)
-                        t.Avisos.Add("valores diferentes entre arquivos da mesma chave: " +
+                        t.Avisos.Add("valores diferentes entre arquivos da mesma chave" + (t.IdMetre != null ? " e o Metre (" + Moeda(t.Valor) + ")" : "") + ": " +
                             string.Join(", ", comValor.Select(a => a.Nome + "=" + Moeda(a.VNF))));
                 }
                 var comPedido = ordenados.FirstOrDefault(a => !string.IsNullOrEmpty(a.Pedido));
-                if (comPedido != null) t.Pedido = comPedido.Pedido;
+                if (comPedido != null && string.IsNullOrEmpty(t.Pedido)) t.Pedido = comPedido.Pedido;
                 var comData = ordenados.FirstOrDefault(a => a.DhEmi != null);
-                if (comData != null) t.DhEmi = comData.DhEmi;
+                if (comData != null && t.DhEmi == null) t.DhEmi = comData.DhEmi;
                 t.Numero = NumeroDaChave(t.Chave);
                 t.Serie = SerieDaChave(t.Chave);
             }
@@ -397,8 +459,15 @@ namespace DuplicidadeNfce
         }
 
         // Sem retorno ou com outro erro: nada a consultar nem copiar.
-        static bool ForaDoFluxo(Tentativa t, LinhaRelatorio l)
+        bool ForaDoFluxo(Tentativa t, LinhaRelatorio l)
         {
+            if (t.Classe == Classe.AutorizadaNaContingencia)
+            {
+                l.Status = Status.JaAutorizada;
+                l.Motivo = "esta chave já está autorizada na SEFAZ; a linha na contingência foi criada ao importar o XML autorizado (NFCE). " +
+                    "Não transmitir nem importar de novo: tratar no Metre";
+                return true;
+            }
             if (t.Classe == Classe.SemRetorno)
             {
                 l.Status = Status.EmContingencia;
@@ -411,9 +480,9 @@ namespace DuplicidadeNfce
                 l.Motivo = "rejeição " + t.Erro;
                 return true;
             }
-            // Duplicidade só deduzida pelos arquivos: o Metre ainda não tem o retorno 539 dessa tentativa.
-            // Importar o XML autorizado nesse caso aumentou a contingência no Metre (22/10), então nada é feito.
-            if (!t.Rejeicao539)
+            // Sem a lista do Metre, duplicidade só deduzida pelos arquivos não é processada: pelos XMLs não dá
+            // para saber se a nota ainda está na aba Contingência. Com o banco/CSV a lista já é a do Metre.
+            if (!t.Rejeicao539 && contingencia == null)
             {
                 l.Status = Status.Pendente;
                 l.Motivo = "sem retorno 539: duplicidade provável (número já autorizado com a chave " + (t.ChaveAutorizada ?? "?") +
