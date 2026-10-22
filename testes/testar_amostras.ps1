@@ -91,10 +91,10 @@ try {
     Confere $r $K88867sem539 'A COPIAR' 'NOTA_88867_SERIE_6_NFCE.xml' '10,00' 'sistema 15,50'
     Verdade (-not ($r | Where-Object { $_.'Arquivo escolhido' -like '*ASSINADA*' })) 'nenhum ASSINADA escolhido'
 
-    Write-Host '--- 88869: ASSINADA e NFCE com o mesmo conteudo autorizado (vale o ASSINADA)'
+    Write-Host '--- 88869: ASSINADA e NFCE com o mesmo conteudo autorizado (vale o NFCE autorizado)'
     $r = Rodar $amostras '' @('--sem-sefaz', '--notas', '6/88869')
-    Confere $r $K88869 'A COPIAR' 'NOTA_88869_SERIE_6_ASSINADA_19_10_2026_17_12_40.xml' '14,00' 'escolhido NOTA_88869_SERIE_6_ASSINADA_19_10_2026_17_12_40.xml'
-    Confere $r $K88869sem539 'A COPIAR' 'NOTA_88869_SERIE_6_ASSINADA_19_10_2026_17_12_40.xml' '14,00' 'sistema 27,00'
+    Confere $r $K88869 'A COPIAR' 'NOTA_88869_SERIE_6_NFCE.xml' '14,00' 'escolhido NOTA_88869_SERIE_6_NFCE.xml'
+    Confere $r $K88869sem539 'A COPIAR' 'NOTA_88869_SERIE_6_NFCE.xml' '14,00' 'sistema 27,00'
 
     Write-Host '--- Contingencia sem arquivo 539 (casos do zip de outubro)'
     $r = Rodar $amostras '' @('--sem-sefaz', '--notas', '6/89244,6/89098,6/89090,6/89257,6/84643,6/85710')
@@ -104,8 +104,8 @@ try {
     Confere $r $K89244d 'A COPIAR' 'NOTA_89244_SERIE_6_NFCE.xml' '18,90' 'sistema 46,35'
     $l = $r | Where-Object { $_.'Chave do sistema' -eq $K89244b }
     Verdade ($l.Classificacao -eq 'Duplicidade (deduzida pelos arquivos)') '89244 classificada como duplicidade deduzida (sem REJEICAO)'
-    # 89098: o ASSINADA da autorizada (15:57) e igual ao autorizado, vale o ASSINADA
-    Confere $r $K89098b 'A COPIAR' 'NOTA_89098_SERIE_6_ASSINADA_20_10_2026_15_57_05.xml' '4,00' 'sistema 17,00'
+    # 89098: o ASSINADA da autorizada (15:57) e igual ao autorizado, mas so se copia o NFCE autorizado
+    Confere $r $K89098b 'A COPIAR' 'NOTA_89098_SERIE_6_NFCE.xml' '4,00' 'sistema 17,00'
     Confere $r $K89090b 'A COPIAR' 'NOTA_89090_SERIE_6_NFCE.xml' '10,00' 'sistema 7,50'
     # 89257: numero nunca autorizado -> em contingencia sem retorno, nada a copiar
     Confere $r $K89257b 'EM CONTINGÊNCIA' '' '' 'sem autorização'
@@ -249,8 +249,8 @@ try {
     Verdade (@(Import-Csv (Join-Path $destC 'historico.csv') -Delimiter ';').Count -eq 2) 'historico nao ganhou linhas novas'
 
     $r = Rodar $amostras $cfgSefaz @('--notas', '6/88869', '--copiar') $destC
-    Confere $r $K88869 'COPIADO' 'NOTA_88869_SERIE_6_ASSINADA_19_10_2026_17_12_40.xml' '14,00' 'cópia conferida'
-    Verdade ((Hash (Join-Path $destC "$hoje\NOTA_88869_SERIE_6_ASSINADA_19_10_2026_17_12_40.xml")) -eq (Hash (Join-Path $amostras 'NOTA_88869_SERIE_6_ASSINADA_19_10_2026_17_12_40.xml'))) 'copia da 88869 e o ASSINADA que o Metre importa'
+    Confere $r $K88869 'COPIADO' 'NOTA_88869_SERIE_6_NFCE.xml' '14,00' 'cópia conferida'
+    Verdade ((Hash (Join-Path $destC "$hoje\NOTA_88869_SERIE_6_NFCE.xml")) -eq (Hash (Join-Path $amostras 'NOTA_88869_SERIE_6_NFCE.xml'))) 'copia da 88869 e o NFCE autorizado (nunca o ASSINADA)'
 
     Write-Host '--- Destino ja tem o arquivo (sem historico): nao sobrescreve'
     $destX = Join-Path $tmp 'destino_existente'

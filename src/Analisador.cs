@@ -308,17 +308,18 @@ namespace DuplicidadeNfce
                     : "nenhum dos " + arqs.Count + " arquivo(s) com a chave tem DigestValue igual ao digVal " + fonte;
                 return null;
             }
-            // Todos os válidos têm o mesmo infNFe autorizado (digest = digVal). Se forem arquivos diferentes,
-            // vale o ASSINADA (o arquivo que o emissor importa; confirmado na 6/88869). O NFCE da pasta
-            // Autorizadas só é escolhido quando o ASSINADA não confere (caso das 6/88866-88868).
-            var preferidos = validos.Where(a => a.Tipo == TipoArquivo.Assinada).ToList();
+            // Regra do Bruno: só se copia o XML AUTORIZADO (o _NFCE da pasta Autorizadas, com protNFe 100/150
+            // e o mesmo nProt da consulta), com o conteúdo e o valor que a SEFAZ autorizou. O ASSINADA nunca
+            // é copiado, mesmo quando tem o mesmo conteúdo.
+            var preferidos = validos.Where(a => a.Tipo == TipoArquivo.Autorizada && a.Prot != null
+                && (a.Prot.CStat == "100" || a.Prot.CStat == "150")
+                && (string.IsNullOrEmpty(prot.NProt) || a.Prot.NProt == prot.NProt)).ToList();
             if (preferidos.Count == 0)
-                preferidos = validos.Where(a => a.Prot != null && (a.Prot.CStat == "100" || a.Prot.CStat == "150")
-                    && !string.IsNullOrEmpty(prot.NProt) && a.Prot.NProt == prot.NProt).ToList();
-            if (preferidos.Count == 0)
-                preferidos = validos.Where(a => a.Tipo == TipoArquivo.Autorizada ||
-                    a.Caminho.IndexOf(@"\Autorizadas\", StringComparison.OrdinalIgnoreCase) >= 0).ToList();
-            if (preferidos.Count == 0) preferidos = validos;
+            {
+                motivoPendente = "nenhum XML autorizado (_NFCE da pasta Autorizadas) com o conteúdo da SEFAZ; " +
+                    "o ASSINADA não é copiado (" + string.Join(" | ", validos.Select(a => a.Nome)) + ")";
+                return null;
+            }
             var semSobra = preferidos.Where(a => !a.TemSobra).ToList();
             if (semSobra.Count == 0)
             {
