@@ -57,7 +57,8 @@ namespace DuplicidadeNfce
             set { marcada = value && PodeMarcar; Avisar("Marcada"); if (AoMarcar != null) AoMarcar(); }
         }
         public Action AoMarcar;
-        public bool PodeMarcar { get { var s = Linha.Status; return s != DuplicidadeNfce.Status.JaProcessada && s != DuplicidadeNfce.Status.Copiado && s != DuplicidadeNfce.Status.EmContingencia && s != DuplicidadeNfce.Status.OutroErro; } }
+        // Só duplicidade com retorno 539 pode ser processada (as deduzidas ficam PENDENTE "sem retorno 539").
+        public bool PodeMarcar { get { var s = Linha.Status; return s != DuplicidadeNfce.Status.JaProcessada && s != DuplicidadeNfce.Status.Copiado && s != DuplicidadeNfce.Status.EmContingencia && s != DuplicidadeNfce.Status.OutroErro && !(s == DuplicidadeNfce.Status.Pendente && Linha.Motivo != null && Linha.Motivo.StartsWith("sem retorno 539")); } }
         public string Nota { get { return Linha.Serie + "/" + Linha.Numero; } }
         public string Pedido { get { return Linha.Pedido ?? "-"; } }
         public string Data { get { return DataCurta(Linha.DhEmiSistema); } }

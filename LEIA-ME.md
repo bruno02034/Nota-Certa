@@ -1,7 +1,8 @@
 # NotaCerta
 
-Conferência de NFC-e rejeitadas por duplicidade (cStat 539): acha o XML **autorizado** de cada nota
-(conferindo o `DigestValue` com o `digVal` da SEFAZ-MG) e copia para `C:\Chef\NFCe\Duplicidade\AAAA-MM-DD`.
+Conferência de NFC-e rejeitadas por duplicidade (cStat 539): consulta a chave autorizada na SEFAZ-MG e copia
+para `C:\Chef\NFCe\Duplicidade\AAAA-MM-DD` o **ASSINADA dessa chave com o mesmo valor da SEFAZ** (é o arquivo que o
+Metre importa). O `_NFCE` da pasta Autorizadas só confirma o conteúdo e o valor autorizados; ele não é copiado.
 
 ## Instalação no servidor
 
@@ -45,10 +46,10 @@ marque as notas → *Processar marcadas* (consulta a SEFAZ, escolhe o arquivo e 
 
 ## Como as duplicidades são achadas
 
-Toda tentativa em contingência (`tpEmis=9`) ainda não autorizada é listada. Se o mesmo série/número já tem
-um XML autorizado (NFCE com protNFe 100/150) com **outra chave**, é duplicidade, mesmo sem arquivo
-`REJEICAO_NOTA` (o Metre guarda a maior parte das rejeições 539 só no banco). Sem autorização para o número,
-fica EM CONTINGÊNCIA.
+Toda tentativa em contingência (`tpEmis=9`) ainda não autorizada é listada. Só as que têm **retorno 539**
+registrado (`REJEICAO_NOTA`) são processadas e copiadas. Se o número já tem autorização com outra chave mas o
+Metre ainda não registrou a 539, a linha fica PENDENTE "sem retorno 539" (informativa). Sem autorização para o
+número, fica EM CONTINGÊNCIA.
 
 ## Regras de segurança
 

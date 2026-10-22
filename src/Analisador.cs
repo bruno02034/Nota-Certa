@@ -267,9 +267,9 @@ namespace DuplicidadeNfce
             if (escolhido == null) { sel.MotivoPendente = motivo; return sel; }
             sel.Escolhido = escolhido;
             sel.ValorSefaz = escolhido.VNF;
-            sel.MotivoEscolha = "chave autorizada no Id, DigestValue = digVal SEFAZ (conferido pelo conteúdo)" +
-                (escolhido.Prot != null ? ", protNFe " + escolhido.Prot.CStat + " nProt " + escolhido.Prot.NProt : "") +
-                (copias > 1 ? "; " + copias + " arquivos com o conteúdo autorizado, escolhido " + sel.Escolhido.Nome : "");
+            sel.MotivoEscolha = "ASSINADA da chave autorizada com o mesmo valor da SEFAZ (nProt " + sel.Sefaz.Prot.NProt + ")" +
+                (escolhido.DigestDeclarado == sel.Sefaz.Prot.DigVal ? ", conteúdo idêntico ao autorizado" : ", conteúdo assinado difere do XML autorizado") +
+                (copias > 1 ? "; " + copias + " cópias idênticas" : "");
             log.Info("  Escolhido: " + escolhido.Caminho);
             return sel;
         }
@@ -308,18 +308,37 @@ namespace DuplicidadeNfce
                     : "nenhum dos " + arqs.Count + " arquivo(s) com a chave tem DigestValue igual ao digVal " + fonte;
                 return null;
             }
-            // Regra do Bruno: só se copia o XML AUTORIZADO (o _NFCE da pasta Autorizadas, com protNFe 100/150
-            // e o mesmo nProt da consulta), com o conteúdo e o valor que a SEFAZ autorizou. O ASSINADA nunca
-            // é copiado, mesmo quando tem o mesmo conteúdo.
-            var preferidos = validos.Where(a => a.Tipo == TipoArquivo.Autorizada && a.Prot != null
-                && (a.Prot.CStat == "100" || a.Prot.CStat == "150")
-                && (string.IsNullOrEmpty(prot.NProt) || a.Prot.NProt == prot.NProt)).ToList();
-            if (preferidos.Count == 0)
+            // Regra do Bruno (22/10): o arquivo copiado é o ASSINADA da chave autorizada com o mesmo valor
+            // da SEFAZ. É o que o Metre importa como solução da contingência; importar o _NFCE (que traz o
+            // protNFe) aumentou a contingência. Os válidos (digest = digVal) só fixam o valor autorizado.
+            var valores = validos.Where(a => a.VNF.HasValue).Select(a => a.VNF.Value).Distinct().ToList();
+            if (valores.Count != 1)
             {
-                motivoPendente = "nenhum XML autorizado (_NFCE da pasta Autorizadas) com o conteúdo da SEFAZ; " +
-                    "o ASSINADA não é copiado (" + string.Join(" | ", validos.Select(a => a.Nome)) + ")";
+                motivoPendente = "valor autorizado indefinido entre os arquivos que conferem com a SEFAZ";
                 return null;
             }
+            decimal valorAut = valores[0];
+            string chaveAut = validos[0].Chave;
+            var assinadas = arqs.Where(a => a.Tipo == TipoArquivo.Assinada && a.Erro == null && a.Chave == chaveAut).ToList();
+            var preferidos = assinadas.Where(a => a.VNF == valorAut).ToList();
+            foreach (var c in sel.Candidatos.Where(c => assinadas.Any(a => a.Caminho == c.Caminho)))
+            {
+                var a = assinadas.First(x => x.Caminho == c.Caminho);
+                c.Aceito = a.VNF == valorAut;
+                c.Motivo = c.Aceito
+                    ? "ASSINADA da chave autorizada com o mesmo valor da SEFAZ (" + Moeda(valorAut) + ")" +
+                      (a.DigestDeclarado == digVal ? ", conteúdo idêntico ao autorizado" : "")
+                    : "ASSINADA da chave autorizada, mas valor " + Moeda(a.VNF) + " ≠ SEFAZ " + Moeda(valorAut);
+            }
+            if (preferidos.Count == 0)
+            {
+                motivoPendente = "nenhum ASSINADA da chave autorizada com o valor da SEFAZ (" + Moeda(valorAut) + ")" +
+                    (assinadas.Count > 0 ? "; ASSINADA encontrados: " + string.Join(" | ", assinadas.Select(a => a.Nome + "=" + Moeda(a.VNF))) : "");
+                return null;
+            }
+            // Mais de um ASSINADA igual em valor: fica o de conteúdo idêntico ao autorizado, se houver.
+            var identicos = preferidos.Where(a => a.DigestDeclarado == digVal).ToList();
+            if (identicos.Count > 0) preferidos = identicos;
             var semSobra = preferidos.Where(a => !a.TemSobra).ToList();
             if (semSobra.Count == 0)
             {
@@ -328,15 +347,15 @@ namespace DuplicidadeNfce
             }
             if (semSobra.GroupBy(a => a.Sha256).Count() > 1)
             {
-                motivoPendente = "mais de um arquivo válido com conteúdo diferente: " + string.Join(" | ", semSobra.Select(a => a.Caminho));
+                motivoPendente = "mais de um ASSINADA com o valor da SEFAZ e conteúdo diferente: " + string.Join(" | ", semSobra.Select(a => a.Caminho));
                 return null;
             }
-            var escolhido = semSobra.OrderBy(a => a.Caminho.IndexOf(@"\Autorizadas\", StringComparison.OrdinalIgnoreCase) >= 0 ? 0 : 1).ThenBy(a => a.Caminho).First();
-            copias = validos.Count;
-            foreach (var c in sel.Candidatos.Where(c => c.Aceito && c.Caminho != escolhido.Caminho))
+            var escolhido = semSobra.OrderBy(a => a.Caminho).First();
+            copias = semSobra.Count;
+            foreach (var c in sel.Candidatos.Where(c => c.Caminho != escolhido.Caminho && validos.Any(v => v.Caminho == c.Caminho)))
             {
                 c.Aceito = false;
-                c.Motivo = "mesmo conteúdo autorizado (digest confere), mas preterido: o escolhido é " + Path.GetFileName(escolhido.Caminho);
+                c.Motivo = "confere com a SEFAZ (confirma o conteúdo e o valor " + Moeda(valorAut) + "), mas não é copiado: vale o ASSINADA";
             }
             return escolhido;
         }
@@ -368,6 +387,15 @@ namespace DuplicidadeNfce
             {
                 l.Status = Status.OutroErro;
                 l.Motivo = "rejeição " + t.Erro;
+                return true;
+            }
+            // Duplicidade só deduzida pelos arquivos: o Metre ainda não tem o retorno 539 dessa tentativa.
+            // Importar o XML autorizado nesse caso aumentou a contingência no Metre (22/10), então nada é feito.
+            if (!t.Rejeicao539)
+            {
+                l.Status = Status.Pendente;
+                l.Motivo = "sem retorno 539: duplicidade provável (número já autorizado com a chave " + (t.ChaveAutorizada ?? "?") +
+                    "), mas o Metre ainda não registrou a rejeição; nada é copiado";
                 return true;
             }
             return false;

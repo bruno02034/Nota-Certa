@@ -84,35 +84,35 @@ try {
 
     Write-Host '--- Amostras originais (--sem-sefaz)'
     $r = Rodar $amostras
-    Confere $r $K88867 'A COPIAR' 'NOTA_88867_SERIE_6_NFCE.xml' '10,00'
-    Confere $r $K88868 'A COPIAR' 'NOTA_88868_SERIE_6_NFCE.xml' '5,00'
-    Confere $r $K88866a 'A COPIAR' 'NOTA_88866_SERIE_6_NFCE.xml' '10,00'
-    Confere $r $K88866b 'A COPIAR' 'NOTA_88866_SERIE_6_NFCE.xml' '10,00'
-    Confere $r $K88867sem539 'A COPIAR' 'NOTA_88867_SERIE_6_NFCE.xml' '10,00' 'sistema 15,50'
-    Verdade (-not ($r | Where-Object { $_.'Arquivo escolhido' -like '*ASSINADA*' })) 'nenhum ASSINADA escolhido'
+    Confere $r $K88867 'A COPIAR' 'NOTA_88867_SERIE_6_ASSINADA_19_10_2026_17_06_37.xml' '10,00'
+    Confere $r $K88868 'A COPIAR' 'NOTA_88868_SERIE_6_ASSINADA_19_10_2026_17_07_37.xml' '5,00'
+    Confere $r $K88866a 'A COPIAR' 'NOTA_88866_SERIE_6_ASSINADA_19_10_2026_17_05_40.xml' '10,00'
+    Confere $r $K88866b 'A COPIAR' 'NOTA_88866_SERIE_6_ASSINADA_19_10_2026_17_05_40.xml' '10,00'
+    Confere $r $K88867sem539 'PENDENTE' '' '' 'sem retorno 539'
+    Verdade (-not ($r | Where-Object { $_.'Arquivo escolhido' -like '*_NFCE*' })) 'nenhum NFCE escolhido (so ASSINADA)'
 
-    Write-Host '--- 88869: ASSINADA e NFCE com o mesmo conteudo autorizado (vale o NFCE autorizado)'
+    Write-Host '--- 88869: vale o ASSINADA da chave autorizada com o valor da SEFAZ'
     $r = Rodar $amostras '' @('--sem-sefaz', '--notas', '6/88869')
-    Confere $r $K88869 'A COPIAR' 'NOTA_88869_SERIE_6_NFCE.xml' '14,00' 'escolhido NOTA_88869_SERIE_6_NFCE.xml'
-    Confere $r $K88869sem539 'A COPIAR' 'NOTA_88869_SERIE_6_NFCE.xml' '14,00' 'sistema 27,00'
+    Confere $r $K88869 'A COPIAR' 'NOTA_88869_SERIE_6_ASSINADA_19_10_2026_17_12_40.xml' '14,00' 'ASSINADA da chave autorizada'
+    Confere $r $K88869sem539 'PENDENTE' '' '' 'sem retorno 539'
 
     Write-Host '--- Contingencia sem arquivo 539 (casos do zip de outubro)'
     $r = Rodar $amostras '' @('--sem-sefaz', '--notas', '6/89244,6/89098,6/89090,6/89257,6/84643,6/85710')
     # 89244: autorizada a de 08:23 (R$ 18,90); o ASSINADA dela difere do autorizado, vale o NFCE
-    Confere $r $K89244b 'A COPIAR' 'NOTA_89244_SERIE_6_NFCE.xml' '18,90' 'sistema 13,95'
-    Confere $r $K89244c 'A COPIAR' 'NOTA_89244_SERIE_6_NFCE.xml' '18,90' 'sistema 11,25'
-    Confere $r $K89244d 'A COPIAR' 'NOTA_89244_SERIE_6_NFCE.xml' '18,90' 'sistema 46,35'
+    Confere $r $K89244b 'PENDENTE' '' '' 'sem retorno 539: duplicidade provável'
+    Confere $r $K89244c 'PENDENTE' '' '' 'sem retorno 539'
+    Confere $r $K89244d 'PENDENTE' '' '' 'sem retorno 539'
     $l = $r | Where-Object { $_.'Chave do sistema' -eq $K89244b }
     Verdade ($l.Classificacao -eq 'Duplicidade (deduzida pelos arquivos)') '89244 classificada como duplicidade deduzida (sem REJEICAO)'
     # 89098: o ASSINADA da autorizada (15:57) e igual ao autorizado, mas so se copia o NFCE autorizado
-    Confere $r $K89098b 'A COPIAR' 'NOTA_89098_SERIE_6_NFCE.xml' '4,00' 'sistema 17,00'
-    Confere $r $K89090b 'A COPIAR' 'NOTA_89090_SERIE_6_NFCE.xml' '10,00' 'sistema 7,50'
+    Confere $r $K89098b 'PENDENTE' '' '' 'sem retorno 539'
+    Confere $r $K89090b 'PENDENTE' '' '' 'sem retorno 539'
     # 89257: numero nunca autorizado -> em contingencia sem retorno, nada a copiar
     Confere $r $K89257b 'EM CONTINGÊNCIA' '' '' 'sem autorização'
     Verdade (@($r | Where-Object { $_.Numero -eq '89257' -and $_.Status -eq 'EM CONTINGÊNCIA' }).Count -eq 3) '89257: as 3 tentativas ficam em contingencia'
     # 84643: o mesmo numero usado 14 vezes em contingencia em 05/10
     $l = @($r | Where-Object { $_.Numero -eq '84643' })
-    Verdade ($l.Count -eq 14 -and @($l | Where-Object { $_.Status -eq 'A COPIAR' -and $_.'Valor SEFAZ' -eq '11,02' }).Count -eq 14) '84643: 14 tentativas, todas para o mesmo XML autorizado (R$ 11,02)'
+    Verdade ($l.Count -eq 14 -and @($l | Where-Object { $_.Status -eq 'PENDENTE' -and $_.Motivo.StartsWith('sem retorno 539') }).Count -eq 14) '84643: 14 tentativas sem 539, nenhuma copiada'
     # 85710: rejeitada com 537 e depois autorizada (cStat 150) com a mesma chave
     $l = @($r | Where-Object { $_.Numero -eq '85710' })
     Verdade ($l.Count -eq 1 -and $l[0].Status -eq 'JÁ AUTORIZADA' -and $l[0].Motivo.Contains('cStat 150')) '85710: rejeicao 537 depois autorizada -> JA AUTORIZADA'
@@ -127,7 +127,7 @@ try {
         '<?xml version="1.0" encoding="UTF-8"?><enviNFe versao="4.00" xmlns="http://www.portalfiscal.inf.br/nfe"><idLote>1</idLote><indSinc>0</indSinc>' + $nfe + '</enviNFe>')
     $r = Rodar $d '' @('--sem-sefaz', '--notas', '6/88868')
     Verdade (-not $ultimaSaida.Contains('Temp_ANTES_ENVIO_19_10_2026_17_22_33.xml -')) 'enviNFe lido sem erro de leitura'
-    Confere $r $K88868 'A COPIAR' 'NOTA_88868_SERIE_6_NFCE.xml' '5,00'
+    Confere $r $K88868 'A COPIAR' 'NOTA_88868_SERIE_6_ASSINADA_19_10_2026_17_07_37.xml' '5,00'
 
     Write-Host '--- Lista restringe as notas'
     $r = Rodar $amostras '' @('--sem-sefaz', '--notas', '6/88867')
@@ -135,7 +135,7 @@ try {
     $lista = Join-Path $tmp 'notas.txt'
     "# notas do dia 19`r`n6/88868`r`n`r`n6/99999" | Set-Content $lista -Encoding UTF8
     $r = Rodar $amostras '' @('--sem-sefaz', '--notas-arquivo', $lista)
-    Confere $r $K88868 'A COPIAR' 'NOTA_88868_SERIE_6_NFCE.xml' '5,00'
+    Confere $r $K88868 'A COPIAR' 'NOTA_88868_SERIE_6_ASSINADA_19_10_2026_17_07_37.xml' '5,00'
     $l = $r | Where-Object { $_.Numero -eq '99999' }
     Verdade ($l -and $l.Status -eq 'PENDENTE' -and $l.Motivo.StartsWith('nenhuma tentativa')) 'nota inexistente sai PENDENTE "nenhuma tentativa"'
     Verdade (-not ($r | Where-Object { $_.Numero -eq '88867' })) 'notas fora do arquivo ignoradas'
@@ -144,8 +144,8 @@ try {
     $d = CopiaAmostras 'raizsolta'
     New-Item -ItemType Directory -Path (Join-Path $d '09_2026\02') | Out-Null
     $r = Rodar $d '' @('--sem-sefaz', '--notas', '6/88867,6/88868', '--de', '19/10/2026', '--ate', '19/10/2026')
-    Confere $r $K88867 'A COPIAR' 'NOTA_88867_SERIE_6_NFCE.xml' '10,00'
-    Confere $r $K88868 'A COPIAR' 'NOTA_88868_SERIE_6_NFCE.xml' '5,00'
+    Confere $r $K88867 'A COPIAR' 'NOTA_88867_SERIE_6_ASSINADA_19_10_2026_17_06_37.xml' '10,00'
+    Confere $r $K88868 'A COPIAR' 'NOTA_88868_SERIE_6_ASSINADA_19_10_2026_17_07_37.xml' '5,00'
     Verdade ($ultimaSaida.Contains('solto(s) na raiz')) 'log informa os XMLs soltos lidos'
     $r = Rodar $d '' @('--sem-sefaz', '--notas', '6/88867', '--de', '20/10/2026', '--ate', '22/10/2026')
     $l = @($r | Where-Object { $_.Numero -eq '88867' })
@@ -166,23 +166,23 @@ try {
         $f = Join-Path $d $n
         [IO.File]::WriteAllText($f, [IO.File]::ReadAllText($f).Replace('<vNF>70.00</vNF>', '<vNF>5.00</vNF>'))
     }
-    Confere (Rodar $d) $K88868 'AJUSTE_CHAVE_BANCO (fora do escopo)' 'NOTA_88868_SERIE_6_NFCE.xml' '5,00' 'nenhuma ação'
+    Confere (Rodar $d) $K88868 'AJUSTE_CHAVE_BANCO (fora do escopo)' 'NOTA_88868_SERIE_6_ASSINADA_19_10_2026_17_07_37.xml' '5,00' 'nenhuma ação'
 
     Write-Host '--- Sem .pfx: SEFAZ nao consultada'
     $emp = Join-Path $tmp 'Empresa'
     $r = Rodar $amostras "CertificadoPfx=$emp\1\Certificado`r`nPastaEmpresas=$emp`r`nCertificadoSenha=x" $Todas
-    Confere $r $K88868 'PENDENTE' '(indicado) NOTA_88868_SERIE_6_NFCE.xml' '' 'SEFAZ não consultada: nenhum .pfx'
+    Confere $r $K88868 'PENDENTE' '(indicado) NOTA_88868_SERIE_6_ASSINADA_19_10_2026_17_07_37.xml' '' 'SEFAZ não consultada: nenhum .pfx'
     Verdade (($r | Where-Object { $_.'Situacao SEFAZ' -ne 'NÃO CONSULTADA' -and $_.'Situacao SEFAZ' -ne '' }).Count -eq 0) 'situacao NAO CONSULTADA em todas as linhas'
 
     Write-Host '--- .pfx sem senha em lugar nenhum'
     NovoPfx "$emp\1\Certificado\cert.pfx" $CnpjEmitente 'SenhaCerta#456'
     $r = Rodar $amostras "CertificadoPfx=$emp\1\Certificado`r`nPastaEmpresas=$emp`r`nIniMetre=$tmp\naoexiste.ini" $Todas
-    Confere $r $K88867 'PENDENTE' '(indicado) NOTA_88867_SERIE_6_NFCE.xml' '' 'senha do certificado não encontrada'
+    Confere $r $K88867 'PENDENTE' '(indicado) NOTA_88867_SERIE_6_ASSINADA_19_10_2026_17_06_37.xml' '' 'senha do certificado não encontrada'
 
     Write-Host '--- .pfx com senha errada (e senha fora do log)'
     $senhaFalsa = 'SenhaErrada#123'
     $r = Rodar $amostras "CertificadoPfx=$emp\1\Certificado`r`nPastaEmpresas=$emp`r`nCertificadoSenha=$senhaFalsa" $Todas
-    Confere $r $K88867 'PENDENTE' '(indicado) NOTA_88867_SERIE_6_NFCE.xml' '' 'senha incorreta'
+    Confere $r $K88867 'PENDENTE' '(indicado) NOTA_88867_SERIE_6_ASSINADA_19_10_2026_17_06_37.xml' '' 'senha incorreta'
     Verdade (-not $ultimaSaida.Contains($senhaFalsa)) 'senha nao aparece na tela nem no log'
     Verdade (-not (Get-Content $ultimoCsv -Raw).Contains($senhaFalsa)) 'senha nao aparece no relatorio'
 
@@ -190,7 +190,7 @@ try {
     NovoPfx "$emp\2\Certificado\outro.pfx" '11222333000181' 'SenhaCerta#456'
     Remove-Item "$emp\1" -Recurse -Force
     $r = Rodar $amostras "CertificadoPfx=$emp\1\Certificado`r`nPastaEmpresas=$emp`r`nCertificadoSenha=SenhaCerta#456" $Todas
-    Confere $r $K88867 'PENDENTE' '(indicado) NOTA_88867_SERIE_6_NFCE.xml' '' "nenhum certificado válido do CNPJ $CnpjEmitente"
+    Confere $r $K88867 'PENDENTE' '(indicado) NOTA_88867_SERIE_6_ASSINADA_19_10_2026_17_06_37.xml' '' "nenhum certificado válido do CNPJ $CnpjEmitente"
     Verdade ($ultimaSaida.Contains('é de outro CNPJ')) 'log registra certificado de outro CNPJ'
 
     Write-Host '--- Pasta de destino dentro da raiz fica fora da varredura'
@@ -220,8 +220,8 @@ try {
     $Lista = @('--notas', '6/88867,6/88868')
 
     $r = Rodar $amostras $cfgSefaz $Lista $destC
-    Confere $r $K88867 'A COPIAR' 'NOTA_88867_SERIE_6_NFCE.xml' '10,00'
-    Confere $r $K88868 'A COPIAR' 'NOTA_88868_SERIE_6_NFCE.xml' '5,00'
+    Confere $r $K88867 'A COPIAR' 'NOTA_88867_SERIE_6_ASSINADA_19_10_2026_17_06_37.xml' '10,00'
+    Confere $r $K88868 'A COPIAR' 'NOTA_88868_SERIE_6_ASSINADA_19_10_2026_17_07_37.xml' '5,00'
     $ch = @(Get-Content $chamadas)
     Verdade ($ch.Count -eq 2 -and $ch -contains $Aut88867 -and $ch -contains $Aut88868 -and $ch -notcontains $Aut88866) 'SEFAZ consultada so para as notas da lista (sem 88866)'
     Verdade (-not (Test-Path $destC) -or -not (Get-ChildItem $destC -Filter *.xml -Recurse)) 'sem --copiar nada e copiado'
@@ -229,12 +229,12 @@ try {
     Verdade (-not $ultimaSaida.Contains($senhaIni) -and -not (Get-Content $ultimoCsv -Raw).Contains($senhaIni)) 'senha do NFCe.ini fora da tela, do log e do relatorio'
 
     $r = Rodar $amostras $cfgSefaz ($Lista + '--copiar') $destC
-    Confere $r $K88867 'COPIADO' 'NOTA_88867_SERIE_6_NFCE.xml' '10,00' 'cópia conferida'
-    Confere $r $K88868 'COPIADO' 'NOTA_88868_SERIE_6_NFCE.xml' '5,00' 'cópia conferida'
-    Confere $r $K88867sem539 'COPIADO' 'NOTA_88867_SERIE_6_NFCE.xml' '10,00' 'mesmo arquivo autorizado'
-    Verdade ((Hash (Join-Path $destC "$hoje\NOTA_88867_SERIE_6_NFCE.xml")) -eq (Hash (Join-Path $amostras 'NOTA_88867_SERIE_6_NFCE.xml'))) 'copia da 88867 identica ao original'
-    Verdade ((Hash (Join-Path $destC "$hoje\NOTA_88868_SERIE_6_NFCE.xml")) -eq (Hash (Join-Path $amostras 'NOTA_88868_SERIE_6_NFCE.xml'))) 'copia da 88868 identica ao original'
-    Verdade (Test-Path (Join-Path $amostras 'NOTA_88868_SERIE_6_NFCE.xml')) 'original continua no lugar (copia, nao move)'
+    Confere $r $K88867 'COPIADO' 'NOTA_88867_SERIE_6_ASSINADA_19_10_2026_17_06_37.xml' '10,00' 'cópia conferida'
+    Confere $r $K88868 'COPIADO' 'NOTA_88868_SERIE_6_ASSINADA_19_10_2026_17_07_37.xml' '5,00' 'cópia conferida'
+    Confere $r $K88867sem539 'PENDENTE' '' '' 'sem retorno 539'
+    Verdade ((Hash (Join-Path $destC "$hoje\NOTA_88867_SERIE_6_ASSINADA_19_10_2026_17_06_37.xml")) -eq (Hash (Join-Path $amostras 'NOTA_88867_SERIE_6_ASSINADA_19_10_2026_17_06_37.xml'))) 'copia da 88867 identica ao original'
+    Verdade ((Hash (Join-Path $destC "$hoje\NOTA_88868_SERIE_6_ASSINADA_19_10_2026_17_07_37.xml")) -eq (Hash (Join-Path $amostras 'NOTA_88868_SERIE_6_ASSINADA_19_10_2026_17_07_37.xml'))) 'copia da 88868 identica ao original'
+    Verdade (Test-Path (Join-Path $amostras 'NOTA_88868_SERIE_6_ASSINADA_19_10_2026_17_07_37.xml')) 'original continua no lugar (copia, nao move)'
     $hist = Import-Csv (Join-Path $destC 'historico.csv') -Delimiter ';' -Encoding UTF8
     Verdade (@($hist | Where-Object { $_.Status -eq 'COPIADO' }).Count -eq 2) 'historico com 2 registros COPIADO'
     $copiaDemo = $ultimoCsv
@@ -242,23 +242,23 @@ try {
 
     $antes = @(Get-Content $chamadas).Count
     $r = Rodar $amostras $cfgSefaz ($Lista + '--copiar') $destC
-    Confere $r $K88867 'JÁ PROCESSADA' 'NOTA_88867_SERIE_6_NFCE.xml' '' 'copiado em'
-    Confere $r $K88868 'JÁ PROCESSADA' 'NOTA_88868_SERIE_6_NFCE.xml' '' 'copiado em'
-    Confere $r $K88867sem539 'JÁ PROCESSADA' 'NOTA_88867_SERIE_6_NFCE.xml' '' 'copiado em'
+    Confere $r $K88867 'JÁ PROCESSADA' 'NOTA_88867_SERIE_6_ASSINADA_19_10_2026_17_06_37.xml' '' 'copiado em'
+    Confere $r $K88868 'JÁ PROCESSADA' 'NOTA_88868_SERIE_6_ASSINADA_19_10_2026_17_07_37.xml' '' 'copiado em'
+    Confere $r $K88867sem539 'PENDENTE' '' '' 'sem retorno 539'
     Verdade (@(Get-Content $chamadas).Count -eq $antes) 'ja processadas nao consultam a SEFAZ de novo'
     Verdade (@(Import-Csv (Join-Path $destC 'historico.csv') -Delimiter ';').Count -eq 2) 'historico nao ganhou linhas novas'
 
     $r = Rodar $amostras $cfgSefaz @('--notas', '6/88869', '--copiar') $destC
-    Confere $r $K88869 'COPIADO' 'NOTA_88869_SERIE_6_NFCE.xml' '14,00' 'cópia conferida'
-    Verdade ((Hash (Join-Path $destC "$hoje\NOTA_88869_SERIE_6_NFCE.xml")) -eq (Hash (Join-Path $amostras 'NOTA_88869_SERIE_6_NFCE.xml'))) 'copia da 88869 e o NFCE autorizado (nunca o ASSINADA)'
+    Confere $r $K88869 'COPIADO' 'NOTA_88869_SERIE_6_ASSINADA_19_10_2026_17_12_40.xml' '14,00' 'cópia conferida'
+    Verdade ((Hash (Join-Path $destC "$hoje\NOTA_88869_SERIE_6_ASSINADA_19_10_2026_17_12_40.xml")) -eq (Hash (Join-Path $amostras 'NOTA_88869_SERIE_6_ASSINADA_19_10_2026_17_12_40.xml'))) 'copia da 88869 e o ASSINADA da chave autorizada'
 
     Write-Host '--- Destino ja tem o arquivo (sem historico): nao sobrescreve'
     $destX = Join-Path $tmp 'destino_existente'
     New-Item -ItemType Directory -Path (Join-Path $destX $hoje) | Out-Null
-    $alvo = Join-Path $destX "$hoje\NOTA_88868_SERIE_6_NFCE.xml"
+    $alvo = Join-Path $destX "$hoje\NOTA_88868_SERIE_6_ASSINADA_19_10_2026_17_07_37.xml"
     Set-Content $alvo 'conteudo antigo'
     $r = Rodar $amostras $cfgSefaz @('--notas', '6/88868', '--copiar') $destX
-    Confere $r $K88868 'PENDENTE' 'NOTA_88868_SERIE_6_NFCE.xml' '5,00' 'já existe no destino'
+    Confere $r $K88868 'PENDENTE' 'NOTA_88868_SERIE_6_ASSINADA_19_10_2026_17_07_37.xml' '5,00' 'já existe no destino'
     Verdade ((Get-Content $alvo -Raw).Trim() -eq 'conteudo antigo') 'arquivo existente nao foi alterado'
 
     New-Item -ItemType File -Path $parar | Out-Null
