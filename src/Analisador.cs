@@ -211,7 +211,7 @@ namespace DuplicidadeNfce
             sel.ValorSefaz = escolhido.VNF;
             sel.MotivoEscolha = "chave autorizada no Id, DigestValue = digVal SEFAZ (conferido pelo conteúdo)" +
                 (escolhido.Prot != null ? ", protNFe " + escolhido.Prot.CStat + " nProt " + escolhido.Prot.NProt : "") +
-                (copias > 1 ? "; " + copias + " arquivos com o conteúdo autorizado, escolhido o XML com o protocolo" : "");
+                (copias > 1 ? "; " + copias + " arquivos com o conteúdo autorizado, escolhido " + sel.Escolhido.Nome : "");
             log.Info("  Escolhido: " + escolhido.Caminho);
             return sel;
         }
@@ -250,11 +250,13 @@ namespace DuplicidadeNfce
                     : "nenhum dos " + arqs.Count + " arquivo(s) com a chave tem DigestValue igual ao digVal " + fonte;
                 return null;
             }
-            // Todos os válidos têm o mesmo infNFe autorizado (digest = digVal). Se forem arquivos diferentes
-            // (ex.: ASSINADA sem protocolo e NFCE com protNFe), vale o XML autorizado completo: o que traz o
-            // protNFe com o mesmo nProt; na falta dele, o da pasta Autorizadas / tipo NFCE.
-            var preferidos = validos.Where(a => a.Prot != null && (a.Prot.CStat == "100" || a.Prot.CStat == "150")
-                && !string.IsNullOrEmpty(prot.NProt) && a.Prot.NProt == prot.NProt).ToList();
+            // Todos os válidos têm o mesmo infNFe autorizado (digest = digVal). Se forem arquivos diferentes,
+            // vale o ASSINADA (o arquivo que o emissor importa; confirmado na 6/88869). O NFCE da pasta
+            // Autorizadas só é escolhido quando o ASSINADA não confere (caso das 6/88866-88868).
+            var preferidos = validos.Where(a => a.Tipo == TipoArquivo.Assinada).ToList();
+            if (preferidos.Count == 0)
+                preferidos = validos.Where(a => a.Prot != null && (a.Prot.CStat == "100" || a.Prot.CStat == "150")
+                    && !string.IsNullOrEmpty(prot.NProt) && a.Prot.NProt == prot.NProt).ToList();
             if (preferidos.Count == 0)
                 preferidos = validos.Where(a => a.Tipo == TipoArquivo.Autorizada ||
                     a.Caminho.IndexOf(@"\Autorizadas\", StringComparison.OrdinalIgnoreCase) >= 0).ToList();
@@ -275,7 +277,7 @@ namespace DuplicidadeNfce
             foreach (var c in sel.Candidatos.Where(c => c.Aceito && c.Caminho != escolhido.Caminho))
             {
                 c.Aceito = false;
-                c.Motivo = "mesmo conteúdo autorizado (digest confere), mas preterido: o escolhido é o XML com o protocolo da SEFAZ";
+                c.Motivo = "mesmo conteúdo autorizado (digest confere), mas preterido: o escolhido é " + Path.GetFileName(escolhido.Caminho);
             }
             return escolhido;
         }
