@@ -1,0 +1,12 @@
+# Dados reais do cliente (XMLs, chaves, CNPJ/CPF): nunca versionar
+amostras/
+exemplos/
+testes/casos.local.ps1
+*.pfx
+*.p12
+
+# Gerados
+dist/
+relatorios/
+*.exe
+*.pdb
