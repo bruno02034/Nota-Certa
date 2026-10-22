@@ -408,8 +408,8 @@
               <RowDefinition Height="Auto"/>
               <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
-            <DockPanel>
-              <StackPanel Orientation="Horizontal" DockPanel.Dock="Left" VerticalAlignment="Center">
+            <WrapPanel>
+              <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,24,6">
                 <TextBlock Text="De" VerticalAlignment="Center" Foreground="{StaticResource TextoSec}" Margin="0,0,8,0"/>
                 <DatePicker x:Name="DataDe" Width="130" VerticalContentAlignment="Center" Height="34"/>
                 <TextBlock Text="até" VerticalAlignment="Center" Foreground="{StaticResource TextoSec}" Margin="12,0,8,0"/>
@@ -417,12 +417,12 @@
                 <Button x:Name="BtnListar" Style="{StaticResource BtnAzul}" Content="Listar notas com 539" Margin="14,0,0,0"/>
                 <Button x:Name="BtnProcessar" Style="{StaticResource BtnPrimario}" Content="Processar marcadas" Margin="10,0,0,0"/>
               </StackPanel>
-              <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+              <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,0,6">
                 <Button x:Name="BtnAbrirPasta" Style="{StaticResource BtnSecundario}" Content="Abrir pasta Duplicidade"/>
                 <Button x:Name="BtnExportar" Style="{StaticResource BtnSecundario}" Content="Exportar relatório (CSV)" Margin="8,0,0,0"/>
                 <Button x:Name="BtnVerLog" Style="{StaticResource BtnSecundario}" Content="Ver log" Margin="8,0,0,0"/>
               </StackPanel>
-            </DockPanel>
+            </WrapPanel>
             <Grid Grid.Row="1" Margin="0,12,0,0">
               <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="260"/>
@@ -512,7 +512,7 @@
           <Grid.ColumnDefinitions>
             <ColumnDefinition Width="*"/>
             <ColumnDefinition Width="16"/>
-            <ColumnDefinition Width="360"/>
+            <ColumnDefinition x:Name="ColDetalhes" Width="360"/>
           </Grid.ColumnDefinitions>
           <Grid>
             <Border Style="{StaticResource CardFundo}"/>
@@ -527,22 +527,22 @@
                 <TextBlock Style="{StaticResource TituloCard}" Text="NOTAS COM REJEIÇÃO 539" VerticalAlignment="Center"/>
               </DockPanel>
               <Grid>
-                <DataGrid x:Name="Grade">
+                <DataGrid x:Name="Grade" HorizontalScrollBarVisibility="Auto">
                   <DataGrid.Columns>
-                    <DataGridTemplateColumn Width="36" CanUserResize="False">
+                    <DataGridTemplateColumn Width="36" MinWidth="36" CanUserResize="False">
                       <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
                           <CheckBox IsChecked="{Binding Marcada, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding PodeMarcar}" HorizontalAlignment="Center" VerticalAlignment="Center" Cursor="Hand"/>
                         </DataTemplate>
                       </DataGridTemplateColumn.CellTemplate>
                     </DataGridTemplateColumn>
-                    <DataGridTextColumn Header="NOTA" Binding="{Binding Nota}" Width="86" IsReadOnly="True" ElementStyle="{StaticResource TextoForte}"/>
-                    <DataGridTextColumn Header="PEDIDO" Binding="{Binding Pedido}" Width="66" IsReadOnly="True"/>
-                    <DataGridTextColumn Header="EMISSÃO" Binding="{Binding Data}" Width="114" IsReadOnly="True"/>
-                    <DataGridTextColumn Header="VALOR SIST." Binding="{Binding ValorSistema}" Width="86" IsReadOnly="True" ElementStyle="{StaticResource TextoDireita}"/>
-                    <DataGridTextColumn Header="VALOR SEFAZ" Binding="{Binding ValorSefaz}" Width="88" IsReadOnly="True" ElementStyle="{StaticResource TextoDireita}"/>
+                    <DataGridTextColumn Header="NOTA" Binding="{Binding Nota}" Width="86" MinWidth="86" IsReadOnly="True" ElementStyle="{StaticResource TextoForte}"/>
+                    <DataGridTextColumn Header="PEDIDO" Binding="{Binding Pedido}" Width="66" MinWidth="66" IsReadOnly="True"/>
+                    <DataGridTextColumn Header="EMISSÃO" Binding="{Binding Data}" Width="114" MinWidth="114" IsReadOnly="True"/>
+                    <DataGridTextColumn Header="VALOR SIST." Binding="{Binding ValorSistema}" Width="86" MinWidth="86" IsReadOnly="True" ElementStyle="{StaticResource TextoDireita}"/>
+                    <DataGridTextColumn Header="VALOR SEFAZ" Binding="{Binding ValorSefaz}" Width="88" MinWidth="88" IsReadOnly="True" ElementStyle="{StaticResource TextoDireita}"/>
                     <DataGridTextColumn Header="ARQUIVO" Binding="{Binding Arquivo}" Width="*" MinWidth="100" IsReadOnly="True" ElementStyle="{StaticResource TextoCortado}"/>
-                    <DataGridTemplateColumn Header="STATUS" Width="150" CellTemplate="{StaticResource Etiqueta}" SortMemberPath="Status"/>
+                    <DataGridTemplateColumn Header="STATUS" Width="150" MinWidth="150" CellTemplate="{StaticResource Etiqueta}" SortMemberPath="Status"/>
                   </DataGrid.Columns>
                 </DataGrid>
                 <TextBlock x:Name="GradeVazia" Text="Nenhuma nota com rejeição 539 no período." HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="#9CA3AF" Visibility="Collapsed"/>

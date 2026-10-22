@@ -127,7 +127,7 @@ namespace DuplicidadeNfce
         readonly Opcoes op;
         Config cfg;
         Motor motor;
-        bool ocupado, recolhido;
+        bool ocupado, recolhido, recolherManual;
         readonly ObservableCollection<LinhaGrid> linhas = new ObservableCollection<LinhaGrid>();
         ICollectionView visao;
         string ultimoResumo = "";
@@ -168,7 +168,17 @@ namespace DuplicidadeNfce
             G<Button>("BtnVerLog").Click += (s, e) => { if (motor != null) Abrir("notepad.exe", motor.ArqLog); };
             G<Button>("BtnMarcar").Click += (s, e) => { foreach (var l in linhas) l.Marcada = l.Linha.Status == Status.AProcessar; };
             G<Button>("BtnDesmarcar").Click += (s, e) => { foreach (var l in linhas) l.Marcada = false; };
-            G<Button>("BtnRecolher").Click += (s, e) => Recolher();
+            G<Button>("BtnRecolher").Click += (s, e) => { recolherManual = true; Recolher(); };
+            // Telas pequenas (servidor via AnyDesk): recolhe o menu e estreita os detalhes para a grade caber.
+            W.SizeChanged += (s, e) =>
+            {
+                double l = W.ActualWidth;
+                ((ColumnDefinition)W.FindName("ColDetalhes")).Width = new GridLength(l < 1300 ? 300 : 360);
+                // Em tela estreita o nome do arquivo sai da grade (continua nos detalhes) para o status caber.
+                foreach (var c in G<DataGrid>("Grade").Columns.Where(c => "ARQUIVO".Equals(c.Header)))
+                    c.Visibility = l < 1300 ? Visibility.Collapsed : Visibility.Visible;
+                if (!recolherManual && (l < 1366) != recolhido) Recolher();
+            };
             G<DataGrid>("Grade").SelectionChanged += (s, e) => MostrarDetalhes(G<DataGrid>("Grade").SelectedItem as LinhaGrid);
             G<TextBox>("CaixaPesquisa").TextChanged += (s, e) =>
             {
@@ -202,6 +212,13 @@ namespace DuplicidadeNfce
                 W.Left = -10000;
                 W.ShowActivated = false;
                 W.ShowInTaskbar = false;
+                int largura;
+                if (int.TryParse(Environment.GetEnvironmentVariable("NOTACERTA_LARGURA"), out largura))
+                {
+                    W.MinWidth = 800;
+                    W.Width = largura;
+                    W.Height = 830;
+                }
             }
             W.Loaded += (s, e) =>
             {
