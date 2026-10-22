@@ -34,6 +34,7 @@ namespace DuplicidadeNfce
         public string DbBanco = "chef";
         public string DbSituacao = "Em contigencia";
         public string MariaDbDll = "";
+        public string PastaBancoMetre = @"C:\Chef\Banco de Dados";
         public bool ValidarCertificadoServidor = true;
         public int TimeoutSegundos = 30;
 
@@ -79,6 +80,7 @@ namespace DuplicidadeNfce
                 case "dbbanco": DbBanco = valor; break;
                 case "dbsituacao": DbSituacao = valor; break;
                 case "mariadbdll": MariaDbDll = valor; break;
+                case "pastabancometre": PastaBancoMetre = valor; break;
                 case "validarcertificadoservidor": ValidarCertificadoServidor = Sim(valor); break;
                 case "timeoutsegundos": TimeoutSegundos = int.Parse(valor); break;
                 default: throw new Exception(origem + ": opção desconhecida '" + chave + "'");

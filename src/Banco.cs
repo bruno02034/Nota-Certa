@@ -113,8 +113,14 @@ namespace DuplicidadeNfce
             var tentativas = new List<string>();
             if (!string.IsNullOrEmpty(cfg.MariaDbDll)) tentativas.Add(cfg.MariaDbDll);
             tentativas.Add(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "libmariadb.dll"));
-            tentativas.Add(@"C:\Program Files\HeidiSQL\libmariadb.dll");
-            tentativas.Add(@"C:\Program Files (x86)\HeidiSQL\libmariadb.dll");
+            // Instalação do MariaDB do Metre (a DLL fica em bin\ ou lib\) e o HeidiSQL.
+            foreach (string pasta in new[] { cfg.PastaBancoMetre, @"C:\Program Files\HeidiSQL", @"C:\Program Files (x86)\HeidiSQL" })
+            {
+                if (string.IsNullOrEmpty(pasta) || !Directory.Exists(pasta)) continue;
+                tentativas.Add(Path.Combine(pasta, "libmariadb.dll"));
+                try { tentativas.AddRange(Directory.GetFiles(pasta, "libmariadb.dll", SearchOption.AllDirectories)); }
+                catch (Exception ex) { tentativas.Add("(sem acesso a " + pasta + ": " + ex.Message + ")"); }
+            }
             foreach (string t in tentativas.Distinct(StringComparer.OrdinalIgnoreCase))
             {
                 if (!File.Exists(t)) continue;
