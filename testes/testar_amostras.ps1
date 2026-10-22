@@ -137,6 +137,14 @@ try {
     Confere $r $Aut89244 'JÁ AUTORIZADA' '' '' 'criada ao importar'
     Confere $r $K88867sem539 'A COPIAR' 'NOTA_88867_SERIE_6_ASSINADA_19_10_2026_17_06_37.xml' '10,00' 'sistema 15,50'
 
+    # Historico antigo (ex.: o _NFCE copiado por engano) nao bloqueia nota que continua na contingencia do Metre
+    $destH = Join-Path $tmp 'destino_hist'
+    New-Item -ItemType Directory -Path $destH | Out-Null
+    @('Data/hora;Serie;Numero;Chave autorizada;Arquivo;Caminho origem;Caminho destino;Tamanho;SHA256;Status',
+      "22/10/2026 15:49:00;6;89244;=`"`"$Aut89244`"`";NOTA_89244_SERIE_6_NFCE.xml;x;y;1;z;COPIADO") | Set-Content (Join-Path $destH 'historico.csv') -Encoding UTF8
+    $r = Rodar $amostras "FonteContingencia=csv:$csvMetre" @('--sem-sefaz', '--notas', '6/89244') $destH
+    Confere $r $K89244b 'A COPIAR' 'NOTA_89244_SERIE_6_ASSINADA_21_10_2026_08_23_20.xml' '18,90' 'sistema 13,95'
+
     Write-Host '--- Temp_ANTES_ENVIO envolto em enviNFe e lido sem erro'
     $d = CopiaAmostras 'envinfe'
     $nfe = [regex]::Match([IO.File]::ReadAllText((Join-Path $d 'NOTA_88868_SERIE_6_ASSINADA_19_10_2026_17_22_32.xml')), '<NFe .*</NFe>', 'Singleline').Value

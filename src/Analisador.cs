@@ -500,7 +500,9 @@ namespace DuplicidadeNfce
             {
                 var l = NovaLinha(t);
                 linhas.Add(l);
-                var reg = historico.BuscarCopiado(t.ChaveAutorizada);
+                // Com a lista do Metre (banco/CSV), estar na aba Contingência já diz que não foi resolvida:
+                // o histórico não bloqueia (ele pode ter cópias erradas, como os _NFCE de 22/10).
+                var reg = contingencia == null ? historico.BuscarCopiado(t.ChaveAutorizada) : null;
                 if (ForaDoFluxo(t, l)) { }
                 else if (t.ChaveAutorizada == null)
                     Pendente(l, "chave autorizada não identificada", new List<string>(t.Avisos));
@@ -570,7 +572,9 @@ namespace DuplicidadeNfce
                     continue;
                 }
                 // Já copiada numa execução anterior: nem consulta a SEFAZ de novo.
-                var reg = historico.BuscarCopiado(t.ChaveAutorizada);
+                // Com a lista do Metre (banco/CSV), estar na aba Contingência já diz que não foi resolvida:
+                // o histórico não bloqueia (ele pode ter cópias erradas, como os _NFCE de 22/10).
+                var reg = contingencia == null ? historico.BuscarCopiado(t.ChaveAutorizada) : null;
                 if (reg != null)
                 {
                     l.ArquivoEscolhido = reg.Arquivo;
