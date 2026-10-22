@@ -211,7 +211,7 @@ namespace DuplicidadeNfce
             sel.ValorSefaz = escolhido.VNF;
             sel.MotivoEscolha = "chave autorizada no Id, DigestValue = digVal SEFAZ (conferido pelo conteúdo)" +
                 (escolhido.Prot != null ? ", protNFe " + escolhido.Prot.CStat + " nProt " + escolhido.Prot.NProt : "") +
-                (copias > 1 ? ", " + copias + " cópias idênticas" : "");
+                (copias > 1 ? "; " + copias + " arquivos com o conteúdo autorizado, escolhido o XML com o protocolo" : "");
             log.Info("  Escolhido: " + escolhido.Caminho);
             return sel;
         }
@@ -250,18 +250,33 @@ namespace DuplicidadeNfce
                     : "nenhum dos " + arqs.Count + " arquivo(s) com a chave tem DigestValue igual ao digVal " + fonte;
                 return null;
             }
-            if (validos.GroupBy(a => a.Sha256).Count() > 1)
+            // Todos os válidos têm o mesmo infNFe autorizado (digest = digVal). Se forem arquivos diferentes
+            // (ex.: ASSINADA sem protocolo e NFCE com protNFe), vale o XML autorizado completo: o que traz o
+            // protNFe com o mesmo nProt; na falta dele, o da pasta Autorizadas / tipo NFCE.
+            var preferidos = validos.Where(a => a.Prot != null && (a.Prot.CStat == "100" || a.Prot.CStat == "150")
+                && !string.IsNullOrEmpty(prot.NProt) && a.Prot.NProt == prot.NProt).ToList();
+            if (preferidos.Count == 0)
+                preferidos = validos.Where(a => a.Tipo == TipoArquivo.Autorizada ||
+                    a.Caminho.IndexOf(@"\Autorizadas\", StringComparison.OrdinalIgnoreCase) >= 0).ToList();
+            if (preferidos.Count == 0) preferidos = validos;
+            var semSobra = preferidos.Where(a => !a.TemSobra).ToList();
+            if (semSobra.Count == 0)
             {
-                motivoPendente = "mais de um arquivo válido com conteúdo diferente: " + string.Join(" | ", validos.Select(a => a.Caminho));
+                motivoPendente = "arquivo válido tem conteúdo residual após </nfeProc>: " + preferidos[0].Caminho;
                 return null;
             }
-            var escolhido = validos.OrderBy(a => a.Caminho.IndexOf(@"\Autorizadas\", StringComparison.OrdinalIgnoreCase) >= 0 ? 0 : 1).ThenBy(a => a.Caminho).First();
-            if (escolhido.TemSobra)
+            if (semSobra.GroupBy(a => a.Sha256).Count() > 1)
             {
-                motivoPendente = "arquivo válido tem conteúdo residual após </nfeProc>: " + escolhido.Caminho;
+                motivoPendente = "mais de um arquivo válido com conteúdo diferente: " + string.Join(" | ", semSobra.Select(a => a.Caminho));
                 return null;
             }
+            var escolhido = semSobra.OrderBy(a => a.Caminho.IndexOf(@"\Autorizadas\", StringComparison.OrdinalIgnoreCase) >= 0 ? 0 : 1).ThenBy(a => a.Caminho).First();
             copias = validos.Count;
+            foreach (var c in sel.Candidatos.Where(c => c.Aceito && c.Caminho != escolhido.Caminho))
+            {
+                c.Aceito = false;
+                c.Motivo = "mesmo conteúdo autorizado (digest confere), mas preterido: o escolhido é o XML com o protocolo da SEFAZ";
+            }
             return escolhido;
         }
 

@@ -91,6 +91,11 @@ try {
     Confere $r $K88867sem539 'PENDENTE' 'NOTA_88867_SERIE_6_NFCE.xml' '10,00' 'sem retorno 539'
     Verdade (-not ($r | Where-Object { $_.'Arquivo escolhido' -like '*ASSINADA*' })) 'nenhum ASSINADA escolhido'
 
+    Write-Host '--- 88869: ASSINADA e NFCE com o mesmo conteudo autorizado'
+    $r = Rodar $amostras '' @('--sem-sefaz', '--notas', '6/88869')
+    Confere $r $K88869 'A COPIAR' 'NOTA_88869_SERIE_6_NFCE.xml' '14,00' 'escolhido o XML com o protocolo'
+    Confere $r $K88869sem539 'PENDENTE' 'NOTA_88869_SERIE_6_NFCE.xml' '14,00' 'sem retorno 539'
+
     Write-Host '--- Lista restringe as notas'
     $r = Rodar $amostras '' @('--sem-sefaz', '--notas', '6/88867')
     Verdade (-not ($r | Where-Object { $_.Numero -ne '88867' })) 'so a 6/88867 aparece no relatorio'
@@ -209,6 +214,10 @@ try {
     Confere $r $K88867sem539 'PENDENTE' 'NOTA_88867_SERIE_6_NFCE.xml' '' 'sem retorno 539'
     Verdade (@(Get-Content $chamadas).Count -eq $antes) 'ja processadas nao consultam a SEFAZ de novo'
     Verdade (@(Import-Csv (Join-Path $destC 'historico.csv') -Delimiter ';').Count -eq 2) 'historico nao ganhou linhas novas'
+
+    $r = Rodar $amostras $cfgSefaz @('--notas', '6/88869', '--copiar') $destC
+    Confere $r $K88869 'COPIADO' 'NOTA_88869_SERIE_6_NFCE.xml' '14,00' 'cópia conferida'
+    Verdade ((Hash (Join-Path $destC "$hoje\NOTA_88869_SERIE_6_NFCE.xml")) -eq (Hash (Join-Path $amostras 'NOTA_88869_SERIE_6_NFCE.xml'))) 'copia da 88869 e o NFCE com protocolo (nao o ASSINADA)'
 
     Write-Host '--- Destino ja tem o arquivo (sem historico): nao sobrescreve'
     $destX = Join-Path $tmp 'destino_existente'
