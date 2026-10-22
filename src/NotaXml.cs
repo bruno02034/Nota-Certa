@@ -95,12 +95,13 @@ namespace DuplicidadeNfce
 
         static string CortarPrimeiroDocumento(NotaXml nota, string texto)
         {
-            string fecha = "</nfeProc>";
-            int fim = texto.IndexOf(fecha, StringComparison.Ordinal);
-            if (fim < 0)
+            // nfeProc (normal), enviNFe (Temp_ANTES_ENVIO: lote de envio) ou NFe solta.
+            string fecha = null;
+            int fim = -1;
+            foreach (string f in new[] { "</nfeProc>", "</enviNFe>", "</NFe>" })
             {
-                fecha = "</NFe>";
-                fim = texto.IndexOf(fecha, StringComparison.Ordinal);
+                fim = texto.IndexOf(f, StringComparison.Ordinal);
+                if (fim >= 0) { fecha = f; break; }
             }
             if (fim < 0) return texto;
             fim += fecha.Length;

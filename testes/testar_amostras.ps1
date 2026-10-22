@@ -96,6 +96,15 @@ try {
     Confere $r $K88869 'A COPIAR' 'NOTA_88869_SERIE_6_NFCE.xml' '14,00' 'escolhido o XML com o protocolo'
     Confere $r $K88869sem539 'PENDENTE' 'NOTA_88869_SERIE_6_NFCE.xml' '14,00' 'sem retorno 539'
 
+    Write-Host '--- Temp_ANTES_ENVIO envolto em enviNFe e lido sem erro'
+    $d = CopiaAmostras 'envinfe'
+    $nfe = [regex]::Match([IO.File]::ReadAllText((Join-Path $d 'NOTA_88868_SERIE_6_ASSINADA_19_10_2026_17_22_32.xml')), '<NFe .*</NFe>', 'Singleline').Value
+    [IO.File]::WriteAllText((Join-Path $d 'NOTA_88868_SERIE_6_CHAVE_X_Temp_ANTES_ENVIO_19_10_2026_17_22_33.xml'),
+        '<?xml version="1.0" encoding="UTF-8"?><enviNFe versao="4.00" xmlns="http://www.portalfiscal.inf.br/nfe"><idLote>1</idLote><indSinc>0</indSinc>' + $nfe + '</enviNFe>')
+    $r = Rodar $d '' @('--sem-sefaz', '--notas', '6/88868')
+    Verdade ($ultimaSaida.Contains('0 com erro de leitura')) 'enviNFe lido sem erro de leitura'
+    Confere $r $K88868 'A COPIAR' 'NOTA_88868_SERIE_6_NFCE.xml' '5,00'
+
     Write-Host '--- Lista restringe as notas'
     $r = Rodar $amostras '' @('--sem-sefaz', '--notas', '6/88867')
     Verdade (-not ($r | Where-Object { $_.Numero -ne '88867' })) 'so a 6/88867 aparece no relatorio'
