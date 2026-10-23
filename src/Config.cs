@@ -38,6 +38,11 @@ namespace DuplicidadeNfce
         public bool ValidarCertificadoServidor = true;
         public int TimeoutSegundos = 30;
 
+        // Notas Faltantes: cópias em <PastaNotasFaltantes>\<CNPJ>_<AAAA-MM>_<data-hora>; histórico na pasta base.
+        public string PastaNotasFaltantes = @"C:\Chef\NFCe\NotasFaltantes";
+        // Trava contra faixa digitada errada (ex.: Final com um dígito a mais).
+        public int LimiteNumerosFaltantes = 5000;
+
         public static Config Carregar(string caminho)
         {
             var c = new Config();
@@ -83,6 +88,8 @@ namespace DuplicidadeNfce
                 case "pastabancometre": PastaBancoMetre = valor; break;
                 case "validarcertificadoservidor": ValidarCertificadoServidor = Sim(valor); break;
                 case "timeoutsegundos": TimeoutSegundos = int.Parse(valor); break;
+                case "pastanotasfaltantes": PastaNotasFaltantes = valor; break;
+                case "limitenumerosfaltantes": LimiteNumerosFaltantes = int.Parse(valor); break;
                 default: throw new Exception(origem + ": opção desconhecida '" + chave + "'");
             }
         }

@@ -11,10 +11,12 @@ namespace DuplicidadeNfce
     class Opcoes
     {
         public string ArqConfig, Captura;
-        public bool SemSefaz, Copiar, TodasDatas, Gui, TestarBanco;
+        public bool SemSefaz, Copiar, TodasDatas, Gui, TestarBanco, Faltantes, Recopiar, Zip;
         public List<KeyValuePair<string, string>> Sobrepor = new List<KeyValuePair<string, string>>();
         public List<string> TextoNotas = new List<string>();
         public string ArqNotas;
+        public string Cnpj, Mes, ArqFaixas;
+        public List<string> TextoFaixas = new List<string>();
 
         public Config CarregarConfig()
         {
@@ -51,6 +53,19 @@ Sem argumentos abre a interface gráfica. Linha de comando:
   --sem-sefaz        TESTE: usa o protNFe dos XMLs locais no lugar da SEFAZ (não combina com --copiar)
   --gui              abre a interface gráfica com as opções acima
   --testar-banco     só conecta no banco do Metre (somente leitura) e mostra a contingência
+
+Notas Faltantes (relatório ""Notas não lançadas de Saídas""):
+
+     NotaCerta.exe --faltantes --cnpj 11222333000181 --mes 09/2026 --faixas ""501 512 7"" [--copiar] [--zip]
+
+  --faltantes        busca os XMLs dos números faltantes
+  --cnpj <cnpj>      CNPJ do emitente
+  --mes <MM/AAAA>    mês de referência (vale o dhEmi, não a pasta)
+  --faixas <lista>   faixas ""Inicial Final Série"", separadas por vírgula
+  --faixas-arquivo <arq>  uma faixa por linha (pode colar as linhas do relatório)
+  --copiar           copia para PastaNotasFaltantes\<CNPJ>_<AAAA-MM>_<data-hora> e confere
+  --recopiar         copia também os números que já constam no histórico
+  --zip              gera o .zip da pasta da entrega (com --copiar)
 
 Sem --copiar: só relatório. Os arquivos do emissor são abertos somente para leitura;
 a cópia nunca move nem sobrescreve, e fica registrada em historico.csv na pasta base.";
@@ -120,6 +135,14 @@ a cópia nunca move nem sobrescreve, e fica registrada em historico.csv na pasta
                     case "--notas-arquivo": op.ArqNotas = prox(); break;
                     case "--gui": op.Gui = true; break;
                     case "--testar-banco": op.TestarBanco = true; break;
+                    case "--faltantes": op.Faltantes = true; break;
+                    case "--cnpj": op.Cnpj = prox(); break;
+                    case "--mes": op.Mes = prox(); break;
+                    case "--faixas": op.TextoFaixas.Add(prox()); break;
+                    case "--faixas-arquivo": op.ArqFaixas = prox(); break;
+                    case "--recopiar": op.Recopiar = true; break;
+                    case "--zip": op.Zip = true; break;
+                    case "--destino-faltantes": sobrepor("PastaNotasFaltantes"); break;
                     case "--captura": op.Captura = prox(); op.Gui = true; break;
                     case "--ajuda": case "-h": case "/?": return null;
                     default: throw new Exception("opção desconhecida: " + args[i] + " (use --ajuda)");
@@ -140,6 +163,7 @@ a cópia nunca move nem sobrescreve, e fica registrada em historico.csv na pasta
         static int ExecutarLinhaDeComando(Opcoes op)
         {
             if (op.TestarBanco) return TestarBanco(op);
+            if (op.Faltantes) return ExecutarFaltantes(op);
             if (op.ArqNotas != null)
             {
                 if (!File.Exists(op.ArqNotas)) throw new Exception("arquivo de notas não existe: " + op.ArqNotas);
@@ -188,6 +212,38 @@ a cópia nunca move nem sobrescreve, e fica registrada em historico.csv na pasta
                 if (op.Copiar) log.Tela("Histórico: " + motor.Historico.Caminho);
                 log.Tela("Relatório: " + arqCsv);
                 log.Tela("Log:       " + motor.ArqLog);
+            }
+            return 0;
+        }
+
+        // Notas Faltantes: --cnpj, --mes e as faixas do relatório "Notas não lançadas de Saídas".
+        static int ExecutarFaltantes(Opcoes op)
+        {
+            var linhas = new List<string>();
+            foreach (string t in op.TextoFaixas) linhas.AddRange(t.Split(new[] { ',', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries));
+            if (op.ArqFaixas != null)
+            {
+                if (!File.Exists(op.ArqFaixas)) throw new Exception("arquivo de faixas não existe: " + op.ArqFaixas);
+                linhas.AddRange(File.ReadAllLines(op.ArqFaixas, Encoding.UTF8).Select(x => x.Split('#')[0]));
+            }
+            var invalidas = new List<string>();
+            var faixas = MotorFaltantes.LerFaixas(string.Join("\n", linhas), invalidas);
+            if (invalidas.Count > 0) throw new Exception("faixa(s) não reconhecida(s): " + string.Join(" | ", invalidas) + " (use: Inicial Final Série)");
+            if (faixas.Count == 0 || op.Cnpj == null || op.Mes == null)
+            {
+                Console.WriteLine("Informe --cnpj, --mes e as faixas (--faixas ou --faixas-arquivo).");
+                Console.WriteLine();
+                Console.WriteLine(Ajuda);
+                return 1;
+            }
+            using (var m = new MotorFaltantes(op.CarregarConfig(), AppDomain.CurrentDomain.BaseDirectory))
+            {
+                m.Executar(op.Cnpj, MotorFaltantes.LerMes(op.Mes), faixas, op.Copiar, op.Recopiar, null);
+                if (op.Zip)
+                {
+                    if (!op.Copiar) throw new Exception("--zip exige --copiar");
+                    m.Log.Tela("Zip:       " + MotorFaltantes.GerarZip(m.PastaExecucao));
+                }
             }
             return 0;
         }

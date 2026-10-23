@@ -149,6 +149,7 @@ namespace DuplicidadeNfce
         ICollectionView visao;
         string ultimoResumo = "";
         int copiadasSessao;
+        TelaFaltantes faltantes;
 
         public Janela(Opcoes op)
         {
@@ -191,6 +192,7 @@ namespace DuplicidadeNfce
             {
                 double l = W.ActualWidth;
                 ((ColumnDefinition)W.FindName("ColDetalhes")).Width = new GridLength(l < 1300 ? 300 : 360);
+                ((ColumnDefinition)W.FindName("ColFalDetalhes")).Width = new GridLength(l < 1300 ? 300 : 360);
                 // Em tela estreita o nome do arquivo sai da grade (continua nos detalhes) para o status caber.
                 foreach (var c in G<DataGrid>("Grade").Columns.Where(c => "ARQUIVO".Equals(c.Header)))
                     c.Visibility = l < 1300 ? Visibility.Collapsed : Visibility.Visible;
@@ -206,6 +208,8 @@ namespace DuplicidadeNfce
             foreach (var p in new[] { "PilTodas", "PilAProcessar", "PilCopiadas", "PilAjuste", "PilPendentes", "PilContingencia", "PilJa" })
                 G<RadioButton>(p).Checked += (s, e) => visao.Refresh();
             G<RadioButton>("MenuDuplicidades").Checked += (s, e) => Pagina("PagDuplicidades", "Processamento");
+            faltantes = new TelaFaltantes(W, () => cfg, op);
+            G<RadioButton>("MenuFaltantes").Checked += (s, e) => Pagina("PagFaltantes", "Busca");
             G<RadioButton>("MenuHistorico").Checked += (s, e) => { Pagina("PagHistorico", "Histórico"); CarregarHistorico(); };
             G<RadioButton>("MenuRelatorios").Checked += (s, e) => { Pagina("PagRelatorios", "Relatórios"); CarregarRelatorios(); };
             G<RadioButton>("MenuConfig").Checked += (s, e) => { Pagina("PagConfig", "Configurações"); CarregarConfigTela(); };
@@ -240,6 +244,13 @@ namespace DuplicidadeNfce
             W.Loaded += (s, e) =>
             {
                 CarregarSelo();
+                // Captura de tela da página de Notas Faltantes (desenvolvimento): ela mesma processa e salva o PNG.
+                if (op.Captura != null && Environment.GetEnvironmentVariable("NOTACERTA_PAGINA") == "faltantes")
+                {
+                    G<RadioButton>("MenuFaltantes").IsChecked = true;
+                    faltantes.Capturar();
+                    return;
+                }
                 Listar();
             };
         }
@@ -265,8 +276,9 @@ namespace DuplicidadeNfce
 
         void Pagina(string nome, string titulo)
         {
-            foreach (var p in new[] { "PagDuplicidades", "PagHistorico", "PagRelatorios", "PagConfig" })
+            foreach (var p in new[] { "PagDuplicidades", "PagFaltantes", "PagHistorico", "PagRelatorios", "PagConfig" })
                 G<FrameworkElement>(p).Visibility = p == nome ? Visibility.Visible : Visibility.Collapsed;
+            ((System.Windows.Documents.Run)W.FindName("TxtBreadA")).Text = nome == "PagFaltantes" ? "Notas Faltantes" : "Duplicidade";
             ((System.Windows.Documents.Run)W.FindName("TxtBreadB")).Text = titulo;
             G<FrameworkElement>("PainelPilulas").Visibility = nome == "PagDuplicidades" ? Visibility.Visible : Visibility.Hidden;
         }
@@ -276,7 +288,7 @@ namespace DuplicidadeNfce
             recolhido = !recolhido;
             G<Border>("Lateral").Width = recolhido ? 76 : 248;
             var vis = recolhido ? Visibility.Collapsed : Visibility.Visible;
-            foreach (var n in new[] { "LogoTextos", "Rot1", "Rot2", "Rot3", "Rot4", "CaixaPesquisaGrid", "TxtVersao" })
+            foreach (var n in new[] { "LogoTextos", "Rot1", "Rot2", "Rot3", "Rot4", "Rot5", "CaixaPesquisaGrid", "TxtVersao" })
                 G<FrameworkElement>(n).Visibility = vis;
             ((ScaleTransform)W.FindName("EscalaRecolher")).ScaleX = recolhido ? -1 : 1;
             G<Button>("BtnRecolher").ToolTip = recolhido ? "Expandir menu" : "Recolher menu";

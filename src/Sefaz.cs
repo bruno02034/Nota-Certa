@@ -19,6 +19,9 @@ namespace DuplicidadeNfce
         public string CStat, XMotivo, DhRecbto;
         public ProtocoloXml Prot;
         public string XmlBruto;
+        // Trechos da resposta, como a SEFAZ mandou: protNFe e eventos (procEventoNFe), para montar os XMLs de entrega.
+        public string ProtNFeXml;
+        public List<EventoSefaz> Eventos = new List<EventoSefaz>();
 
         public bool Autorizada
         {
@@ -39,6 +42,11 @@ namespace DuplicidadeNfce
                 return Simulado ? "SIMULADO (protNFe local, SEFAZ não consultada): " + s : s;
             }
         }
+    }
+
+    class EventoSefaz
+    {
+        public string TpEvento, CStat, XMotivo, NProt, ChNFe, Xml;
     }
 
     // Consulta de situação (NFeConsultaProtocolo 4.00). Somente leitura: não transmite nem altera nada.
@@ -70,6 +78,46 @@ namespace DuplicidadeNfce
                     ? "https://nfce.fazenda.mg.gov.br/nfce/services/NFeConsultaProtocolo4"
                     : "https://hnfce.fazenda.mg.gov.br/nfce/services/NFeConsultaProtocolo4";
             throw new Exception("UF " + cfg.UF + " sem URL padrão; informe UrlConsulta no arquivo de configuração.");
+        }
+
+        // Consulta por chave com um certificado por CNPJ emitente (posições 7-20 da chave), carregado na primeira
+        // consulta. Cada resposta é guardada em pastaSefaz\<chave>.xml.
+        public static Func<string, RespostaSefaz> CriarConsulta(Config cfg, Log log, string pastaSefaz)
+        {
+            var clientes = new Dictionary<string, ClienteSefaz>();
+            var semCertificado = new Dictionary<string, string>();
+            return k =>
+            {
+                string cnpj = k.Substring(6, 14);
+                ClienteSefaz cli;
+                string erro;
+                if (!clientes.TryGetValue(cnpj, out cli) && !semCertificado.TryGetValue(cnpj, out erro))
+                {
+                    log.Tela("Consulta SEFAZ: " + UrlConsulta(cfg) + " (ambiente " + cfg.Ambiente + ")");
+                    if (!cfg.ValidarCertificadoServidor) log.Tela("AVISO: validação do certificado do servidor da SEFAZ desligada.");
+                    string arqPfx;
+                    var cert = CarregarCertificado(cfg, cnpj, log, out erro, out arqPfx);
+                    if (cert == null)
+                    {
+                        semCertificado[cnpj] = erro;
+                        log.Tela("SEFAZ NÃO será consultada para o CNPJ " + cnpj + ": " + erro);
+                    }
+                    else
+                    {
+                        clientes[cnpj] = cli = new ClienteSefaz(cfg, cert);
+                        log.Tela("Certificado CNPJ " + cnpj + ": " + arqPfx + " - " + cert.Subject + " (validade " + cert.NotAfter.ToString("dd/MM/yyyy") + ")");
+                    }
+                }
+                if (cli == null)
+                    return new RespostaSefaz { Ok = false, NaoConsultada = true, Erro = semCertificado[cnpj] };
+                var r = cli.Consultar(k);
+                if (r.XmlBruto != null)
+                {
+                    Directory.CreateDirectory(pastaSefaz);
+                    File.WriteAllText(Path.Combine(pastaSefaz, k + ".xml"), r.XmlBruto, new UTF8Encoding(false));
+                }
+                return r;
+            };
         }
 
         public RespostaSefaz Consultar(string chave)
@@ -152,6 +200,38 @@ namespace DuplicidadeNfce
                     DigVal = Txt(ip, "n:digVal", ns),
                     DhRecbto = Txt(ip, "n:dhRecbto", ns)
                 };
+            var prot = ret.SelectSingleNode("n:protNFe", ns) as XmlElement;
+            if (prot != null) r.ProtNFeXml = Trecho(r.XmlBruto, "protNFe") ?? prot.OuterXml;
+            var brutos = Trechos(r.XmlBruto, "procEventoNFe");
+            int i = 0;
+            foreach (XmlElement pe in ret.SelectNodes("n:procEventoNFe", ns))
+            {
+                r.Eventos.Add(new EventoSefaz
+                {
+                    TpEvento = Txt(pe, "n:evento/n:infEvento/n:tpEvento", ns),
+                    ChNFe = Txt(pe, "n:evento/n:infEvento/n:chNFe", ns),
+                    CStat = Txt(pe, "n:retEvento/n:infEvento/n:cStat", ns),
+                    XMotivo = Txt(pe, "n:retEvento/n:infEvento/n:xMotivo", ns),
+                    NProt = Txt(pe, "n:retEvento/n:infEvento/n:nProt", ns),
+                    Xml = i < brutos.Count ? brutos[i] : pe.OuterXml
+                });
+                i++;
+            }
+        }
+
+        // O texto exato do elemento na resposta (sem prefixo), para não mexer em nada do que a SEFAZ assinou.
+        static string Trecho(string xml, string tag)
+        {
+            var l = Trechos(xml, tag);
+            return l.Count > 0 ? l[0] : null;
+        }
+
+        static List<string> Trechos(string xml, string tag)
+        {
+            var lista = new List<string>();
+            foreach (System.Text.RegularExpressions.Match m in System.Text.RegularExpressions.Regex.Matches(xml, "<" + tag + @"\b[\s\S]*?</" + tag + ">"))
+                lista.Add(m.Value);
+            return lista;
         }
 
         static string Txt(XmlNode raiz, string xp, XmlNamespaceManager ns)

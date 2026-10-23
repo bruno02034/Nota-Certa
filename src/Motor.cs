@@ -162,42 +162,8 @@ namespace DuplicidadeNfce
 
         Func<string, List<NotaXml>, RespostaSefaz> CriarConsultaSefaz()
         {
-            string pastaSefaz = Path.Combine(PastaRel, "sefaz_" + carimbo);
-            var clientes = new Dictionary<string, ClienteSefaz>();
-            var semCertificado = new Dictionary<string, string>();
-            return (k, arqs) =>
-            {
-                // Um certificado por CNPJ emitente (posições 7-20 da chave), carregado na primeira consulta.
-                string cnpj = k.Substring(6, 14);
-                ClienteSefaz cli;
-                string erro;
-                if (!clientes.TryGetValue(cnpj, out cli) && !semCertificado.TryGetValue(cnpj, out erro))
-                {
-                    Log.Tela("Consulta SEFAZ: " + ClienteSefaz.UrlConsulta(Cfg) + " (ambiente " + Cfg.Ambiente + ")");
-                    if (!Cfg.ValidarCertificadoServidor) Log.Tela("AVISO: validação do certificado do servidor da SEFAZ desligada.");
-                    string arqPfx;
-                    var cert = ClienteSefaz.CarregarCertificado(Cfg, cnpj, Log, out erro, out arqPfx);
-                    if (cert == null)
-                    {
-                        semCertificado[cnpj] = erro;
-                        Log.Tela("SEFAZ NÃO será consultada para o CNPJ " + cnpj + ": " + erro);
-                    }
-                    else
-                    {
-                        clientes[cnpj] = cli = new ClienteSefaz(Cfg, cert);
-                        Log.Tela("Certificado CNPJ " + cnpj + ": " + arqPfx + " - " + cert.Subject + " (validade " + cert.NotAfter.ToString("dd/MM/yyyy") + ")");
-                    }
-                }
-                if (cli == null)
-                    return new RespostaSefaz { Ok = false, NaoConsultada = true, Erro = semCertificado[cnpj] };
-                var r = cli.Consultar(k);
-                if (r.XmlBruto != null)
-                {
-                    Directory.CreateDirectory(pastaSefaz);
-                    File.WriteAllText(Path.Combine(pastaSefaz, k + ".xml"), r.XmlBruto, new UTF8Encoding(false));
-                }
-                return r;
-            };
+            var f = ClienteSefaz.CriarConsulta(Cfg, Log, Path.Combine(PastaRel, "sefaz_" + carimbo));
+            return (k, arqs) => f(k);
         }
 
         // Modo de teste: o protNFe autorizado gravado no próprio XML faz o papel da resposta da SEFAZ.
