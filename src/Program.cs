@@ -15,8 +15,8 @@ namespace DuplicidadeNfce
         public List<KeyValuePair<string, string>> Sobrepor = new List<KeyValuePair<string, string>>();
         public List<string> TextoNotas = new List<string>();
         public string ArqNotas;
-        public string Mes, ArqFaixas;
-        public List<string> TextoFaixas = new List<string>();
+        public string Serie, ArqNumeros;
+        public List<string> TextoNumeros = new List<string>();
 
         public Config CarregarConfig()
         {
@@ -56,13 +56,13 @@ Sem argumentos abre a interface gráfica. Linha de comando:
 
 Notas Faltantes (relatório ""Notas não lançadas de Saídas""):
 
-     NotaCerta.exe --faltantes --mes 09/2026 --faixas ""501 512 7"" [--copiar] [--zip]
+     NotaCerta.exe --faltantes --serie 2 --numeros ""501, 503, 510-512"" [--copiar] [--zip]
 
   --faltantes        busca os XMLs dos números faltantes (o CNPJ do emitente vem dos próprios XMLs)
-  --mes <MM/AAAA>    mês de referência (vale o dhEmi, não a pasta)
-  --faixas <lista>   faixas ""Inicial Final Série"", separadas por vírgula
-  --faixas-arquivo <arq>  uma faixa por linha (pode colar as linhas do relatório)
-  --copiar           copia para PastaNotasFaltantes\<CNPJ>_<AAAA-MM>_<data-hora> e confere
+  --serie <n>        série das notas
+  --numeros <lista>  números separados por vírgula, ponto e vírgula, espaço ou linha; 510-512 = faixa
+  --numeros-arquivo <arq>  arquivo com os números (mesmo formato)
+  --copiar           copia para PastaNotasFaltantes\<CNPJ>_<data-hora> e confere
   --recopiar         copia também os números que já constam no histórico
   --zip              gera o .zip da pasta da entrega (com --copiar)
 
@@ -135,9 +135,9 @@ a cópia nunca move nem sobrescreve, e fica registrada em historico.csv na pasta
                     case "--gui": op.Gui = true; break;
                     case "--testar-banco": op.TestarBanco = true; break;
                     case "--faltantes": op.Faltantes = true; break;
-                    case "--mes": op.Mes = prox(); break;
-                    case "--faixas": op.TextoFaixas.Add(prox()); break;
-                    case "--faixas-arquivo": op.ArqFaixas = prox(); break;
+                    case "--serie": op.Serie = prox(); break;
+                    case "--numeros": op.TextoNumeros.Add(prox()); break;
+                    case "--numeros-arquivo": op.ArqNumeros = prox(); break;
                     case "--recopiar": op.Recopiar = true; break;
                     case "--zip": op.Zip = true; break;
                     case "--destino-faltantes": sobrepor("PastaNotasFaltantes"); break;
@@ -214,29 +214,35 @@ a cópia nunca move nem sobrescreve, e fica registrada em historico.csv na pasta
             return 0;
         }
 
-        // Notas Faltantes: --mes e as faixas (o CNPJ do emitente vem dos XMLs) do relatório "Notas não lançadas de Saídas".
+        // Notas Faltantes: --serie e --numeros digitados da foto do relatório (o CNPJ do emitente vem dos XMLs).
         static int ExecutarFaltantes(Opcoes op)
         {
-            var linhas = new List<string>();
-            foreach (string t in op.TextoFaixas) linhas.AddRange(t.Split(new[] { ',', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries));
-            if (op.ArqFaixas != null)
+            var textos = new List<string>(op.TextoNumeros);
+            if (op.ArqNumeros != null)
             {
-                if (!File.Exists(op.ArqFaixas)) throw new Exception("arquivo de faixas não existe: " + op.ArqFaixas);
-                linhas.AddRange(File.ReadAllLines(op.ArqFaixas, Encoding.UTF8).Select(x => x.Split('#')[0]));
+                if (!File.Exists(op.ArqNumeros)) throw new Exception("arquivo de números não existe: " + op.ArqNumeros);
+                textos.AddRange(File.ReadAllLines(op.ArqNumeros, Encoding.UTF8).Select(x => x.Split('#')[0]));
             }
-            var invalidas = new List<string>();
-            var faixas = MotorFaltantes.LerFaixas(string.Join("\n", linhas), invalidas);
-            if (invalidas.Count > 0) throw new Exception("faixa(s) não reconhecida(s): " + string.Join(" | ", invalidas) + " (use: Inicial Final Série)");
-            if (faixas.Count == 0 || op.Mes == null)
+            int serie;
+            if (op.Serie == null || !int.TryParse(op.Serie.Trim(), out serie) || serie < 0 || serie > 999)
             {
-                Console.WriteLine("Informe --mes e as faixas (--faixas ou --faixas-arquivo).");
+                Console.WriteLine("Informe --serie (ex.: 2) e os números (--numeros ou --numeros-arquivo).");
                 Console.WriteLine();
                 Console.WriteLine(Ajuda);
                 return 1;
             }
-            using (var m = new MotorFaltantes(op.CarregarConfig(), AppDomain.CurrentDomain.BaseDirectory))
+            var cfg = op.CarregarConfig();
+            var entrada = EntradaNumeros.Ler(string.Join("\n", textos), cfg.LimiteNumerosFaltantes);
+            if (entrada.Avisos() != "") Console.WriteLine("AVISO: " + entrada.Avisos());
+            if (entrada.Numeros.Count == 0)
             {
-                m.Executar(MotorFaltantes.LerMes(op.Mes), faixas, op.Copiar, op.Recopiar, null);
+                Console.WriteLine("Nenhum número válido informado (--numeros ou --numeros-arquivo).");
+                return 1;
+            }
+            using (var m = new MotorFaltantes(cfg, AppDomain.CurrentDomain.BaseDirectory))
+            {
+                if (entrada.Avisos() != "") m.Log.Info("AVISO na entrada: " + entrada.Avisos());
+                m.Executar(serie, entrada.Numeros, op.Copiar, op.Recopiar, null);
                 if (op.Zip)
                 {
                     if (!op.Copiar) throw new Exception("--zip exige --copiar");
@@ -245,7 +251,6 @@ a cópia nunca move nem sobrescreve, e fica registrada em historico.csv na pasta
             }
             return 0;
         }
-
         // "6/88867", separados por vírgula, ponto e vírgula, espaço ou linha. Devolve "série/número" normalizado.
         static List<string> LerNotas(IEnumerable<string> textos)
         {

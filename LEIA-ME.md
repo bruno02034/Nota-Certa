@@ -72,16 +72,18 @@ número, fica EM CONTINGÊNCIA.
 
 ## Notas Faltantes
 
-Para o relatório "Notas não lançadas de Saídas" (faixas de números sem XML no fiscal). Menu **Notas Faltantes**:
-informe o mês (MM/AAAA) e cole as linhas do relatório (`Inicial  Final  Série  Espécie`) ou adicione faixa a faixa.
-Cada faixa vale do Inicial ao Final, inclusive. O total de números aparece antes de processar.
+Para o relatório "Notas não lançadas de Saídas" (números sem XML no fiscal; o cliente costuma mandar uma foto).
+Menu **Notas Faltantes**: digite os **Números** e a **Série**. Os números podem ser separados por vírgula, ponto e
+vírgula, espaço ou linha; `1201-1205` busca a faixa inteira. A contagem "X número(s) a buscar" é atualizada
+enquanto você digita; repetidos e inválidos são avisados e ignorados, sem impedir a busca dos demais.
 
 - O CNPJ não é informado: vem do emitente dos XMLs encontrados e escolhe o certificado, o nome da pasta e o
   histórico. A tela mostra o CNPJ e a empresa usados. Se um número tiver XMLs de mais de um emitente, ele fica
   PENDENTE "mais de um emitente" e os demais seguem.
 - Varre todas as subpastas de `C:\Chef\NFCe`. O nome do arquivo só pré-filtra; modelo 65, série e número são
   conferidos no conteúdo. `REJEICAO`, `FALHA_SCHEMA`/`ERRO_SCHEMA` e `Temp` são descartados (ficam no log).
-- O mês é o do `dhEmi` do XML, nunca o da pasta nem a data do arquivo.
+- Não há mês de referência: a grade mostra a emissão (`dhEmi`) de cada nota e, se as notas encontradas forem de meses
+  diferentes entre si, a tela destaca os meses e as notas fora do mês da maioria (a pasta do arquivo não conta).
 - Cada chave é consultada uma vez na SEFAZ; o arquivo certo é o de DigestValue (recalculado) igual ao `digVal`.
 
 | Status | O que vai para a entrega |
@@ -90,14 +92,14 @@ Cada faixa vale do Inicial ao Final, inclusive. O total de números aparece ante
 | CANCELADA | a nota e o evento de cancelamento: o `procEventoNFe` do disco ou, sem ele, o devolvido pela SEFAZ (`<chave>-procEventoNFe-110111.xml`) |
 | CANCELADA – SEM XML DO EVENTO | só a nota (o evento não está no disco nem na resposta da SEFAZ) |
 | INUTILIZADA | o XML da inutilização homologada (cStat 102) que cobre o número; uma vez só, mesmo cobrindo vários números |
-| MÊS DIFERENTE | nada (autorizada, mas emitida em outro mês; o mês real aparece no motivo) |
+
 | NÃO CONSTA NA SEFAZ | nada (217: XML local que a SEFAZ não conhece, provavelmente contingência nunca transmitida) |
 | NÃO ENCONTRADA | nada (sem nota e sem inutilização: pode ser número pulado a inutilizar) |
 | PENDENTE | nada (SEFAZ não consultada, nenhum candidato com o digest da SEFAZ, mais de um autorizado, já existe no destino…) |
 
 A inutilização não tem chave para consultar: só vale o XML de inutilização salvo no computador.
 
-Saída em `C:\Chef\NFCe\NotasFaltantes\<CNPJ>_<AAAA-MM>_<data-hora>\` (`PastaNotasFaltantes` no ini): cópias com o nome
+Saída em `C:\Chef\NFCe\NotasFaltantes\<CNPJ>_<data-hora>\` (`PastaNotasFaltantes` no ini): cópias com o nome
 original, conferidas por tamanho e SHA-256, e o relatório CSV. *Gerar zip* cria o `.zip` ao lado da pasta.
 O `historico.csv` da pasta base impede copiar o mesmo número de novo (marque *Copiar de novo as já copiadas* para
 entregar outra vez). Nada é transmitido, cancelado nem inutilizado.
@@ -105,7 +107,7 @@ entregar outra vez). Nada é transmitido, cancelado nem inutilizado.
 Linha de comando:
 
 ```
-.\NotaCerta.exe --faltantes --mes 09/2026 --faixas "501 512 7, 600 600 7" --copiar --zip
+.\NotaCerta.exe --faltantes --serie 7 --numeros "501, 503, 510-512" --copiar --zip
 ```
 
 ## Desenvolvimento

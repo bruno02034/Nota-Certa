@@ -38,9 +38,9 @@ namespace DuplicidadeNfce
         public bool ValidarCertificadoServidor = true;
         public int TimeoutSegundos = 30;
 
-        // Notas Faltantes: cópias em <PastaNotasFaltantes>\<CNPJ>_<AAAA-MM>_<data-hora>; histórico na pasta base.
+        // Notas Faltantes: cópias em <PastaNotasFaltantes>\<CNPJ>_<data-hora>; histórico na pasta base.
         public string PastaNotasFaltantes = @"C:\Chef\NFCe\NotasFaltantes";
-        // Trava contra faixa digitada errada (ex.: Final com um dígito a mais).
+        // Trava contra número ou faixa digitada errada (ex.: um dígito a mais no fim da faixa).
         public int LimiteNumerosFaltantes = 5000;
 
         public static Config Carregar(string caminho)

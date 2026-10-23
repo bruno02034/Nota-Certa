@@ -281,7 +281,6 @@
         <DataTrigger Binding="{Binding Tipo}" Value="Encontrada"><Setter TargetName="b" Property="Background" Value="#DCFCE7"/><Setter TargetName="t" Property="Foreground" Value="#15803D"/></DataTrigger>
         <DataTrigger Binding="{Binding Tipo}" Value="Cancelada"><Setter TargetName="b" Property="Background" Value="#FFEDE3"/><Setter TargetName="t" Property="Foreground" Value="#D9480F"/></DataTrigger>
         <DataTrigger Binding="{Binding Tipo}" Value="Inutilizada"><Setter TargetName="b" Property="Background" Value="#E0F2FE"/><Setter TargetName="t" Property="Foreground" Value="#0369A1"/></DataTrigger>
-        <DataTrigger Binding="{Binding Tipo}" Value="MesDiferente"><Setter TargetName="b" Property="Background" Value="#FFF7E0"/><Setter TargetName="t" Property="Foreground" Value="#9A6700"/></DataTrigger>
         <DataTrigger Binding="{Binding Tipo}" Value="NaoConsta"><Setter TargetName="b" Property="Background" Value="#C81E1E"/><Setter TargetName="t" Property="Foreground" Value="White"/></DataTrigger>
         <DataTrigger Binding="{Binding Tipo}" Value="NaoEncontrada"><Setter TargetName="b" Property="Background" Value="#F3E8FF"/><Setter TargetName="t" Property="Foreground" Value="#7E22CE"/></DataTrigger>
         <DataTrigger Binding="{Binding Tipo}" Value="Pendente"><Setter TargetName="b" Property="Background" Value="#FDE8E8"/><Setter TargetName="t" Property="Foreground" Value="#C81E1E"/></DataTrigger>
@@ -688,56 +687,52 @@
             <Grid.RowDefinitions>
               <RowDefinition Height="Auto"/>
               <RowDefinition Height="Auto"/>
+              <RowDefinition Height="Auto"/>
+              <RowDefinition Height="Auto"/>
+              <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
             <Grid.ColumnDefinitions>
-              <ColumnDefinition Width="Auto"/>
               <ColumnDefinition Width="*"/>
+              <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
-            <StackPanel Margin="0,0,20,0">
-              <StackPanel Orientation="Horizontal">
-                <StackPanel>
-                  <TextBlock Style="{StaticResource RotuloCampo}" Text="Mês (MM/AAAA)"/>
-                  <TextBox x:Name="FalMes" Style="{StaticResource CampoTexto}" Width="90"/>
-                </StackPanel>
-                <StackPanel Margin="14,0,0,0" MaxWidth="300">
-                  <TextBlock Style="{StaticResource RotuloCampo}" Text="Emitente (descoberto pelos XMLs)"/>
-                  <TextBlock x:Name="FalEmitente" Text="aparece depois de processar" FontWeight="SemiBold" Foreground="#9CA3AF"
-                             TextWrapping="Wrap" MinHeight="34" Padding="0,8,0,0"/>
-                </StackPanel>
-              </StackPanel>
-              <TextBlock Style="{StaticResource RotuloCampo}" Text="Adicionar faixa" Margin="0,10,0,3"/>
-              <StackPanel Orientation="Horizontal">
-                <TextBox x:Name="FalIni" Style="{StaticResource CampoTexto}" Width="96" ToolTip="Inicial"/>
-                <TextBlock Text="a" VerticalAlignment="Center" Margin="6,0" Foreground="{StaticResource TextoSec}"/>
-                <TextBox x:Name="FalFim" Style="{StaticResource CampoTexto}" Width="96" ToolTip="Final (vazio = igual ao inicial)"/>
-                <TextBlock Text="série" VerticalAlignment="Center" Margin="8,0,6,0" Foreground="{StaticResource TextoSec}"/>
-                <TextBox x:Name="FalSerie" Style="{StaticResource CampoTexto}" Width="44"/>
-                <Button x:Name="BtnFalAdicionar" Style="{StaticResource BtnAzul}" Content="Adicionar" Margin="8,0,0,0"/>
-              </StackPanel>
-              <CheckBox x:Name="FalRecopiar" Content="Copiar de novo as já copiadas (histórico)" Margin="0,12,0,0" Foreground="{StaticResource TextoSec}"/>
+            <DockPanel>
+              <TextBlock DockPanel.Dock="Top" Style="{StaticResource RotuloCampo}" Text="Números (separe por vírgula, espaço ou linha; 1201-1205 busca a faixa)"/>
+              <TextBox x:Name="FalNumeros" AcceptsReturn="True" TextWrapping="Wrap" FontFamily="Consolas" FontSize="13" MinHeight="34" MaxHeight="76"
+                       VerticalScrollBarVisibility="Auto" BorderBrush="{StaticResource Borda}" Padding="6,7"/>
+            </DockPanel>
+            <StackPanel Grid.Column="1" Margin="12,0,0,0">
+              <TextBlock Style="{StaticResource RotuloCampo}" Text="Série"/>
+              <TextBox x:Name="FalSerie" Style="{StaticResource CampoTexto}" Width="64" FontSize="13"/>
             </StackPanel>
-            <DockPanel Grid.Column="1">
-              <DockPanel DockPanel.Dock="Top" Margin="0,0,0,3">
-                <TextBlock x:Name="FalTotal" DockPanel.Dock="Right" FontSize="11.5" FontWeight="SemiBold" Foreground="{StaticResource Azul}"/>
-                <TextBlock Style="{StaticResource RotuloCampo}" Text="Faixas (cole as linhas do relatório: Inicial  Final  Série  Espécie)" Margin="0"/>
-              </DockPanel>
-              <WrapPanel DockPanel.Dock="Bottom" Margin="0,10,0,0">
+            <StackPanel Grid.Row="1" Grid.ColumnSpan="2" Margin="0,6,0,0">
+              <TextBlock x:Name="FalTotal" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource Azul}"/>
+              <TextBlock x:Name="FalAvisos" FontSize="11.5" Foreground="#B91C1C" TextWrapping="Wrap" Visibility="Collapsed" Margin="0,2,0,0"/>
+            </StackPanel>
+            <WrapPanel Grid.Row="2" Grid.ColumnSpan="2" Margin="0,10,0,0">
+              <TextBlock Text="Emitente (dos XMLs):" Foreground="{StaticResource TextoSec}" FontSize="12" VerticalAlignment="Center" Margin="0,0,6,0"/>
+              <TextBlock x:Name="FalEmitente" Text="aparece depois de processar" FontWeight="SemiBold" Foreground="#9CA3AF" FontSize="12" VerticalAlignment="Center" Margin="0,0,24,0"/>
+              <TextBlock Text="Emissão das notas:" Foreground="{StaticResource TextoSec}" FontSize="12" VerticalAlignment="Center" Margin="0,0,6,0"/>
+              <Border x:Name="FalMesesCaixa" CornerRadius="6" Padding="6,2" Background="Transparent">
+                <TextBlock x:Name="FalMeses" Text="-" FontWeight="SemiBold" FontSize="12" Foreground="#9CA3AF"/>
+              </Border>
+            </WrapPanel>
+            <DockPanel Grid.Row="3" Grid.ColumnSpan="2" Margin="0,10,0,0" LastChildFill="False">
+              <CheckBox x:Name="FalRecopiar" DockPanel.Dock="Left" Content="Copiar de novo as já copiadas (histórico)" VerticalAlignment="Center" Foreground="{StaticResource TextoSec}" Margin="0,0,16,6"/>
+              <WrapPanel DockPanel.Dock="Right">
                 <Button x:Name="BtnFalProcessar" Style="{StaticResource BtnPrimario}" Content="Processar" Margin="0,0,8,6"/>
                 <Button x:Name="BtnFalAbrir" Style="{StaticResource BtnSecundario}" Content="Abrir pasta" Margin="0,0,8,6"/>
                 <Button x:Name="BtnFalZip" Style="{StaticResource BtnSecundario}" Content="Gerar zip" Margin="0,0,8,6"/>
                 <Button x:Name="BtnFalExportar" Style="{StaticResource BtnSecundario}" Content="Exportar relatório" Margin="0,0,8,6"/>
-                <Button x:Name="BtnFalLog" Style="{StaticResource BtnSecundario}" Content="Ver log" Margin="0,0,8,6"/>
+                <Button x:Name="BtnFalLog" Style="{StaticResource BtnSecundario}" Content="Ver log" Margin="0,0,0,6"/>
               </WrapPanel>
-              <TextBox x:Name="FalFaixas" AcceptsReturn="True" FontFamily="Consolas" FontSize="12" MinHeight="96" MaxHeight="140"
-                       VerticalScrollBarVisibility="Auto" BorderBrush="{StaticResource Borda}" Padding="6,4" TextWrapping="NoWrap"/>
             </DockPanel>
-            <Grid Grid.Row="1" Grid.ColumnSpan="2" Margin="0,12,0,0">
+            <Grid Grid.Row="4" Grid.ColumnSpan="2" Margin="0,8,0,0">
               <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="260"/>
                 <ColumnDefinition Width="*"/>
               </Grid.ColumnDefinitions>
               <ProgressBar x:Name="FalProgresso" VerticalAlignment="Center" Minimum="0" Maximum="100" Value="0"/>
-              <TextBlock x:Name="FalStatus" Grid.Column="1" Margin="12,0,0,0" Foreground="{StaticResource TextoSec}" FontSize="12" TextTrimming="CharacterEllipsis" Text="Informe o CNPJ, o mês e as faixas."/>
+              <TextBlock x:Name="FalStatus" Grid.Column="1" Margin="12,0,0,0" Foreground="{StaticResource TextoSec}" FontSize="12" TextTrimming="CharacterEllipsis" Text="Digite os números e a série."/>
             </Grid>
           </Grid>
         </Grid>
@@ -810,7 +805,23 @@
                 <DataGrid x:Name="GradeFaltantes" HorizontalScrollBarVisibility="Auto">
                   <DataGrid.Columns>
                     <DataGridTextColumn Header="NOTA" Binding="{Binding Nota}" Width="110" MinWidth="110" IsReadOnly="True" ElementStyle="{StaticResource TextoForte}"/>
-                    <DataGridTextColumn Header="EMISSÃO" Binding="{Binding Data}" Width="114" MinWidth="114" IsReadOnly="True"/>
+                    <DataGridTemplateColumn Header="EMISSÃO" Width="124" MinWidth="124" SortMemberPath="Item.DhEmi">
+                      <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                          <Border x:Name="b" CornerRadius="6" Padding="5,2" HorizontalAlignment="Left" Background="Transparent">
+                            <TextBlock x:Name="t" Text="{Binding Data}"/>
+                          </Border>
+                          <DataTemplate.Triggers>
+                            <DataTrigger Binding="{Binding ForaDoMes}" Value="True">
+                              <Setter TargetName="b" Property="Background" Value="#FFF7E0"/>
+                              <Setter TargetName="t" Property="Foreground" Value="#9A6700"/>
+                              <Setter TargetName="t" Property="FontWeight" Value="SemiBold"/>
+                              <Setter TargetName="b" Property="ToolTip" Value="Mês de emissão diferente das demais notas encontradas"/>
+                            </DataTrigger>
+                          </DataTemplate.Triggers>
+                        </DataTemplate>
+                      </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
                     <DataGridTextColumn Header="VALOR" Binding="{Binding Valor}" Width="86" MinWidth="86" IsReadOnly="True" ElementStyle="{StaticResource TextoDireita}"/>
                     <DataGridTextColumn Header="ARQUIVO" Binding="{Binding Arquivo}" Width="*" MinWidth="100" IsReadOnly="True" ElementStyle="{StaticResource TextoCortado}"/>
                     <DataGridTextColumn Header="CÓPIA" Binding="{Binding Copia}" Width="96" MinWidth="80" IsReadOnly="True" ElementStyle="{StaticResource TextoCortado}"/>

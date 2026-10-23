@@ -11,8 +11,8 @@ using System.Xml;
 namespace DuplicidadeNfce
 {
     // ===================== Notas Faltantes =====================
-    // O relatório "Notas não lançadas de Saídas" lista faixas de números sem XML no fiscal. Para cada número da
-    // faixa, acha o XML da nota (ou do cancelamento/inutilização), confere na SEFAZ e copia para entregar ao cliente.
+    // O relatório "Notas não lançadas de Saídas" lista números sem XML no fiscal. Para cada número digitado,
+    // acha o XML da nota (ou do cancelamento/inutilização), confere na SEFAZ e copia para entregar ao cliente.
 
     static class StatusFaltante
     {
@@ -20,7 +20,6 @@ namespace DuplicidadeNfce
         public const string Cancelada = "CANCELADA";
         public const string CanceladaSemEvento = "CANCELADA – SEM XML DO EVENTO";
         public const string Inutilizada = "INUTILIZADA";
-        public const string MesDiferente = "MÊS DIFERENTE";
         public const string NaoConsta = "NÃO CONSTA NA SEFAZ";
         public const string NaoEncontrada = "NÃO ENCONTRADA";
         public const string Pendente = "PENDENTE";
@@ -36,12 +35,44 @@ namespace DuplicidadeNfce
         public const string NaoCopiado = "não copiado (só relatório)";
     }
 
-    class FaixaFaltante
+    // Números digitados a partir da foto do relatório: "1201, 1202" (vírgula, ponto e vírgula, espaço ou
+    // linha) e faixas com hífen ("1201-1205"). Repetidos e inválidos são avisados sem travar os demais.
+    class EntradaNumeros
     {
-        public long Inicial, Final;
-        public int Serie;
-        public long Quantidade { get { return Final - Inicial + 1; } }
-        public override string ToString() { return Inicial == Final ? Serie + "/" + Inicial : Serie + "/" + Inicial + " a " + Final; }
+        public List<long> Numeros = new List<long>();
+        public List<string> Invalidos = new List<string>();
+        public List<long> Repetidos = new List<long>();
+
+        public static EntradaNumeros Ler(string texto, int limite)
+        {
+            var e = new EntradaNumeros();
+            var vistos = new HashSet<long>();
+            string t = Regex.Replace(texto ?? "", @"\s*[-–]\s*", "-");
+            foreach (string item in Regex.Split(t, @"[,;\s]+"))
+            {
+                if (item == "") continue;
+                var m = Regex.Match(item, @"^(\d{1,9})(?:-(\d{1,9}))?$");
+                long ini, fim;
+                if (!m.Success || !long.TryParse(m.Groups[1].Value, out ini)) { e.Invalidos.Add(item); continue; }
+                fim = m.Groups[2].Success ? long.Parse(m.Groups[2].Value) : ini;
+                if (ini <= 0 || fim < ini) { e.Invalidos.Add(item + (fim < ini ? " (faixa invertida)" : "")); continue; }
+                if (fim - ini + 1 > limite) { e.Invalidos.Add(item + " (faixa com mais de " + limite + " números)"); continue; }
+                for (long n = ini; n <= fim; n++)
+                {
+                    if (vistos.Add(n)) e.Numeros.Add(n);
+                    else if (!e.Repetidos.Contains(n)) e.Repetidos.Add(n);
+                }
+            }
+            return e;
+        }
+
+        public string Avisos()
+        {
+            var l = new List<string>();
+            if (Invalidos.Count > 0) l.Add(Invalidos.Count + " inválido(s) ignorado(s): " + string.Join(", ", Invalidos));
+            if (Repetidos.Count > 0) l.Add(Repetidos.Count + " repetido(s), buscado(s) uma vez: " + string.Join(", ", Repetidos));
+            return string.Join(" · ", l);
+        }
     }
 
     class ArquivoFaltante
@@ -50,7 +81,7 @@ namespace DuplicidadeNfce
         public bool Aceito;
     }
 
-    // Uma linha do resultado: um número da faixa.
+    // Uma linha do resultado: um número pedido.
     class ItemFaltante
     {
         public long Numero;
@@ -58,6 +89,12 @@ namespace DuplicidadeNfce
         public string Status = StatusFaltante.Pendente, Motivo, Copia = "";
         public string Chave, DhEmi, SituacaoSefaz, CStat, NProt, DigVal;
         public string Cnpj, Emitente;   // emitente descoberto pelos XMLs do número
+        public bool ForaDoMesPrincipal; // emitida num mês diferente do da maioria das notas encontradas
+
+        public string MesEmissao
+        {
+            get { var d = MotorFaltantes.DataEmissao(DhEmi); return d.HasValue ? d.Value.ToString("MM/yyyy") : null; }
+        }
         public decimal? Valor;
         public List<ArquivoFaltante> Arquivos = new List<ArquivoFaltante>();
         public List<string> Destinos = new List<string>();
@@ -159,8 +196,9 @@ namespace DuplicidadeNfce
         public readonly HistoricoFaltantes Historico;
         // Emitente da busca, descoberto pelos XMLs (o que aparece em mais números); nomeia a pasta da entrega.
         public string Cnpj, Emitente, DescricaoEmitente;
-        public DateTime Mes;
-        public List<FaixaFaltante> Faixas = new List<FaixaFaltante>();
+        public int Serie;
+        // Meses de emissão das notas encontradas (MM/AAAA -> quantidade), do mais frequente ao menos.
+        public List<KeyValuePair<string, int>> Meses = new List<KeyValuePair<string, int>>();
         public List<ItemFaltante> Itens = new List<ItemFaltante>();
         public string PastaExecucao, ArqCsv;
         readonly string carimbo;
@@ -187,79 +225,23 @@ namespace DuplicidadeNfce
             consultar = consultaTeste ?? ClienteSefaz.CriarConsulta(cfg, Log, Path.Combine(PastaRel, "sefaz_faltantes_" + carimbo));
         }
 
-        // ---------- Entrada ----------
-
-        // Linhas do relatório: "Inicial [a] Final Série [Espécie]" (ex.: "501  512  7  NFC-e").
-        // Linhas sem número (cabeçalho) são ignoradas; as que têm número mas não seguem o formato voltam em 'invalidas'.
-        static readonly Regex ReLinhaFaixa = new Regex(@"^\s*(\d+)\s*(?:a|-|–|até|ate|;|,|\t|\s)\s*(\d+)\s*[;,\t ]\s*(\d{1,3})(?:\s*[;,\t ]\s*NF-?C?-?e)?\s*$", RegexOptions.IgnoreCase);
-
-        public static List<FaixaFaltante> LerFaixas(string texto, List<string> invalidas)
-        {
-            var lista = new List<FaixaFaltante>();
-            foreach (string bruta in (texto ?? "").Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
-            {
-                string linha = Regex.Replace(bruta.Trim(), @"\s+", " ");
-                if (linha == "" || !Regex.IsMatch(linha, @"\d")) continue;
-                var m = ReLinhaFaixa.Match(linha);
-                long ini, fim;
-                int serie;
-                if (!m.Success || !long.TryParse(m.Groups[1].Value, out ini) || !long.TryParse(m.Groups[2].Value, out fim) || !int.TryParse(m.Groups[3].Value, out serie))
-                {
-                    invalidas.Add(bruta.Trim());
-                    continue;
-                }
-                if (ini <= 0 || fim < ini || fim > 999999999)
-                {
-                    invalidas.Add(bruta.Trim() + " (Final menor que Inicial ou número fora de 1 a 999999999)");
-                    continue;
-                }
-                lista.Add(new FaixaFaltante { Inicial = ini, Final = fim, Serie = serie });
-            }
-            return lista;
-        }
-
-        public static long Total(IEnumerable<FaixaFaltante> faixas)
-        {
-            return Numeros(faixas).Count();
-        }
-
-        // Números distintos, na ordem série/número.
-        public static IEnumerable<KeyValuePair<int, long>> Numeros(IEnumerable<FaixaFaltante> faixas)
-        {
-            var vistos = new HashSet<string>();
-            foreach (var f in faixas.OrderBy(x => x.Serie).ThenBy(x => x.Inicial))
-                for (long n = f.Inicial; n <= f.Final; n++)
-                    if (vistos.Add(f.Serie + "/" + n)) yield return new KeyValuePair<int, long>(f.Serie, n);
-        }
-
-        public static DateTime LerMes(string s)
-        {
-            DateTime d;
-            s = (s ?? "").Trim();
-            foreach (var f in new[] { "MM/yyyy", "M/yyyy", "yyyy-MM", "MM-yyyy" })
-                if (DateTime.TryParseExact(s, f, CultureInfo.InvariantCulture, DateTimeStyles.None, out d)) return new DateTime(d.Year, d.Month, 1);
-            throw new Exception("mês de referência inválido '" + s + "' (use MM/AAAA, ex.: 09/2026)");
-        }
-
         // ---------- Busca ----------
 
         static readonly Regex ReNomeNota = new Regex(@"^NOTA_(?:ONTIGENCIA_ENVIA_)?(\d+)_(?:MODELO_\d+_)?SERIE_(\d+)_", RegexOptions.IgnoreCase);
 
-        public List<ItemFaltante> Executar(DateTime mes, List<FaixaFaltante> faixas, bool copiar, bool recopiar, Action<int, int> progresso)
+        public List<ItemFaltante> Executar(int serie, List<long> numeros, bool copiar, bool recopiar, Action<int, int> progresso)
         {
-            Mes = new DateTime(mes.Year, mes.Month, 1);
-            Faixas = faixas;
-            var numeros = Numeros(faixas).ToList();
-            if (numeros.Count == 0) throw new Exception("nenhuma faixa informada");
+            Serie = serie;
+            if (numeros.Count == 0) throw new Exception("nenhum número informado");
             if (numeros.Count > Cfg.LimiteNumerosFaltantes)
                 throw new Exception(numeros.Count + " números a buscar passam do limite de " + Cfg.LimiteNumerosFaltantes +
-                    " (confira as faixas ou aumente LimiteNumerosFaltantes no duplicidade.ini)");
+                    " (confira os números ou aumente LimiteNumerosFaltantes no duplicidade.ini)");
 
             Log.Tela(Program.NomeSistema + " - Notas Faltantes - " + DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss") + (copiar ? "" : " - só relatório"));
-            Log.Tela("Mês " + Mes.ToString("MM/yyyy") + " · " + faixas.Count + " faixa(s), " + numeros.Count + " número(s): " + string.Join(", ", faixas));
+            Log.Tela("Série " + serie + " · " + numeros.Count + " número(s): " + string.Join(", ", numeros));
             Log.Tela("Varrendo " + Raiz + " (todas as subpastas)...");
 
-            var alvo = new HashSet<string>(numeros.Select(n => n.Key + "/" + n.Value));
+            var alvo = new HashSet<string>(numeros.Select(n => serie + "/" + n));
             var candidatos = new Dictionary<string, List<NotaXml>>();
             var inuts = new List<InutilizacaoXml>();
             var eventos = new List<EventoXml>();
@@ -299,8 +281,8 @@ namespace DuplicidadeNfce
             {
                 if (progresso != null) progresso(feitos, numeros.Count);
                 List<NotaXml> l;
-                candidatos.TryGetValue(n.Key + "/" + n.Value, out l);
-                var item = Analisar(n.Key, n.Value, l ?? new List<NotaXml>(), inuts, eventos);
+                candidatos.TryGetValue(serie + "/" + n, out l);
+                var item = Analisar(serie, n, l ?? new List<NotaXml>(), inuts, eventos);
                 Itens.Add(item);
                 feitos++;
             }
@@ -323,9 +305,18 @@ namespace DuplicidadeNfce
             }
             string idEmitente = Cnpj ?? "SEM-EMITENTE";
 
+            // Sem mês de referência: os meses de emissão aparecem, com destaque se as notas forem de meses diferentes.
+            Meses = Itens.Where(i => i.MesEmissao != null).GroupBy(i => i.MesEmissao).OrderByDescending(g => g.Count())
+                .Select(g => new KeyValuePair<string, int>(g.Key, g.Count())).ToList();
+            if (Meses.Count > 0)
+            {
+                foreach (var i in Itens) i.ForaDoMesPrincipal = i.MesEmissao != null && i.MesEmissao != Meses[0].Key;
+                Log.Tela("Emissão: " + DescricaoMeses + (Meses.Count > 1 ? " · ATENÇÃO: notas de meses diferentes" : ""));
+            }
+
             if (copiar)
             {
-                PastaExecucao = Path.Combine(Base, idEmitente + "_" + Mes.ToString("yyyy-MM") + "_" + DateTime.Now.ToString("yyyy-MM-dd_HH'h'mm'm'ss's'"));
+                PastaExecucao = Path.Combine(Base, idEmitente + "_" + DateTime.Now.ToString("yyyy-MM-dd_HH'h'mm'm'ss's'"));
                 // Duas buscas no mesmo segundo não podem cair na mesma pasta.
                 string pastaBase = PastaExecucao;
                 for (int n = 2; Directory.Exists(PastaExecucao); n++) PastaExecucao = pastaBase + "_" + n;
@@ -333,12 +324,12 @@ namespace DuplicidadeNfce
                 Log.Info("");
                 Log.Tela("Copiando para " + PastaExecucao);
                 Copiar(recopiar);
-                ArqCsv = Path.Combine(PastaExecucao, "relatorio_" + idEmitente + "_" + Mes.ToString("yyyy-MM") + ".csv");
+                ArqCsv = Path.Combine(PastaExecucao, "relatorio_" + idEmitente + ".csv");
             }
             else
             {
                 foreach (var i in Itens.Where(x => x.Entregas.Count > 0)) i.Copia = CopiaFaltante.NaoCopiado;
-                ArqCsv = Path.Combine(PastaRel, "faltantes_" + idEmitente + "_" + Mes.ToString("yyyy-MM") + "_" + carimbo + ".csv");
+                ArqCsv = Path.Combine(PastaRel, "faltantes_" + idEmitente + "_" + carimbo + ".csv");
             }
             GravarCsv(ArqCsv, Itens);
 
@@ -506,7 +497,7 @@ namespace DuplicidadeNfce
                 var r = semResposta[0].Value;
                 item.SituacaoSefaz = Situacao(r);
                 Pendente(item, (r.NaoConsultada ? "SEFAZ não consultada: " : "SEFAZ sem resposta: ") + r.Erro +
-                    (porChave.Count > 1 ? " · mais de um candidato: " : " · candidato: ") + lista + Mes1(umaChave));
+                    (porChave.Count > 1 ? " · mais de um candidato: " : " · candidato: ") + lista);
                 foreach (var a in item.Arquivos.Where(x => x.Motivo == null)) a.Motivo = "candidato (falta a confirmação da SEFAZ)";
                 return item;
             }
@@ -527,10 +518,9 @@ namespace DuplicidadeNfce
             return item;
         }
 
-        string Mes1(NotaXml n)
+        public string DescricaoMeses
         {
-            var d = DataEmissao(n == null ? null : n.DhEmi);
-            return d.HasValue && (d.Value.Year != Mes.Year || d.Value.Month != Mes.Month) ? " · ATENÇÃO: emitida em " + d.Value.ToString("MM/yyyy") : "";
+            get { return Meses.Count == 0 ? "nenhuma nota encontrada" : string.Join(", ", Meses.Select(m => m.Key + " (" + m.Value + ")")); }
         }
 
         void SemNota(ItemFaltante item, List<InutilizacaoXml> inuts)
@@ -600,15 +590,6 @@ namespace DuplicidadeNfce
             Preencher(item, escolhido);
             foreach (var a in item.Arquivos) a.Aceito = a.Caminho == escolhido.Caminho;
             item.Arquivos.First(x => x.Caminho == escolhido.Caminho).Motivo += " · escolhido";
-
-            var emissao = DataEmissao(escolhido.DhEmi);
-            if (emissao.HasValue && (emissao.Value.Year != Mes.Year || emissao.Value.Month != Mes.Month))
-            {
-                item.Status = StatusFaltante.MesDiferente;
-                item.Motivo = "autorizada, mas emitida em " + emissao.Value.ToString("MM/yyyy") + " (mês pedido " + Mes.ToString("MM/yyyy") + ")";
-                Log.Info("  " + item.Status + ": " + item.Motivo);
-                return;
-            }
 
             item.Entregas.Add(new Entrega { Origem = escolhido.Caminho, Sha256 = escolhido.Sha256, Tamanho = escolhido.Tamanho, NomeDestino = escolhido.Nome, Descricao = "XML da nota" });
             var motivo = new List<string> { "arquivo com o mesmo conteúdo autorizado (digest = digVal)" };
@@ -843,7 +824,7 @@ namespace DuplicidadeNfce
 
         static readonly string[] Cabecalho =
         {
-            "Numero", "Serie", "CNPJ emitente", "Status", "Chave", "Emissao", "Valor", "Protocolo", "cStat SEFAZ", "Situacao SEFAZ",
+            "Numero", "Serie", "CNPJ emitente", "Status", "Chave", "Emissao", "Mes emissao", "Valor", "Protocolo", "cStat SEFAZ", "Situacao SEFAZ",
             "Arquivo(s) de origem", "Arquivo(s) entregue(s)", "Copia", "Motivo"
         };
 
@@ -858,7 +839,7 @@ namespace DuplicidadeNfce
                 var d = DataEmissao(i.DhEmi);
                 sb.AppendLine(string.Join(";", new[]
                 {
-                    i.Numero.ToString(), i.Serie.ToString(), FormatarCnpj(i.Cnpj), i.Status, Csv.Formula(i.Chave), d.HasValue ? d.Value.ToString("dd/MM/yyyy HH:mm:ss") : "",
+                    i.Numero.ToString(), i.Serie.ToString(), FormatarCnpj(i.Cnpj), i.Status, Csv.Formula(i.Chave), d.HasValue ? d.Value.ToString("dd/MM/yyyy HH:mm:ss") : "", i.MesEmissao + (i.ForaDoMesPrincipal ? " (mês diferente das demais)" : ""),
                     i.Valor.HasValue ? i.Valor.Value.ToString("0.00", CultureInfo.GetCultureInfo("pt-BR")) : "", Csv.Formula(i.NProt), i.CStat,
                     i.SituacaoSefaz, string.Join(" | ", origens), string.Join(" | ", i.Destinos.Select(Path.GetFileName)), i.Copia, i.Motivo
                 }.Select(Csv.Campo)));

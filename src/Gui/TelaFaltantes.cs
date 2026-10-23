@@ -24,6 +24,7 @@ namespace DuplicidadeNfce
 
         public string Nota { get { return Item.Nota; } }
         public string Data { get { return LinhaGrid.DataCurta(Item.DhEmi); } }
+        public bool ForaDoMes { get { return Item.ForaDoMesPrincipal; } }
         public string Valor { get { return Item.Valor.HasValue ? "R$ " + Analisador.Moeda(Item.Valor) : "-"; } }
         public string Arquivo
         {
@@ -45,7 +46,6 @@ namespace DuplicidadeNfce
                 case StatusFaltante.Encontrada: return "Encontrada";
                 case StatusFaltante.Cancelada: case StatusFaltante.CanceladaSemEvento: return "Cancelada";
                 case StatusFaltante.Inutilizada: return "Inutilizada";
-                case StatusFaltante.MesDiferente: return "MesDiferente";
                 case StatusFaltante.NaoConsta: return "NaoConsta";
                 case StatusFaltante.NaoEncontrada: return "NaoEncontrada";
                 default: return "Pendente";
@@ -53,7 +53,7 @@ namespace DuplicidadeNfce
         }
     }
 
-    // Página "Notas Faltantes": entrada das faixas, busca, cópia e entrega.
+    // Página "Notas Faltantes": números digitados + série, busca, cópia e entrega.
     class TelaFaltantes
     {
         readonly Window W;
@@ -72,10 +72,8 @@ namespace DuplicidadeNfce
             visao = CollectionViewSource.GetDefaultView(linhas);
             visao.Filter = Filtrar;
             G<DataGrid>("GradeFaltantes").ItemsSource = visao;
-            G<TextBox>("FalMes").Text = DateTime.Today.AddMonths(-1).ToString("MM/yyyy");
 
-            G<TextBox>("FalFaixas").TextChanged += (s, e) => AtualizarTotal();
-            G<Button>("BtnFalAdicionar").Click += (s, e) => Adicionar();
+            G<TextBox>("FalNumeros").TextChanged += (s, e) => AtualizarTotal();
             G<Button>("BtnFalProcessar").Click += (s, e) => Processar(false);
             G<Button>("BtnFalAbrir").Click += (s, e) => AbrirPasta();
             G<Button>("BtnFalZip").Click += (s, e) => Zip();
@@ -95,54 +93,31 @@ namespace DuplicidadeNfce
             return o;
         }
 
-        List<FaixaFaltante> Faixas(List<string> invalidas)
+        EntradaNumeros Entrada()
         {
-            return MotorFaltantes.LerFaixas(G<TextBox>("FalFaixas").Text, invalidas);
+            return EntradaNumeros.Ler(G<TextBox>("FalNumeros").Text, cfg().LimiteNumerosFaltantes);
         }
 
-        // Mostra quantos números serão buscados antes de processar.
+        // Contagem e avisos enquanto digita; repetidos e inválidos não impedem a busca dos demais.
         void AtualizarTotal()
         {
-            var inv = new List<string>();
-            var f = Faixas(inv);
-            long total = MotorFaltantes.Total(f);
+            var e = Entrada();
             var t = G<TextBlock>("FalTotal");
-            t.Text = f.Count + " faixa(s) · " + total + " número(s) a buscar" + (inv.Count > 0 ? " · " + inv.Count + " linha(s) não reconhecida(s)" : "");
-            t.Foreground = inv.Count > 0 || total > cfg().LimiteNumerosFaltantes ? Brushes.Firebrick : (Brush)W.FindResource("Azul");
-            t.ToolTip = inv.Count > 0 ? "Não reconhecidas (use Inicial  Final  Série):\n" + string.Join("\n", inv) : null;
+            t.Text = e.Numeros.Count + " número(s) a buscar";
+            t.Foreground = e.Numeros.Count > cfg().LimiteNumerosFaltantes ? Brushes.Firebrick : (Brush)W.FindResource("Azul");
+            var av = G<TextBlock>("FalAvisos");
+            av.Text = e.Avisos();
+            av.Visibility = av.Text == "" ? Visibility.Collapsed : Visibility.Visible;
         }
-
-        void Adicionar()
-        {
-            long ini, fim;
-            int serie;
-            string sIni = G<TextBox>("FalIni").Text.Trim(), sFim = G<TextBox>("FalFim").Text.Trim();
-            if (sFim == "") sFim = sIni;
-            if (!long.TryParse(sIni, out ini) || !long.TryParse(sFim, out fim) || !int.TryParse(G<TextBox>("FalSerie").Text.Trim(), out serie) || ini <= 0 || fim < ini)
-            {
-                Aviso("Informe Inicial, Final (maior ou igual ao Inicial) e Série.");
-                return;
-            }
-            var caixa = G<TextBox>("FalFaixas");
-            string atual = caixa.Text.TrimEnd();
-            caixa.Text = (atual == "" ? "" : atual + Environment.NewLine) + ini + "  " + fim + "  " + serie + "  NFC-e";
-            G<TextBox>("FalIni").Text = G<TextBox>("FalFim").Text = "";
-            G<TextBox>("FalIni").Focus();
-        }
-
         void Processar(bool capturar)
         {
             if (ocupado) return;
-            var inv = new List<string>();
-            var faixas = Faixas(inv);
-            if (inv.Count > 0) { Aviso("Linha(s) não reconhecida(s):\n" + string.Join("\n", inv) + "\n\nUse: Inicial  Final  Série  (ex.: 501  512  7  NFC-e)"); return; }
-            if (faixas.Count == 0) { Aviso("Informe ao menos uma faixa."); return; }
-            DateTime mes;
-            try
-            {
-                mes = MotorFaltantes.LerMes(G<TextBox>("FalMes").Text);
-            }
-            catch (Exception ex) { Aviso(ex.Message); return; }
+            var entrada = Entrada();
+            if (entrada.Numeros.Count == 0) { Aviso("Digite ao menos um número (ex.: 1201, 1202)."); return; }
+            int serie;
+            if (!int.TryParse(G<TextBox>("FalSerie").Text.Trim(), out serie) || serie < 0 || serie > 999) { Aviso("Informe a série (ex.: 2)."); return; }
+            var numeros = entrada.Numeros;
+            string avisos = entrada.Avisos();
             bool recopiar = G<CheckBox>("FalRecopiar").IsChecked == true;
 
             Ocupado(true, "Procurando os XMLs em " + cfg().PastaRaiz + "...");
@@ -154,9 +129,10 @@ namespace DuplicidadeNfce
             {
                 var m = new MotorFaltantes(c, AppDomain.CurrentDomain.BaseDirectory);
                 m.Log.AoMostrar = Status;
+                if (avisos != "") m.Log.Info("AVISO na entrada: " + avisos);
                 try
                 {
-                    m.Executar(mes, faixas, true, recopiar, (feitos, total) => W.Dispatcher.BeginInvoke(new Action(() =>
+                    m.Executar(serie, numeros, true, recopiar, (feitos, total) => W.Dispatcher.BeginInvoke(new Action(() =>
                     {
                         barra.Value = total == 0 ? 100 : 100.0 * feitos / total;
                         G<TextBlock>("FalStatus").Text = "Conferindo " + Math.Min(feitos + 1, total) + " de " + total + "...";
@@ -178,6 +154,12 @@ namespace DuplicidadeNfce
                 var emit = G<TextBlock>("FalEmitente");
                 emit.Text = motor.DescricaoEmitente;
                 emit.Foreground = motor.Cnpj == null ? Brushes.Firebrick : Brushes.Black;
+                // Notas de meses diferentes entre si ficam em destaque (não há mais mês de referência).
+                bool varios = motor.Meses.Count > 1;
+                var meses = G<TextBlock>("FalMeses");
+                meses.Text = motor.DescricaoMeses + (varios ? "  ⚠ notas de meses diferentes" : "");
+                meses.Foreground = varios ? Pincel("#9A6700") : motor.Meses.Count == 0 ? Brushes.Gray : Brushes.Black;
+                G<Border>("FalMesesCaixa").Background = varios ? Pincel("#FFF7E0") : Brushes.Transparent;
                 var itens = motor.Itens;
                 int copiados = itens.Count(i => i.Copia == CopiaFaltante.Copiado);
                 Status(itens.Count + " número(s): " + string.Join(", ", itens.GroupBy(i => i.Status).Select(g => g.Count() + " " + g.Key)) +
@@ -189,11 +171,13 @@ namespace DuplicidadeNfce
         void Ocupado(bool sim, string msg)
         {
             ocupado = sim;
-            foreach (var b in new[] { "BtnFalProcessar", "BtnFalZip", "BtnFalAdicionar" })
+            foreach (var b in new[] { "BtnFalProcessar", "BtnFalZip" })
                 G<Button>(b).IsEnabled = !sim;
             W.Cursor = sim ? System.Windows.Input.Cursors.Wait : null;
             if (msg != null) { G<TextBlock>("FalStatus").Text = msg; G<ProgressBar>("FalProgresso").Value = sim ? 5 : 0; }
         }
+
+        static Brush Pincel(string cor) { return (Brush)new BrushConverter().ConvertFromString(cor); }
 
         void Status(string msg)
         {
@@ -217,7 +201,7 @@ namespace DuplicidadeNfce
             G<TextBlock>("FalNumCanceladas").Text = conta(i => i.Status == StatusFaltante.Cancelada || i.Status == StatusFaltante.CanceladaSemEvento);
             G<TextBlock>("FalNumInutilizadas").Text = conta(i => i.Status == StatusFaltante.Inutilizada);
             G<TextBlock>("FalNumNaoEncontradas").Text = conta(i => i.Status == StatusFaltante.NaoEncontrada);
-            G<TextBlock>("FalNumProblema").Text = conta(i => i.Status == StatusFaltante.MesDiferente || i.Status == StatusFaltante.NaoConsta ||
+            G<TextBlock>("FalNumProblema").Text = conta(i => i.Status == StatusFaltante.NaoConsta ||
                 i.Status == StatusFaltante.Pendente || i.Copia == CopiaFaltante.Erro);
         }
 
@@ -275,7 +259,7 @@ namespace DuplicidadeNfce
             var dlg = new Microsoft.Win32.SaveFileDialog
             {
                 Filter = "Relatório CSV (*.csv)|*.csv",
-                FileName = "notas_faltantes_" + (motor.Cnpj ?? "sem_emitente") + "_" + motor.Mes.ToString("yyyy-MM") + ".csv",
+                FileName = "notas_faltantes_" + (motor.Cnpj ?? "sem_emitente") + "_" + DateTime.Now.ToString("yyyyMMdd_HHmm") + ".csv",
                 InitialDirectory = PastaEntrega ?? motor.PastaRel
             };
             if (dlg.ShowDialog(W) != true) return;
@@ -302,13 +286,12 @@ namespace DuplicidadeNfce
             MessageBox.Show(W, msg, Program.NomeSistema, MessageBoxButton.OK, MessageBoxImage.Error);
         }
 
-        // Desenvolvimento (--captura com NOTACERTA_PAGINA=faltantes): preenche com NOTACERTA_FALT_MES e
-        // NOTACERTA_FALT_FAIXAS (arquivo), processa e salva a tela em PNG.
+        // Desenvolvimento (--captura com NOTACERTA_PAGINA=faltantes): preenche com NOTACERTA_FALT_SERIE e
+        // NOTACERTA_FALT_NUMEROS, processa e salva a tela em PNG.
         public void Capturar()
         {
-            G<TextBox>("FalMes").Text = Environment.GetEnvironmentVariable("NOTACERTA_FALT_MES") ?? "";
-            string arq = Environment.GetEnvironmentVariable("NOTACERTA_FALT_FAIXAS");
-            if (arq != null && File.Exists(arq)) G<TextBox>("FalFaixas").Text = File.ReadAllText(arq);
+            G<TextBox>("FalSerie").Text = Environment.GetEnvironmentVariable("NOTACERTA_FALT_SERIE") ?? "";
+            G<TextBox>("FalNumeros").Text = Environment.GetEnvironmentVariable("NOTACERTA_FALT_NUMEROS") ?? "";
             Processar(true);
         }
 

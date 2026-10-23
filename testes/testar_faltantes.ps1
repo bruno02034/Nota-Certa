@@ -75,7 +75,7 @@ function Rodar($extra, $opcoes) {
     $rel = Join-Path $tmp "rel_$execucao"
     $ini = Join-Path $tmp "cfg_$execucao.ini"
     "PastaRaiz=$xmls`r`nPastaRelatorios=$rel`r`nPastaNotasFaltantes=$base`r`nPastaDestino=$tmp\dup`r`nIniMetre=$tmp\nenhum.ini`r`n$extra" | Set-Content -Path $ini -Encoding UTF8
-    $saida = & { $ErrorActionPreference = 'Continue'; & $exe --config $ini --faltantes --mes 09/2026 @opcoes 2>&1 } | ForEach-Object { "$_" }
+    $saida = & { $ErrorActionPreference = 'Continue'; & $exe --config $ini --faltantes @opcoes 2>&1 } | ForEach-Object { "$_" }
     $script:codigo = $LASTEXITCODE
     $script:ultimaSaida = $saida -join "`n"
     if ($codigo -ne 0) { return @{} }
@@ -151,7 +151,7 @@ try {
     Resposta $n506.Chave ("<cStat>101</cStat><xMotivo>Cancelamento de NF-e homologado</xMotivo><cUF>31</cUF><dhRecbto>2026-10-22T12:00:00-03:00</dhRecbto><chNFe>$($n506.Chave)</chNFe>" +
         (Prot $n506.Chave $n506.Digest '131260000000506'))
 
-    # 507: autorizada, mas emitida em agosto
+    # 507: autorizada, emitida em agosto (as demais são de setembro): entregue, com destaque de mês diferente
     $n507 = NFe (Chave $Cnpj '2608' 507 '10000507') 507 '2026-08-31T23:50:00-03:00' '7.00'
     Gravar "$dia\NOTA_507_SERIE_7_ASSINADA_31_08_2026_23_50_00.xml" "<enviNFe versao=`"4.00`" xmlns=`"$Ns`"><idLote>1</idLote><indSinc>1</indSinc>$($n507.Xml)</enviNFe>"
     Resposta $n507.Chave (Ret100 $n507.Chave $n507.Digest '131260000000507')
@@ -188,19 +188,23 @@ try {
     Resposta $n516a.Chave (Ret100 $n516a.Chave $n516a.Digest '131260000000516')
 
     $antes = HashArvore $xmls
-    $Faixas = @('--faixas', '501 506 7, 507 a 507 7, 508 508 7 NFC-e, 509 512 7, 513 516 7')
+    $Faixas = @('--serie', '7', '--numeros', "501-506, 507;508  509 - 512`n513-516")
 
     # ---------- Entrada ----------
     Write-Host '--- Entrada'
-    $r = Rodar '' @('--faixas', '501 a 502')
-    Verdade ($codigo -eq 2 -and $ultimaSaida.Contains('não reconhecida')) 'faixa sem série e recusada'
-    $r = Rodar '' @('--faixas', '510 509 7')
-    Verdade ($codigo -eq 2 -and $ultimaSaida.Contains('Final menor')) 'Final menor que Inicial e recusado'
-    $r = Rodar 'LimiteNumerosFaltantes=10' @('--faixas', '1 50 7')
-    Verdade ($codigo -eq 2 -and $ultimaSaida.Contains('passam do limite')) 'trava de quantidade de numeros'
+    $r = Rodar '' @('--numeros', '501')
+    Verdade ($codigo -eq 1 -and $ultimaSaida.Contains('--serie')) 'sem serie mostra o uso'
+    $r = Rodar '' @('--serie', '7', '--numeros', '510-509')
+    Verdade ($codigo -eq 1 -and $ultimaSaida.Contains('faixa invertida')) 'faixa invertida avisada (nenhum numero valido)'
+    $r = Rodar 'LimiteNumerosFaltantes=10' @('--serie', '7', '--numeros', '1-50')
+    Verdade ($codigo -eq 1 -and $ultimaSaida.Contains('mais de 10')) 'trava de quantidade de numeros'
 
-    $r = Rodar "PastaNotasFaltantes=$tmp\NF_vazio" @('--faixas', '900 901 7', '--copiar')
-    Verdade ($r['900'].Status -eq 'NÃO ENCONTRADA' -and $ultimaSaida.Contains('Emitente: nenhum emitente') -and (Split-Path $ultimaPasta -Leaf) -like 'SEM-EMITENTE_2026-09_*') 'sem XML nenhum: avisa que nao achou emitente'
+    $r = Rodar "PastaNotasFaltantes=$tmp\NF_vazio" @('--serie', '7', '--numeros', ' 900 ,abc;900  901,,9x', '--copiar')
+    Verdade ($codigo -eq 0 -and @($r.Keys).Count -eq 2 -and $r['900'] -and $r['901']) 'separadores misturados e espacos extras: 900 e 901 buscados'
+    Verdade ($ultimaSaida.Contains('inválido(s) ignorado(s): abc, 9x') -and $ultimaSaida.Contains('repetido(s), buscado(s) uma vez: 900')) 'invalido e repetido avisados sem travar os demais'
+    Verdade ($r['900'].Status -eq 'NÃO ENCONTRADA' -and $ultimaSaida.Contains('Emitente: nenhum emitente') -and (Split-Path $ultimaPasta -Leaf) -like 'SEM-EMITENTE_20*') 'sem XML nenhum: avisa que nao achou emitente'
+    $r = Rodar "PastaNotasFaltantes=$tmp\NF_vazio" @('--serie', '7', '--numeros', '509-511')
+    Verdade (@($r.Keys).Count -eq 3 -and $r['510']) 'faixa com hifen expandida (509-511 = 3 numeros)'
 
     # ---------- Sem certificado: a busca local funciona, nada é copiado ----------
     Write-Host '--- Sem certificado (SEFAZ nao consultada)'
@@ -236,7 +240,7 @@ try {
 
     $r = Rodar $cfg ($Faixas + '--copiar' + '--zip')
     $p = $ultimaPasta
-    Verdade ((Split-Path $p -Leaf) -like "${Cnpj}_2026-09_*") 'pasta da entrega <CNPJ>_<AAAA-MM>_<data-hora>'
+    Verdade ((Split-Path $p -Leaf) -like "${Cnpj}_20*" -and (Split-Path $p -Leaf) -notlike '*2026-09_*') 'pasta da entrega <CNPJ>_<data-hora> (sem mes de referencia)'
     Confere $r 501 'ENCONTRADA' "NOTA_501_SERIE_7_ASSINADA_12_09_2026_13_20_16.xml | $($n501.Chave)-procNFe.xml" 'digest = digVal'
     Verdade ((Hash "$p\NOTA_501_SERIE_7_ASSINADA_12_09_2026_13_20_16.xml") -eq (Hash "$dia\NOTA_501_SERIE_7_ASSINADA_12_09_2026_13_20_16.xml")) '501: copia identica ao original'
     $proc = [xml](Get-Content "$p\$($n501.Chave)-procNFe.xml" -Raw -Encoding UTF8)
@@ -250,7 +254,9 @@ try {
     Verdade ($ev.procEventoNFe.retEvento.infEvento.nProt -eq '131260000009504' -and $ev.DocumentElement.NamespaceURI -eq $Ns) '504: evento da SEFAZ gravado com namespace e protocolo'
     Confere $r 505 'CANCELADA' "NOTA_505_SERIE_7_NFCE.xml | 110111$($n505.Chave)01-procEventoNFe.xml" 'do disco'
     Confere $r 506 'CANCELADA – SEM XML DO EVENTO' "NOTA_506_SERIE_7_ASSINADA_17_09_2026_09_00_00.xml | $($n506.Chave)-procNFe.xml"
-    Confere $r 507 'MÊS DIFERENTE' '' 'emitida em 08/2026'
+    Confere $r 507 'ENCONTRADA' "NOTA_507_SERIE_7_ASSINADA_31_08_2026_23_50_00.xml | $($n507.Chave)-procNFe.xml"
+    Verdade ($r['507'].'Mes emissao' -eq '08/2026 (mês diferente das demais)' -and $r['501'].'Mes emissao' -eq '09/2026') '507: mes de emissao destacado no relatorio'
+    Verdade ($ultimaSaida.Contains('Emissão: 09/2026') -and $ultimaSaida.Contains('08/2026 (1)') -and $ultimaSaida.Contains('ATENÇÃO: notas de meses diferentes')) 'aviso de notas de meses diferentes'
     Confere $r 508 'NÃO CONSTA NA SEFAZ' '' 'nunca transmitida'
     Confere $r 509 'INUTILIZADA' 'INUT_509_511.xml'
     Confere $r 510 'INUTILIZADA' 'INUT_509_511.xml'
@@ -264,17 +270,17 @@ try {
     Verdade ($r['501'].'CNPJ emitente' -eq '11.222.333/0001-81') '501: CNPJ do emitente vem do XML'
     Verdade ($ultimaSaida -match 'Emitente: 11.222.333/0001-81 - EMPRESA TESTE') 'emitente da busca mostrado (CNPJ e nome)'
     Confere $r 515 'PENDENTE' '' '302'
-    Verdade (Test-Path "$p\relatorio_${Cnpj}_2026-09.csv") 'relatorio CSV na pasta da entrega'
+    Verdade (Test-Path "$p\relatorio_${Cnpj}.csv") 'relatorio CSV na pasta da entrega'
     $zip = "$p.zip"
     Verdade ((Test-Path $zip) -and ([IO.Compression.ZipFile]::OpenRead($zip).Entries.Count -eq @(Get-ChildItem $p -File).Count)) 'zip com todos os arquivos da entrega'
     Verdade ((HashArvore $xmls) -eq $antes) 'XMLs originais intactos (somente leitura)'
     $hist = Import-Csv "$base\historico.csv" -Delimiter ';' -Encoding UTF8
-    Verdade (@($hist | Where-Object Status -eq 'COPIADO').Count -eq 15) 'historico com uma linha por arquivo copiado'
+    Verdade (@($hist | Where-Object Status -eq 'COPIADO').Count -eq 17) 'historico com uma linha por arquivo copiado'
 
     $r = Rodar $cfg ($Faixas + '--copiar')
     Verdade ($r['501'].Copia -eq 'JÁ COPIADO' -and @(Get-ChildItem $ultimaPasta -Filter *.xml).Count -eq 0) 'segunda busca: nada copiado de novo (historico)'
     $r = Rodar $cfg ($Faixas + '--copiar' + '--recopiar')
-    Verdade ($r['501'].Copia -eq 'COPIADO' -and @(Get-ChildItem $ultimaPasta -Filter *.xml).Count -eq 13) '--recopiar copia de novo'
+    Verdade ($r['501'].Copia -eq 'COPIADO' -and @(Get-ChildItem $ultimaPasta -Filter *.xml).Count -eq 15) '--recopiar copia de novo'
 }
 finally {
     if ($servidor) { New-Item -ItemType File -Path (Join-Path $tmp 'parar') -Force | Out-Null; $servidor.WaitForExit(5000) | Out-Null }
