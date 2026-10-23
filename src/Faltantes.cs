@@ -326,6 +326,9 @@ namespace DuplicidadeNfce
             if (copiar)
             {
                 PastaExecucao = Path.Combine(Base, idEmitente + "_" + Mes.ToString("yyyy-MM") + "_" + DateTime.Now.ToString("yyyy-MM-dd_HH'h'mm'm'ss's'"));
+                // Duas buscas no mesmo segundo não podem cair na mesma pasta.
+                string pastaBase = PastaExecucao;
+                for (int n = 2; Directory.Exists(PastaExecucao); n++) PastaExecucao = pastaBase + "_" + n;
                 Directory.CreateDirectory(PastaExecucao);
                 Log.Info("");
                 Log.Tela("Copiando para " + PastaExecucao);
