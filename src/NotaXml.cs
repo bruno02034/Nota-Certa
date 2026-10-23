@@ -31,7 +31,7 @@ namespace DuplicidadeNfce
         public string Sha256;
         public DateTime ModificadoEm;
 
-        public string Chave, Numero, Serie, DhEmi, TpEmis, Pedido;
+        public string Chave, Numero, Serie, DhEmi, TpEmis, Pedido, NomeEmitente;
         public decimal? VNF;
         public string DigestDeclarado, DigestCalculado;
         public ProtocoloXml Prot;   // null quando <protNFe/> vem vazio
@@ -165,6 +165,7 @@ namespace DuplicidadeNfce
             nota.DhEmi = Texto(inf, "n:ide/n:dhEmi", ns);
             nota.TpEmis = Texto(inf, "n:ide/n:tpEmis", ns);
             nota.Pedido = Texto(inf, "n:det/n:prod/n:xPed", ns);
+            nota.NomeEmitente = Texto(inf, "n:emit/n:xNome", ns);
             nota.VNF = Decimal(Texto(inf, "n:total/n:ICMSTot/n:vNF", ns));
             nota.DigestDeclarado = Texto(xd, "//n:NFe/ds:Signature/ds:SignedInfo/ds:Reference/ds:DigestValue", ns);
             nota.DigestCalculado = CalcularDigest(inf);

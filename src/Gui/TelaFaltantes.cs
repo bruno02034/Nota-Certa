@@ -137,11 +137,9 @@ namespace DuplicidadeNfce
             var faixas = Faixas(inv);
             if (inv.Count > 0) { Aviso("Linha(s) não reconhecida(s):\n" + string.Join("\n", inv) + "\n\nUse: Inicial  Final  Série  (ex.: 501  512  7  NFC-e)"); return; }
             if (faixas.Count == 0) { Aviso("Informe ao menos uma faixa."); return; }
-            string cnpj;
             DateTime mes;
             try
             {
-                cnpj = MotorFaltantes.NormalizarCnpj(G<TextBox>("FalCnpj").Text);
                 mes = MotorFaltantes.LerMes(G<TextBox>("FalMes").Text);
             }
             catch (Exception ex) { Aviso(ex.Message); return; }
@@ -158,7 +156,7 @@ namespace DuplicidadeNfce
                 m.Log.AoMostrar = Status;
                 try
                 {
-                    m.Executar(cnpj, mes, faixas, true, recopiar, (feitos, total) => W.Dispatcher.BeginInvoke(new Action(() =>
+                    m.Executar(mes, faixas, true, recopiar, (feitos, total) => W.Dispatcher.BeginInvoke(new Action(() =>
                     {
                         barra.Value = total == 0 ? 100 : 100.0 * feitos / total;
                         G<TextBlock>("FalStatus").Text = "Conferindo " + Math.Min(feitos + 1, total) + " de " + total + "...";
@@ -177,6 +175,9 @@ namespace DuplicidadeNfce
                 barra.Value = 100;
                 Contagens();
                 if (linhas.Count > 0) G<DataGrid>("GradeFaltantes").SelectedIndex = 0;
+                var emit = G<TextBlock>("FalEmitente");
+                emit.Text = motor.DescricaoEmitente;
+                emit.Foreground = motor.Cnpj == null ? Brushes.Firebrick : Brushes.Black;
                 var itens = motor.Itens;
                 int copiados = itens.Count(i => i.Copia == CopiaFaltante.Copiado);
                 Status(itens.Count + " número(s): " + string.Join(", ", itens.GroupBy(i => i.Status).Select(g => g.Count() + " " + g.Key)) +
@@ -229,6 +230,7 @@ namespace DuplicidadeNfce
             G<TextBlock>("FalDetNota").Text = "Nota " + i.Nota;
             G<ContentControl>("FalDetEtiqueta").Content = g;
             G<TextBlock>("FalDetEmissao").Text = i.DhEmi == null ? "sem data de emissão" : "emitida em " + g.Data + " · " + g.Valor;
+            G<TextBlock>("FalDetEmitente").Text = i.Cnpj == null ? "não identificado" : MotorFaltantes.FormatarCnpj(i.Cnpj) + (i.Emitente != null ? " - " + i.Emitente : "");
             G<TextBox>("FalDetChave").Text = i.Chave ?? "-";
             G<TextBlock>("FalDetSefaz").Text = string.IsNullOrEmpty(i.SituacaoSefaz) ? "não consultada (nenhuma chave para consultar)" : i.SituacaoSefaz;
             G<TextBox>("FalDetProt").Text = string.IsNullOrEmpty(i.NProt) && string.IsNullOrEmpty(i.DigVal) ? "-" : (i.NProt ?? "-") + " / " + (i.DigVal ?? "-");
@@ -273,7 +275,7 @@ namespace DuplicidadeNfce
             var dlg = new Microsoft.Win32.SaveFileDialog
             {
                 Filter = "Relatório CSV (*.csv)|*.csv",
-                FileName = "notas_faltantes_" + motor.Cnpj + "_" + motor.Mes.ToString("yyyy-MM") + ".csv",
+                FileName = "notas_faltantes_" + (motor.Cnpj ?? "sem_emitente") + "_" + motor.Mes.ToString("yyyy-MM") + ".csv",
                 InitialDirectory = PastaEntrega ?? motor.PastaRel
             };
             if (dlg.ShowDialog(W) != true) return;
@@ -300,11 +302,10 @@ namespace DuplicidadeNfce
             MessageBox.Show(W, msg, Program.NomeSistema, MessageBoxButton.OK, MessageBoxImage.Error);
         }
 
-        // Desenvolvimento (--captura com NOTACERTA_PAGINA=faltantes): preenche com NOTACERTA_FALT_CNPJ, _MES e
-        // _FAIXAS (arquivo), processa e salva a tela em PNG.
+        // Desenvolvimento (--captura com NOTACERTA_PAGINA=faltantes): preenche com NOTACERTA_FALT_MES e
+        // NOTACERTA_FALT_FAIXAS (arquivo), processa e salva a tela em PNG.
         public void Capturar()
         {
-            G<TextBox>("FalCnpj").Text = Environment.GetEnvironmentVariable("NOTACERTA_FALT_CNPJ") ?? "";
             G<TextBox>("FalMes").Text = Environment.GetEnvironmentVariable("NOTACERTA_FALT_MES") ?? "";
             string arq = Environment.GetEnvironmentVariable("NOTACERTA_FALT_FAIXAS");
             if (arq != null && File.Exists(arq)) G<TextBox>("FalFaixas").Text = File.ReadAllText(arq);

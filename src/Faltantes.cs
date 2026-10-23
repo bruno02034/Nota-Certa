@@ -57,6 +57,7 @@ namespace DuplicidadeNfce
         public int Serie;
         public string Status = StatusFaltante.Pendente, Motivo, Copia = "";
         public string Chave, DhEmi, SituacaoSefaz, CStat, NProt, DigVal;
+        public string Cnpj, Emitente;   // emitente descoberto pelos XMLs do número
         public decimal? Valor;
         public List<ArquivoFaltante> Arquivos = new List<ArquivoFaltante>();
         public List<string> Destinos = new List<string>();
@@ -156,7 +157,8 @@ namespace DuplicidadeNfce
         public readonly Log Log;
         public readonly string Raiz, Base, PastaRel, ArqLog;
         public readonly HistoricoFaltantes Historico;
-        public string Cnpj;
+        // Emitente da busca, descoberto pelos XMLs (o que aparece em mais números); nomeia a pasta da entrega.
+        public string Cnpj, Emitente, DescricaoEmitente;
         public DateTime Mes;
         public List<FaixaFaltante> Faixas = new List<FaixaFaltante>();
         public List<ItemFaltante> Itens = new List<ItemFaltante>();
@@ -230,13 +232,6 @@ namespace DuplicidadeNfce
                     if (vistos.Add(f.Serie + "/" + n)) yield return new KeyValuePair<int, long>(f.Serie, n);
         }
 
-        public static string NormalizarCnpj(string s)
-        {
-            string d = Regex.Replace(s ?? "", @"\D", "");
-            if (d.Length != 14) throw new Exception("CNPJ inválido: informe os 14 dígitos (ex.: 11.222.333/0001-81)");
-            return d;
-        }
-
         public static DateTime LerMes(string s)
         {
             DateTime d;
@@ -250,9 +245,8 @@ namespace DuplicidadeNfce
 
         static readonly Regex ReNomeNota = new Regex(@"^NOTA_(?:ONTIGENCIA_ENVIA_)?(\d+)_(?:MODELO_\d+_)?SERIE_(\d+)_", RegexOptions.IgnoreCase);
 
-        public List<ItemFaltante> Executar(string cnpj, DateTime mes, List<FaixaFaltante> faixas, bool copiar, bool recopiar, Action<int, int> progresso)
+        public List<ItemFaltante> Executar(DateTime mes, List<FaixaFaltante> faixas, bool copiar, bool recopiar, Action<int, int> progresso)
         {
-            Cnpj = NormalizarCnpj(cnpj);
             Mes = new DateTime(mes.Year, mes.Month, 1);
             Faixas = faixas;
             var numeros = Numeros(faixas).ToList();
@@ -262,7 +256,7 @@ namespace DuplicidadeNfce
                     " (confira as faixas ou aumente LimiteNumerosFaltantes no duplicidade.ini)");
 
             Log.Tela(Program.NomeSistema + " - Notas Faltantes - " + DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss") + (copiar ? "" : " - só relatório"));
-            Log.Tela("CNPJ " + Cnpj + " · mês " + Mes.ToString("MM/yyyy") + " · " + faixas.Count + " faixa(s), " + numeros.Count + " número(s): " + string.Join(", ", faixas));
+            Log.Tela("Mês " + Mes.ToString("MM/yyyy") + " · " + faixas.Count + " faixa(s), " + numeros.Count + " número(s): " + string.Join(", ", faixas));
             Log.Tela("Varrendo " + Raiz + " (todas as subpastas)...");
 
             var alvo = new HashSet<string>(numeros.Select(n => n.Key + "/" + n.Value));
@@ -312,19 +306,36 @@ namespace DuplicidadeNfce
             }
             if (progresso != null) progresso(feitos, numeros.Count);
 
+            // O CNPJ não é informado: vem dos XMLs. No servidor do cliente só existe um emitente.
+            var porEmitente = Itens.Where(i => i.Cnpj != null).GroupBy(i => i.Cnpj).OrderByDescending(g => g.Count()).ToList();
+            if (porEmitente.Count == 0)
+            {
+                DescricaoEmitente = "nenhum emitente encontrado nos XMLs";
+                Log.Tela("Emitente: " + DescricaoEmitente);
+            }
+            else
+            {
+                Cnpj = porEmitente[0].Key;
+                Emitente = porEmitente[0].Select(i => i.Emitente).FirstOrDefault(x => x != null);
+                DescricaoEmitente = FormatarCnpj(Cnpj) + (Emitente != null ? " - " + Emitente : "") +
+                    (porEmitente.Count > 1 ? " · também: " + string.Join(", ", porEmitente.Skip(1).Select(g => FormatarCnpj(g.Key) + " (" + g.Count() + " número(s))")) : "");
+                Log.Tela("Emitente: " + DescricaoEmitente);
+            }
+            string idEmitente = Cnpj ?? "SEM-EMITENTE";
+
             if (copiar)
             {
-                PastaExecucao = Path.Combine(Base, Cnpj + "_" + Mes.ToString("yyyy-MM") + "_" + DateTime.Now.ToString("yyyy-MM-dd_HH'h'mm'm'ss's'"));
+                PastaExecucao = Path.Combine(Base, idEmitente + "_" + Mes.ToString("yyyy-MM") + "_" + DateTime.Now.ToString("yyyy-MM-dd_HH'h'mm'm'ss's'"));
                 Directory.CreateDirectory(PastaExecucao);
                 Log.Info("");
                 Log.Tela("Copiando para " + PastaExecucao);
                 Copiar(recopiar);
-                ArqCsv = Path.Combine(PastaExecucao, "relatorio_" + Cnpj + "_" + Mes.ToString("yyyy-MM") + ".csv");
+                ArqCsv = Path.Combine(PastaExecucao, "relatorio_" + idEmitente + "_" + Mes.ToString("yyyy-MM") + ".csv");
             }
             else
             {
                 foreach (var i in Itens.Where(x => x.Entregas.Count > 0)) i.Copia = CopiaFaltante.NaoCopiado;
-                ArqCsv = Path.Combine(PastaRel, "faltantes_" + Cnpj + "_" + Mes.ToString("yyyy-MM") + "_" + carimbo + ".csv");
+                ArqCsv = Path.Combine(PastaRel, "faltantes_" + idEmitente + "_" + Mes.ToString("yyyy-MM") + "_" + carimbo + ".csv");
             }
             GravarCsv(ArqCsv, Itens);
 
@@ -432,7 +443,6 @@ namespace DuplicidadeNfce
                 string chave = a.Chave;
                 if (a.Erro != null) descarte = "não foi possível ler: " + a.Erro;
                 else if (chave == null || chave.Length != 44) descarte = "sem chave de acesso no Id do infNFe";
-                else if (a.Cnpj != Cnpj) descarte = "outro emitente (CNPJ " + a.Cnpj + ")";
                 else if (chave.Substring(20, 2) != "65") descarte = "modelo " + chave.Substring(20, 2) + " (não é NFC-e)";
                 else if (a.Numero != numero.ToString() || a.Serie != serie.ToString()) descarte = "o conteúdo é da nota " + a.Serie + "/" + a.Numero;
                 else if (Descartavel(a)) descarte = "arquivo " + a.Tipo.ToString().ToUpperInvariant() + " (registro do emissor, não é entregue)";
@@ -448,6 +458,18 @@ namespace DuplicidadeNfce
                 SemNota(item, inuts);
                 return item;
             }
+
+            // O emitente vem do XML. Mais de um para o mesmo número não se resolve no chute: fica pendente.
+            var emitentes = validos.GroupBy(v => v.Cnpj).ToList();
+            if (emitentes.Count > 1)
+            {
+                foreach (var a in item.Arquivos.Where(x => x.Motivo == null)) a.Motivo = "emitente " + FormatarCnpj(validos.First(v => v.Caminho == a.Caminho).Cnpj);
+                Pendente(item, "mais de um emitente para esse número: " + string.Join("; ", emitentes.Select(g =>
+                    FormatarCnpj(g.Key) + (g.First().NomeEmitente != null ? " - " + g.First().NomeEmitente : "") + " (" + string.Join(", ", g.Select(x => x.Nome)) + ")")));
+                return item;
+            }
+            item.Cnpj = emitentes[0].Key;
+            item.Emitente = validos.Select(v => v.NomeEmitente).FirstOrDefault(x => x != null);
 
             // Uma consulta por chave.
             var porChave = validos.GroupBy(v => v.Chave).ToList();
@@ -510,12 +532,19 @@ namespace DuplicidadeNfce
 
         void SemNota(ItemFaltante item, List<InutilizacaoXml> inuts)
         {
-            var cobre = inuts.Where(i => i.Cnpj == Cnpj && i.Serie == item.Serie && i.Inicial <= item.Numero && item.Numero <= i.Final && (i.Mod == null || i.Mod == "65")).ToList();
-            var homologada = cobre.Where(i => i.Homologada).OrderByDescending(i => i.Caminho).FirstOrDefault();
+            var cobre = inuts.Where(i => i.Serie == item.Serie && i.Inicial <= item.Numero && item.Numero <= i.Final && (i.Mod == null || i.Mod == "65")).ToList();
+            var homologadas = cobre.Where(i => i.Homologada).OrderByDescending(i => i.Caminho).ToList();
+            var homologada = homologadas.FirstOrDefault();
             int descartados = item.Arquivos.Count;
             string sobreDescartados = descartados > 0 ? " Há " + descartados + " arquivo(s) descartado(s) com esse número: " + string.Join(", ", item.Arquivos.Select(a => a.Nome + " (" + a.Motivo + ")")) + "." : "";
+            if (homologadas.Select(i => i.Cnpj).Distinct().Count() > 1)
+            {
+                Pendente(item, "mais de um emitente com inutilização desse número: " + string.Join("; ", homologadas.Select(i => FormatarCnpj(i.Cnpj) + " (" + i.Nome + ")")));
+                return;
+            }
             if (homologada != null)
             {
+                item.Cnpj = homologada.Cnpj;
                 item.Status = StatusFaltante.Inutilizada;
                 item.CStat = homologada.CStat;
                 item.NProt = homologada.NProt;
@@ -672,6 +701,11 @@ namespace DuplicidadeNfce
             };
         }
 
+        public static string FormatarCnpj(string c)
+        {
+            return c != null && c.Length == 14 ? c.Substring(0, 2) + "." + c.Substring(2, 3) + "." + c.Substring(5, 3) + "/" + c.Substring(8, 4) + "-" + c.Substring(12) : c ?? "";
+        }
+
         static void Preencher(ItemFaltante item, NotaXml n)
         {
             item.Chave = item.Chave ?? n.Chave;
@@ -708,7 +742,7 @@ namespace DuplicidadeNfce
             var feitos = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             foreach (var item in Itens.Where(i => i.Entregas.Count > 0))
             {
-                var ant = Historico.BuscarCopiado(Cnpj, item.Serie, item.Numero);
+                var ant = Historico.BuscarCopiado(item.Cnpj, item.Serie, item.Numero);
                 if (ant != null && !recopiar)
                 {
                     item.Copia = CopiaFaltante.JaCopiado;
@@ -796,7 +830,7 @@ namespace DuplicidadeNfce
         {
             Historico.Registrar(new HistoricoFaltantes.Registro
             {
-                DataHora = DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss"), Cnpj = Cnpj, Serie = item.Serie.ToString(), Numero = item.Numero.ToString(),
+                DataHora = DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss"), Cnpj = item.Cnpj, Serie = item.Serie.ToString(), Numero = item.Numero.ToString(),
                 Chave = item.Chave, Arquivo = e.NomeDestino, CaminhoOrigem = e.Origem ?? "(resposta da SEFAZ)", CaminhoDestino = destino,
                 Tamanho = tamanho.ToString(), Sha256 = hash, Status = status
             });
@@ -806,7 +840,7 @@ namespace DuplicidadeNfce
 
         static readonly string[] Cabecalho =
         {
-            "Numero", "Serie", "Status", "Chave", "Emissao", "Valor", "Protocolo", "cStat SEFAZ", "Situacao SEFAZ",
+            "Numero", "Serie", "CNPJ emitente", "Status", "Chave", "Emissao", "Valor", "Protocolo", "cStat SEFAZ", "Situacao SEFAZ",
             "Arquivo(s) de origem", "Arquivo(s) entregue(s)", "Copia", "Motivo"
         };
 
@@ -821,7 +855,7 @@ namespace DuplicidadeNfce
                 var d = DataEmissao(i.DhEmi);
                 sb.AppendLine(string.Join(";", new[]
                 {
-                    i.Numero.ToString(), i.Serie.ToString(), i.Status, Csv.Formula(i.Chave), d.HasValue ? d.Value.ToString("dd/MM/yyyy HH:mm:ss") : "",
+                    i.Numero.ToString(), i.Serie.ToString(), FormatarCnpj(i.Cnpj), i.Status, Csv.Formula(i.Chave), d.HasValue ? d.Value.ToString("dd/MM/yyyy HH:mm:ss") : "",
                     i.Valor.HasValue ? i.Valor.Value.ToString("0.00", CultureInfo.GetCultureInfo("pt-BR")) : "", Csv.Formula(i.NProt), i.CStat,
                     i.SituacaoSefaz, string.Join(" | ", origens), string.Join(" | ", i.Destinos.Select(Path.GetFileName)), i.Copia, i.Motivo
                 }.Select(Csv.Campo)));

@@ -73,10 +73,13 @@ número, fica EM CONTINGÊNCIA.
 ## Notas Faltantes
 
 Para o relatório "Notas não lançadas de Saídas" (faixas de números sem XML no fiscal). Menu **Notas Faltantes**:
-informe o CNPJ do emitente, o mês (MM/AAAA) e cole as linhas do relatório (`Inicial  Final  Série  Espécie`) ou
-adicione faixa a faixa. Cada faixa vale do Inicial ao Final, inclusive. O total de números aparece antes de processar.
+informe o mês (MM/AAAA) e cole as linhas do relatório (`Inicial  Final  Série  Espécie`) ou adicione faixa a faixa.
+Cada faixa vale do Inicial ao Final, inclusive. O total de números aparece antes de processar.
 
-- Varre todas as subpastas de `C:\Chef\NFCe`. O nome do arquivo só pré-filtra; CNPJ, modelo 65, série e número são
+- O CNPJ não é informado: vem do emitente dos XMLs encontrados e escolhe o certificado, o nome da pasta e o
+  histórico. A tela mostra o CNPJ e a empresa usados. Se um número tiver XMLs de mais de um emitente, ele fica
+  PENDENTE "mais de um emitente" e os demais seguem.
+- Varre todas as subpastas de `C:\Chef\NFCe`. O nome do arquivo só pré-filtra; modelo 65, série e número são
   conferidos no conteúdo. `REJEICAO`, `FALHA_SCHEMA`/`ERRO_SCHEMA` e `Temp` são descartados (ficam no log).
 - O mês é o do `dhEmi` do XML, nunca o da pasta nem a data do arquivo.
 - Cada chave é consultada uma vez na SEFAZ; o arquivo certo é o de DigestValue (recalculado) igual ao `digVal`.
@@ -102,7 +105,7 @@ entregar outra vez). Nada é transmitido, cancelado nem inutilizado.
 Linha de comando:
 
 ```
-.\NotaCerta.exe --faltantes --cnpj 11222333000181 --mes 09/2026 --faixas "501 512 7, 600 600 7" --copiar --zip
+.\NotaCerta.exe --faltantes --mes 09/2026 --faixas "501 512 7, 600 600 7" --copiar --zip
 ```
 
 ## Desenvolvimento

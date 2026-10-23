@@ -75,7 +75,7 @@ function Rodar($extra, $opcoes) {
     $rel = Join-Path $tmp "rel_$execucao"
     $ini = Join-Path $tmp "cfg_$execucao.ini"
     "PastaRaiz=$xmls`r`nPastaRelatorios=$rel`r`nPastaNotasFaltantes=$base`r`nPastaDestino=$tmp\dup`r`nIniMetre=$tmp\nenhum.ini`r`n$extra" | Set-Content -Path $ini -Encoding UTF8
-    $saida = & { $ErrorActionPreference = 'Continue'; & $exe --config $ini --faltantes --cnpj $Cnpj --mes 09/2026 @opcoes 2>&1 } | ForEach-Object { "$_" }
+    $saida = & { $ErrorActionPreference = 'Continue'; & $exe --config $ini --faltantes --mes 09/2026 @opcoes 2>&1 } | ForEach-Object { "$_" }
     $script:codigo = $LASTEXITCODE
     $script:ultimaSaida = $saida -join "`n"
     if ($codigo -ne 0) { return @{} }
@@ -171,7 +171,7 @@ try {
     Gravar "$dia\NOTA_513_SERIE_7_ASSINADA_19_09_2026_09_00_00.xml" "<enviNFe versao=`"4.00`" xmlns=`"$Ns`"><idLote>1</idLote><indSinc>1</indSinc>$($n513.Xml)</enviNFe>"
     Resposta $n513.Chave (Ret100 $n513.Chave 'OutroConteudoAutorizado0000000=' '131260000000513')
 
-    # 514: só existe nota de OUTRO emitente com a mesma série/número
+    # 514: só existe nota de OUTRO emitente (sem certificado dele aqui) -> emitente próprio, SEFAZ não consultada
     $n514 = NFe (Chave $Outro '2609' 514 '10000514') 514 '2026-09-20T09:00:00-03:00' '14.00' $Outro
     Gravar "$dia\NOTA_514_SERIE_7_ASSINADA_20_09_2026_09_00_00.xml" "<enviNFe versao=`"4.00`" xmlns=`"$Ns`"><idLote>1</idLote><indSinc>1</indSinc>$($n514.Xml)</enviNFe>"
 
@@ -180,8 +180,15 @@ try {
     Gravar "$dia\NOTA_515_SERIE_7_ASSINADA_21_09_2026_09_00_00.xml" "<enviNFe versao=`"4.00`" xmlns=`"$Ns`"><idLote>1</idLote><indSinc>1</indSinc>$($n515.Xml)</enviNFe>"
     Resposta $n515.Chave "<cStat>302</cStat><xMotivo>Uso Denegado: Irregularidade fiscal do destinatario</xMotivo><cUF>31</cUF><dhRecbto>2026-10-22T12:00:00-03:00</dhRecbto><chNFe>$($n515.Chave)</chNFe>"
 
+    # 516: o mesmo número com notas de dois emitentes -> não chuta, fica pendente (e os outros seguem)
+    $n516a = NFe (Chave $Cnpj '2609' 516 '10000516') 516 '2026-09-22T09:00:00-03:00' '16.00'
+    $n516b = NFe (Chave $Outro '2609' 516 '20000516') 516 '2026-09-22T09:30:00-03:00' '61.00' $Outro
+    Gravar "$dia\NOTA_516_SERIE_7_ASSINADA_22_09_2026_09_00_00.xml" "<enviNFe versao=`"4.00`" xmlns=`"$Ns`"><idLote>1</idLote><indSinc>1</indSinc>$($n516a.Xml)</enviNFe>"
+    Gravar "$aut\NOTA_516_SERIE_7_NFCE.xml" "<nfeProc versao=`"4.00`" xmlns=`"$Ns`">$($n516b.Xml)</nfeProc>"
+    Resposta $n516a.Chave (Ret100 $n516a.Chave $n516a.Digest '131260000000516')
+
     $antes = HashArvore $xmls
-    $Faixas = @('--faixas', '501 506 7, 507 a 507 7, 508 508 7 NFC-e, 509 512 7, 513 515 7')
+    $Faixas = @('--faixas', '501 506 7, 507 a 507 7, 508 508 7 NFC-e, 509 512 7, 513 516 7')
 
     # ---------- Entrada ----------
     Write-Host '--- Entrada'
@@ -192,6 +199,9 @@ try {
     $r = Rodar 'LimiteNumerosFaltantes=10' @('--faixas', '1 50 7')
     Verdade ($codigo -eq 2 -and $ultimaSaida.Contains('passam do limite')) 'trava de quantidade de numeros'
 
+    $r = Rodar "PastaNotasFaltantes=$tmp\NF_vazio" @('--faixas', '900 901 7', '--copiar')
+    Verdade ($r['900'].Status -eq 'NÃO ENCONTRADA' -and $ultimaSaida.Contains('Emitente: nenhum emitente') -and (Split-Path $ultimaPasta -Leaf) -like 'SEM-EMITENTE_2026-09_*') 'sem XML nenhum: avisa que nao achou emitente'
+
     # ---------- Sem certificado: a busca local funciona, nada é copiado ----------
     Write-Host '--- Sem certificado (SEFAZ nao consultada)'
     $semCert = "CertificadoPfx=$tmp\semcert`r`nPastaEmpresas=$tmp\semcert`r`nUrlConsulta=http://127.0.0.1:1/x`r`nPastaNotasFaltantes=$tmp\NF_semcert"
@@ -201,7 +211,7 @@ try {
     Verdade ($r['501'].Chave -match $n501.Chave -and $r['501'].Valor -eq '33,00') '501: chave e valor do candidato aparecem mesmo sem SEFAZ'
     Confere $r 509 'INUTILIZADA' 'INUT_509_511.xml' 'INUT_509_511.xml'
     Confere $r 512 'NÃO ENCONTRADA' '' 'sem retorno 102'
-    Confere $r 514 'NÃO ENCONTRADA' '' 'outro emitente'
+    Confere $r 514 'PENDENTE' '' 'SEFAZ não consultada'
     Verdade (@(Get-ChildItem $ultimaPasta -Filter *.xml).Count -eq 1) 'sem SEFAZ so a inutilizacao (local) e copiada'
 
     # ---------- SEFAZ simulada ----------
@@ -222,7 +232,7 @@ try {
     Verdade (-not $ultimaSaida.Contains($senha)) 'senha do certificado fora da tela e do log'
     $ch = @(Get-Content $chamadas)
     Verdade (($ch | Group-Object | Where-Object Count -gt 1).Count -eq 0) 'uma consulta por chave'
-    Verdade ($ch -notcontains $n514.Chave) 'nota de outro emitente nao e consultada'
+    Verdade ($ch -notcontains $n514.Chave) 'sem certificado do outro emitente a chave dele nao vai para a SEFAZ'
 
     $r = Rodar $cfg ($Faixas + '--copiar' + '--zip')
     $p = $ultimaPasta
@@ -248,7 +258,11 @@ try {
     Verdade (@(Get-ChildItem $p -Filter 'INUT_*').Count -eq 1) 'inutilizacao copiada uma vez so'
     Confere $r 512 'NÃO ENCONTRADA' '' 'inutilizado'
     Confere $r 513 'PENDENTE' '' 'nenhum candidato com digest igual'
-    Confere $r 514 'NÃO ENCONTRADA' ''
+    Confere $r 514 'PENDENTE' '' 'SEFAZ não consultada'
+    Verdade ($r['514'].'CNPJ emitente' -eq '99.888.777/0001-66') '514: CNPJ do emitente vem do XML'
+    Confere $r 516 'PENDENTE' '' 'mais de um emitente'
+    Verdade ($r['501'].'CNPJ emitente' -eq '11.222.333/0001-81') '501: CNPJ do emitente vem do XML'
+    Verdade ($ultimaSaida -match 'Emitente: 11.222.333/0001-81 - EMPRESA TESTE') 'emitente da busca mostrado (CNPJ e nome)'
     Confere $r 515 'PENDENTE' '' '302'
     Verdade (Test-Path "$p\relatorio_${Cnpj}_2026-09.csv") 'relatorio CSV na pasta da entrega'
     $zip = "$p.zip"

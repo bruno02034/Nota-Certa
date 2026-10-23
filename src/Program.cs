@@ -15,7 +15,7 @@ namespace DuplicidadeNfce
         public List<KeyValuePair<string, string>> Sobrepor = new List<KeyValuePair<string, string>>();
         public List<string> TextoNotas = new List<string>();
         public string ArqNotas;
-        public string Cnpj, Mes, ArqFaixas;
+        public string Mes, ArqFaixas;
         public List<string> TextoFaixas = new List<string>();
 
         public Config CarregarConfig()
@@ -56,10 +56,9 @@ Sem argumentos abre a interface gráfica. Linha de comando:
 
 Notas Faltantes (relatório ""Notas não lançadas de Saídas""):
 
-     NotaCerta.exe --faltantes --cnpj 11222333000181 --mes 09/2026 --faixas ""501 512 7"" [--copiar] [--zip]
+     NotaCerta.exe --faltantes --mes 09/2026 --faixas ""501 512 7"" [--copiar] [--zip]
 
-  --faltantes        busca os XMLs dos números faltantes
-  --cnpj <cnpj>      CNPJ do emitente
+  --faltantes        busca os XMLs dos números faltantes (o CNPJ do emitente vem dos próprios XMLs)
   --mes <MM/AAAA>    mês de referência (vale o dhEmi, não a pasta)
   --faixas <lista>   faixas ""Inicial Final Série"", separadas por vírgula
   --faixas-arquivo <arq>  uma faixa por linha (pode colar as linhas do relatório)
@@ -136,7 +135,6 @@ a cópia nunca move nem sobrescreve, e fica registrada em historico.csv na pasta
                     case "--gui": op.Gui = true; break;
                     case "--testar-banco": op.TestarBanco = true; break;
                     case "--faltantes": op.Faltantes = true; break;
-                    case "--cnpj": op.Cnpj = prox(); break;
                     case "--mes": op.Mes = prox(); break;
                     case "--faixas": op.TextoFaixas.Add(prox()); break;
                     case "--faixas-arquivo": op.ArqFaixas = prox(); break;
@@ -216,7 +214,7 @@ a cópia nunca move nem sobrescreve, e fica registrada em historico.csv na pasta
             return 0;
         }
 
-        // Notas Faltantes: --cnpj, --mes e as faixas do relatório "Notas não lançadas de Saídas".
+        // Notas Faltantes: --mes e as faixas (o CNPJ do emitente vem dos XMLs) do relatório "Notas não lançadas de Saídas".
         static int ExecutarFaltantes(Opcoes op)
         {
             var linhas = new List<string>();
@@ -229,16 +227,16 @@ a cópia nunca move nem sobrescreve, e fica registrada em historico.csv na pasta
             var invalidas = new List<string>();
             var faixas = MotorFaltantes.LerFaixas(string.Join("\n", linhas), invalidas);
             if (invalidas.Count > 0) throw new Exception("faixa(s) não reconhecida(s): " + string.Join(" | ", invalidas) + " (use: Inicial Final Série)");
-            if (faixas.Count == 0 || op.Cnpj == null || op.Mes == null)
+            if (faixas.Count == 0 || op.Mes == null)
             {
-                Console.WriteLine("Informe --cnpj, --mes e as faixas (--faixas ou --faixas-arquivo).");
+                Console.WriteLine("Informe --mes e as faixas (--faixas ou --faixas-arquivo).");
                 Console.WriteLine();
                 Console.WriteLine(Ajuda);
                 return 1;
             }
             using (var m = new MotorFaltantes(op.CarregarConfig(), AppDomain.CurrentDomain.BaseDirectory))
             {
-                m.Executar(op.Cnpj, MotorFaltantes.LerMes(op.Mes), faixas, op.Copiar, op.Recopiar, null);
+                m.Executar(MotorFaltantes.LerMes(op.Mes), faixas, op.Copiar, op.Recopiar, null);
                 if (op.Zip)
                 {
                     if (!op.Copiar) throw new Exception("--zip exige --copiar");
