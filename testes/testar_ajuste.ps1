@@ -108,10 +108,12 @@ try {
         @{ N = 2002; S = '30000001'; A = '30000002'; Id = $IdMetre + 1; V = '50.00' },   # B: XML autorizado no chefxml
         @{ N = 2003; S = '30000003'; A = '30000004'; Id = $IdMetre + 2; V = '18.00' },   # C: XML autorizado em outra pasta
         @{ N = 2004; S = '30000005'; A = '30000006'; Id = $IdMetre + 3; V = '20.90' },   # D: chave autorizada já em outra linha
-        @{ N = 2005; S = '30000007'; A = '30000008'; Id = $IdMetre + 4; V = '25.00' }    # E: valor autorizado diferente
+        @{ N = 2005; S = '30000007'; A = '30000008'; Id = $IdMetre + 4; V = '25.00' },   # E: valor autorizado diferente
+        @{ N = 2006; S = '30000009'; A = '30000010'; Id = $IdMetre + 5; V = '30.00' },   # F: ASSINADA autorizado na pasta, mesmo valor
+        @{ N = 2007; S = '30000011'; A = '30000012'; Id = $IdMetre + 6; V = '40.00' }    # G: ASSINADA autorizado na pasta, valor diferente
     )
     foreach ($n in $notas) { $n.Sis = Chave $n.N $n.S; $n.Aut = Chave $n.N $n.A }
-    $B, $C, $D, $E = $notas
+    $B, $C, $D, $E, $F, $G = $notas
 
     Rejeicao539 $Numero $aSis $aAut $Valor
     foreach ($n in $notas) { Rejeicao539 $n.N $n.Sis $n.Aut $n.V }
@@ -121,7 +123,11 @@ try {
     Gravar (Join-Path $xmls 'Outros\qualquer\outro_nome_2003.xml') $cXml.Xml
     $dXml = NFe $D.Aut $D.N $D.V; Resposta $D.Aut $dXml.Digest '131260000000004' '100'
     $eXml = NFe $E.Aut $E.N '99.00'; Resposta $E.Aut $eXml.Digest '131260000000005' '100'
-    Gravar (Join-Path $xmls 'Outros\nota_2005.xml') $eXml.Xml
+    # F e G: o ASSINADA da chave autorizada está na pasta do dia (fluxo normal); só o valor decide o caminho.
+    $fXml = NFe $F.Aut $F.N '30.00'; Resposta $F.Aut $fXml.Digest '131260000000006' '100'
+    Gravar (Join-Path $xmls "10_2026\19\NOTA_$($F.N)_SERIE_${Serie}_ASSINADA_19_10_2026_13_00_00.xml") $fXml.Xml
+    $gXml = NFe $G.Aut $G.N '45.00'; Resposta $G.Aut $gXml.Digest '131260000000007' '100'
+    Gravar (Join-Path $xmls "10_2026\19\NOTA_$($G.N)_SERIE_${Serie}_ASSINADA_19_10_2026_13_10_00.xml") $gXml.Xml
     $aTentativa = NFe $aSis $Numero $Valor
 
     $sql = @"
@@ -139,12 +145,15 @@ INSERT INTO chef.nota_saida (id_nota_saida, XML, numero, serie, chave_acesso, dt
   ($($C.Id), NULL, $($C.N), $Serie, '$($C.Sis)', '2026-10-19', 2, $($C.V), '2026-10-19 11:00:00', NULL, 'Lote processado', 'Em contigencia', NULL),
   ($($D.Id), NULL, $($D.N), $Serie, '$($D.Sis)', '2026-10-19', 3, $($D.V), '2026-10-19 12:00:00', NULL, 'Lote processado', 'Em contigencia', NULL),
   ($($E.Id), NULL, $($E.N), $Serie, '$($E.Sis)', '2026-10-19', 4, $($E.V), '2026-10-19 12:30:00', NULL, 'Lote processado', 'Em contigencia', NULL),
+  ($($F.Id), NULL, $($F.N), $Serie, '$($F.Sis)', '2026-10-19', 5, $($F.V), '2026-10-19 13:00:00', NULL, 'Lote processado', 'Em contigencia', NULL),
+  ($($G.Id), NULL, $($G.N), $Serie, '$($G.Sis)', '2026-10-19', 6, $($G.V), '2026-10-19 13:10:00', NULL, 'Lote processado', 'Em contigencia', NULL),
   (500, NULL, $($D.N), $Serie, '$($D.Aut)', '2026-10-19', 3, $($D.V), NULL, NULL, NULL, 'Autorizada', NULL),
   (501, NULL, 1999, $Serie, '$(Chave 1999 '40000001')', '2026-10-19', 9, 10.00, NULL, NULL, NULL, 'Autorizada', NULL);
 INSERT INTO chefxml.xml (id_xml, XML, id_nota_saida, id_pedido) VALUES
   ($IdXml, CONVERT(UNHEX('$(Hex $aTentativa.Xml)') USING utf8), $IdMetre, $Pedido),
   (400001, CONVERT(UNHEX('$(Hex $bXml.Xml)') USING utf8), $($B.Id), 1),
-  (400002, 'H4sIAAAAAAAAA+3BMQEAAADCoPVPbQwfoAAAAAAAAAAAAAAAAAAAAIC3AYbSVKsAQAAA', $($C.Id), 2);
+  (400002, 'H4sIAAAAAAAAA+3BMQEAAADCoPVPbQwfoAAAAAAAAAAAAAAAAAAAAIC3AYbSVKsAQAAA', $($C.Id), 2),
+  (400003, CONVERT(UNHEX('$(Hex $eXml.Xml)') USING utf8), $($E.Id), 4);
 CREATE USER 'metre'@'%' IDENTIFIED BY '$senhaMetre'; GRANT SELECT, UPDATE ON chef.* TO 'metre'@'%'; GRANT SELECT ON chefxml.* TO 'metre'@'%';
 CREATE USER 'leitor'@'%' IDENTIFIED BY '$senhaMetre'; GRANT SELECT ON chef.* TO 'leitor'@'%'; GRANT SELECT ON chefxml.* TO 'leitor'@'%';
 FLUSH PRIVILEGES;

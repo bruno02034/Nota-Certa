@@ -716,9 +716,20 @@ namespace DuplicidadeNfce
                 l.CaminhoOrigem = sel.Escolhido.Caminho;
                 if (avisos.Count > 0) { Pendente(l, "verificar manualmente", avisos); continue; }
                 if (!t.Valor.HasValue) { Pendente(l, "valor do sistema não encontrado", avisos); continue; }
-                // Mesmo valor do sistema e da SEFAZ também ganha a sua cópia: cada importação no Metre tira uma
-                // linha da contingência, sem olhar o valor (decisão do Bruno, 22/10, caso 6/89248 09:22).
+                // Regra do Bruno (26/10): valor do sistema IGUAL ao da SEFAZ não vai para importação; só a chave_acesso
+                // da linha é trocada no banco (ajuste de chave). Valor DIFERENTE segue o fluxo de cópia abaixo.
+                // Sem o banco do Metre (arquivos/CSV) não há como ajustar: continua a cópia, como antes.
                 bool mesmoValor = t.Valor == sel.ValorSefaz;
+                if (mesmoValor && fontes != null && t.IdMetre != null)
+                {
+                    l.ArquivoEscolhido = null;
+                    l.CaminhoOrigem = null;
+                    AvaliarAjuste(t, l, avisos, sel.ValorSefaz, sel.ValorNaoConferido
+                        ? "valor do ASSINADA único da chave autorizada (nenhum XML confere com o digVal, como no fluxo de cópia)"
+                        : "valor autorizado conferido pelo XML da chave (DigestValue = digVal da SEFAZ)");
+                    log.Info("  Ajuste de chave: " + l.Status + " - " + l.Motivo);
+                    continue;
+                }
                 // Uma cópia por linha da contingência: a 2ª tentativa do mesmo número se resolve importando
                 // de novo o mesmo ASSINADA, então cada rodada vai numa pasta (importar-1, importar-2...).
                 int rodada;
@@ -761,7 +772,8 @@ namespace DuplicidadeNfce
         // Duplicidade autorizada na SEFAZ sem nenhum XML dessa chave nas pastas lidas. O valor autorizado vem de um
         // XML da chave achado em outro lugar (DigestValue = digVal) ou da conferência manual no portal; com valor
         // igual ao do sistema e todas as travas, a linha vira AJUSTE DE CHAVE (troca da chave_acesso no banco).
-        void AvaliarAjuste(Tentativa t, LinhaRelatorio l, List<string> avisos)
+        // valorAutorizado: já conferido pelos arquivos da chave (DigestValue = digVal); null = procurar no banco/portal.
+        void AvaliarAjuste(Tentativa t, LinhaRelatorio l, List<string> avisos, decimal? valorAutorizado = null, string origemValor = null)
         {
             var sel = l.Sel;
             string k = t.ChaveAutorizada, digVal = sel.Sefaz.Prot.DigVal;
@@ -790,6 +802,13 @@ namespace DuplicidadeNfce
                 return;
             }
 
+            if (valorAutorizado.HasValue)
+            {
+                a.ValorConferido = valorAutorizado;
+                a.OrigemValor = origemValor;
+                ConcluirAjuste(t, l, avisos);
+                return;
+            }
             List<NotaXml> extras;
             try { extras = fontes.BuscarXmls(t, k); }
             catch (Exception ex)
@@ -840,28 +859,37 @@ namespace DuplicidadeNfce
                 }
                 else if (c != null && c.Status == Status.ValorDiferenteManual && AjusteChave.ValorDoRegistro(c) == t.Valor)
                 {
-                    Pendente(l, "valor diferente no portal da SEFAZ (conferido manualmente em " + c.DataHora + "); a chave não é ajustada", avisos);
+                    Pendente(l, "valor diferente no portal da SEFAZ (conferido manualmente em " + c.DataHora + "): seria o fluxo de importação, " +
+                        "mas não há XML da chave autorizada para copiar", avisos);
                     return;
                 }
                 else
                 {
-                    Pendente(l, "nenhum XML com a chave autorizada (pastas, outros nomes e banco do Metre) e a consulta da SEFAZ não traz o valor: " +
+                    Pendente(l, "nenhum XML com a chave autorizada (pastas do período e banco do Metre) e a consulta da SEFAZ não traz o valor: " +
                         "confira no portal (botão \"Conferir na SEFAZ\")", avisos);
                     return;
                 }
             }
+            ConcluirAjuste(t, l, avisos);
+        }
+
+        void ConcluirAjuste(Tentativa t, LinhaRelatorio l, List<string> avisos)
+        {
+            var a = l.Ajuste;
+            var p = l.Sel.Sefaz.Prot;
             l.ValorSefaz = a.ValorConferido;
             if (avisos.Count > 0) { Pendente(l, "verificar manualmente", avisos); return; }
             if (a.ValorConferido != t.Valor)
             {
-                Pendente(l, "valor autorizado " + Moeda(a.ValorConferido) + " ≠ sistema " + Moeda(t.Valor) + " (" + a.OrigemValor + "); a chave não é ajustada", avisos);
+                Pendente(l, "valor autorizado " + Moeda(a.ValorConferido) + " ≠ sistema " + Moeda(t.Valor) + " (" + a.OrigemValor + "): seria o fluxo de " +
+                    "importação, mas não há XML da chave autorizada para copiar", avisos);
                 return;
             }
             l.Status = Status.AjusteChave;
             string trava = AjusteChave.Trava(l);
             if (trava != null) { Pendente(l, "ajuste de chave bloqueado: " + trava, avisos); return; }
-            l.Motivo = "nenhum XML da chave autorizada para copiar; " + a.OrigemValor + ": " + Moeda(a.ValorConferido) + " = sistema. " +
-                "Ajustar chave_acesso no banco: " + t.Chave + " → " + k + " (SEFAZ cStat " + sel.Sefaz.Prot.CStat + ", nProt " + sel.Sefaz.Prot.NProt + ")";
+            l.Motivo = "sistema " + Moeda(t.Valor) + " = SEFAZ (mesmo valor; " + a.OrigemValor + "): nada a importar, só ajustar a chave_acesso no banco: " +
+                t.Chave + " → " + a.ChaveNova + " (SEFAZ cStat " + p.CStat + ", nProt " + p.NProt + ")";
         }
 
         // Depois de uma conferência manual no portal: refaz a avaliação do ajuste da linha.

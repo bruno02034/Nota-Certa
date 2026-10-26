@@ -59,13 +59,19 @@ erro de banco também vai para o log.
 
 ## Ajustar chave no banco
 
-Quando a SEFAZ confirma a chave autorizada (cStat 100 ou 150) mas não há nenhum XML dessa chave para copiar, a
-linha não fica mais só PENDENTE:
+Duplicidade (539) com a chave autorizada confirmada na SEFAZ (cStat 100 ou 150) tem dois caminhos, pelo valor:
 
-1. O NotaCerta procura o XML da chave autorizada em todas as subpastas de `C:\Chef\NFCe` (qualquer nome) e no
-   banco `chefxml.xml` (só leitura). Se um XML tiver o DigestValue igual ao `digVal` da SEFAZ, o `vNF` dele é o
-   valor autorizado.
-2. Sem XML, o painel de detalhes mostra **Conferir na SEFAZ** (copia a chave e abre o portal) e, depois dele,
+| Valor do sistema x SEFAZ | O que acontece |
+|---|---|
+| **diferente** | fluxo de sempre: o ASSINADA autorizado é copiado em `importar-N` para importar no Metre |
+| **igual** | nada a importar: só a `chave_acesso` da linha é trocada pela autorizada (AJUSTE DE CHAVE) |
+
+Com a lista vinda de CSV ou dos arquivos (sem o banco), valor igual continua indo para a cópia, como antes.
+
+1. O valor autorizado vem do XML da chave nas pastas do período (DigestValue = `digVal`) ou, sem arquivo, do banco
+   `chefxml.xml` (só leitura, pela chave primária). O `C:\Chef\NFCe` inteiro não é varrido: deixava o processamento
+   lento demais.
+2. Sem XML nenhum (a consulta da SEFAZ não traz o valor), o painel de detalhes mostra **Conferir na SEFAZ** (copia a chave e abre o portal) e, depois dele,
    **Valor confere** / **Valor diferente**. A conferência fica no `historico.csv` como MANUAL, com data, hora e usuário.
 3. Com valor igual ao do sistema, a linha vira AJUSTE DE CHAVE e o botão **Ajustar chave no banco** é liberado se:
    SEFAZ 100/150 para a chave autorizada; as duas chaves com os mesmos UF, AAMM, CNPJ, modelo, série e número;

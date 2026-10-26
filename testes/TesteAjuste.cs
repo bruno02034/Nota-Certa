@@ -77,9 +77,14 @@ namespace DuplicidadeNfce
 
             var B = nota("2002"); var C = nota("2003"); var D = nota("2004"); var E = nota("2005");
             Verdade(B.Status == Status.AjusteChave && B.Ajuste.OrigemValor.Contains("chefxml.xml"), "B: XML autorizado no banco chefxml confere com digVal -> AJUSTE DE CHAVE (" + B.Motivo + ")");
-            Verdade(C.Status == Status.AjusteChave && C.Ajuste.OrigemValor.Contains("outro_nome_2003.xml"), "C: XML autorizado em outra pasta/nome -> AJUSTE DE CHAVE");
+            Verdade(C.Status == Status.Pendente && C.Ajuste.PodeConferirPortal, "C: XML autorizado só fora das pastas do período não é procurado (rápido) -> conferir no portal");
             Verdade(D.Status == Status.Pendente && D.Motivo.Contains("já está em outra linha"), "D: chave autorizada já em outra linha -> bloqueado (" + D.Motivo + ")");
             Verdade(E.Status == Status.Pendente && E.Motivo.Contains("≠ sistema"), "E: valor autorizado diferente do sistema -> não ajusta (" + E.Motivo + ")");
+            var F = nota("2006"); var G = nota("2007");
+            Verdade(F.Status == Status.AjusteChave && F.Fonte == null && F.CaminhoDestino == null && AjusteChave.Trava(F) == null,
+                "F: ASSINADA autorizado na pasta e MESMO valor -> AJUSTE DE CHAVE, nada para importar (" + F.Motivo + ")");
+            Verdade(G.Status == Status.ACopiar && G.Fonte != null && G.CaminhoDestino.Contains("importar-1") && G.Ajuste == null,
+                "G: ASSINADA autorizado na pasta e valor DIFERENTE -> fluxo de cópia para importação, como antes (" + G.Motivo + ")");
             Verdade(linhas.Where(l => l.Status == Status.AjusteChave).All(l => AjusteChave.Trava(l) == null), "linhas AJUSTE DE CHAVE sem travas");
 
             // ---------- Conferência manual ----------
@@ -127,7 +132,7 @@ namespace DuplicidadeNfce
             Verdade(ChaveNoBanco(idA) == autA, "ajuste gravado: chave_acesso = chave autorizada");
             Verdade(depois == antes.Replace(chaveA, autA), "na linha só mudou chave_acesso (demais " + (antes.Split('|').Length - 1) + " colunas iguais)");
             Verdade(Tabela() == tabelaAntes.Replace(chaveA, autA), "nenhuma outra linha mudou");
-            Verdade(Sql("SELECT COUNT(*) FROM chefxml.xml")[0][0] == "3", "chefxml.xml intocado");
+            Verdade(Sql("SELECT COUNT(*) FROM chefxml.xml")[0][0] == "4", "chefxml.xml intocado");
             string bak = File.ReadAllText(r.CaminhoDestino);
             Verdade(File.Exists(r.CaminhoDestino) && Path.GetDirectoryName(r.CaminhoDestino) == m.PastaBackups && bak.Contains("chave_antiga=" + chaveA) &&
                 bak.Contains("chave_acesso=" + chaveA) && bak.Contains("observacao=0x"), "backup com a linha inteira (texto com quebra de linha em hex) em backups\\");
