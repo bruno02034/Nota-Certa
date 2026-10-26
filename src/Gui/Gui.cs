@@ -155,6 +155,7 @@ namespace DuplicidadeNfce
         TelaFaltantes faltantes;
         // Chaves autorizadas abertas no portal da SEFAZ nesta sessão: só elas aceitam "Valor confere/diferente".
         readonly HashSet<string> abertasNoPortal = new HashSet<string>();
+        Dictionary<TextBlock, string> titulosFalt;   // títulos dos cards das Notas Faltantes, sem o espaçamento
 
         public Janela(Opcoes op)
         {
@@ -201,11 +202,42 @@ namespace DuplicidadeNfce
             W.SizeChanged += (s, e) =>
             {
                 double l = W.ActualWidth;
-                ((ColumnDefinition)W.FindName("ColDetalhes")).Width = new GridLength(l < 1300 ? 300 : 360);
-                ((ColumnDefinition)W.FindName("ColFalDetalhes")).Width = new GridLength(l < 1300 ? 300 : 360);
                 // Em tela estreita o nome do arquivo sai da grade (continua nos detalhes) para o status caber.
                 foreach (var c in G<DataGrid>("Grade").Columns.Where(c => "ARQUIVO".Equals(c.Header)))
                     c.Visibility = l < 1300 ? Visibility.Collapsed : Visibility.Visible;
+                // Notebooks e telas com zoom (largura útil perto de 1024): menos colunas e cards mais enxutos.
+                bool estreita = l < 1200;
+                ((ColumnDefinition)W.FindName("ColDetalhes")).Width = new GridLength(l < 1100 ? 280 : l < 1300 ? 300 : 360);
+                ((ColumnDefinition)W.FindName("ColFalDetalhes")).Width = new GridLength(l < 1100 ? 280 : l < 1300 ? 300 : 360);
+                foreach (var c in G<DataGrid>("Grade").Columns.Where(c => "PEDIDO".Equals(c.Header)))
+                    c.Visibility = estreita ? Visibility.Collapsed : Visibility.Visible;
+                foreach (var c in G<DataGrid>("Grade").Columns)
+                {
+                    if ("STATUS".Equals(c.Header)) c.Width = c.MinWidth = l < 1100 ? 128 : 150;
+                    if ("NOTA".Equals(c.Header)) c.Width = c.MinWidth = l < 1100 ? 78 : 86;
+                }
+                // Notas Faltantes: títulos dos 6 cards sem o espaçamento entre letras e, na grade, o arquivo só nos detalhes.
+                if (titulosFalt == null)
+                    titulosFalt = Descendentes(G<FrameworkElement>("FalCards")).OfType<TextBlock>().Where(t => "titulo".Equals(t.Tag))
+                        .ToDictionary(t => t, t => t.Text.Replace(" ", ""));
+                // São 6 cards estreitos: o título vai sem o espaçamento entre letras (cortava até em 1440); em tela
+                // estreita quebra em duas linhas ("NÃO / ENCONTRADAS") em vez de cortar.
+                foreach (var kv in titulosFalt)
+                {
+                    kv.Key.Text = kv.Value;
+                    kv.Key.TextWrapping = estreita ? TextWrapping.Wrap : TextWrapping.NoWrap;
+                    kv.Key.TextTrimming = estreita ? TextTrimming.None : TextTrimming.CharacterEllipsis;
+                }
+                foreach (var c in G<DataGrid>("GradeFaltantes").Columns)
+                {
+                    if ("ARQUIVO".Equals(c.Header)) c.Visibility = estreita ? Visibility.Collapsed : Visibility.Visible;
+                    if ("STATUS".Equals(c.Header)) c.Width = estreita ? 160 : 190;
+                    if ("NOTA".Equals(c.Header)) c.Width = c.MinWidth = estreita ? 90 : 110;
+                    if ("EMISSÃO".Equals(c.Header)) c.Width = c.MinWidth = estreita ? 112 : 124;
+                }
+                foreach (var n in new[] { "IconeCard1", "IconeCard2", "IconeCard3", "IconeCard4" })
+                    G<FrameworkElement>(n).Visibility = estreita ? Visibility.Collapsed : Visibility.Visible;
+                G<TextBlock>("TitEncontradas").Text = Espacado(estreita ? "DUPLICIDADES" : "DUPLICIDADES ENCONTRADAS");
                 if (!recolherManual && (l < 1366) != recolhido) Recolher();
             };
             G<DataGrid>("Grade").SelectionChanged += (s, e) => MostrarDetalhes(G<DataGrid>("Grade").SelectedItem as LinhaGrid);
@@ -237,6 +269,15 @@ namespace DuplicidadeNfce
             };
             W.Closed += (s, e) => { if (motor != null) motor.Dispose(); };
 
+            // A janela nunca começa maior que a área útil da tela (notebooks, telas com zoom de 125%/150%, AnyDesk):
+            // se não couber nos 1440x880, abre maximizada.
+            var util = SystemParameters.WorkArea;
+            if (op.Captura == null && (W.Width > util.Width || W.Height > util.Height))
+            {
+                W.Width = Math.Min(W.Width, util.Width);
+                W.Height = Math.Min(W.Height, util.Height);
+                W.WindowState = WindowState.Maximized;
+            }
             if (op.Captura != null)
             {
                 W.WindowStartupLocation = WindowStartupLocation.Manual;
@@ -246,9 +287,11 @@ namespace DuplicidadeNfce
                 int largura;
                 if (int.TryParse(Environment.GetEnvironmentVariable("NOTACERTA_LARGURA"), out largura))
                 {
+                    int altura;
                     W.MinWidth = 800;
+                    W.MinHeight = 500;
                     W.Width = largura;
-                    W.Height = 830;
+                    W.Height = int.TryParse(Environment.GetEnvironmentVariable("NOTACERTA_ALTURA"), out altura) ? altura : 830;
                 }
             }
             W.Loaded += (s, e) =>
@@ -272,6 +315,18 @@ namespace DuplicidadeNfce
             return o;
         }
 
+        // Espaço finíssimo (U+200A) entre as letras.
+        static string Espacado(string s) { return string.Join(" ", s.ToCharArray().Select(c => c.ToString())); }
+
+        static IEnumerable<DependencyObject> Descendentes(DependencyObject raiz)
+        {
+            foreach (var f in LogicalTreeHelper.GetChildren(raiz).OfType<DependencyObject>())
+            {
+                yield return f;
+                foreach (var n in Descendentes(f)) yield return n;
+            }
+        }
+
         // Títulos dos cards com espaçamento entre letras (o WPF não tem letter-spacing).
         static void EspacarTitulos(DependencyObject raiz)
         {
@@ -279,7 +334,7 @@ namespace DuplicidadeNfce
             {
                 var t = filho as TextBlock;
                 if (t != null && "titulo".Equals(t.Tag) && !string.IsNullOrEmpty(t.Text))
-                    t.Text = string.Join(" ", t.Text.ToCharArray().Select(c => c.ToString()));
+                    t.Text = Espacado(t.Text);
                 EspacarTitulos(filho);
             }
         }
@@ -290,7 +345,7 @@ namespace DuplicidadeNfce
                 G<FrameworkElement>(p).Visibility = p == nome ? Visibility.Visible : Visibility.Collapsed;
             ((System.Windows.Documents.Run)W.FindName("TxtBreadA")).Text = nome == "PagFaltantes" ? "Notas Faltantes" : "Duplicidade";
             ((System.Windows.Documents.Run)W.FindName("TxtBreadB")).Text = titulo;
-            G<FrameworkElement>("PainelPilulas").Visibility = nome == "PagDuplicidades" ? Visibility.Visible : Visibility.Hidden;
+            G<FrameworkElement>("PainelPilulas").Visibility = nome == "PagDuplicidades" ? Visibility.Visible : Visibility.Collapsed;
         }
 
         void Recolher()

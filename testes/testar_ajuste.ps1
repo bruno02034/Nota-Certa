@@ -179,6 +179,7 @@ FLUSH PRIVILEGES;
 PastaRaiz=$xmls
 PastaDestino=$tmp\dup
 PastaRelatorios=$tmp\rel
+PastaNotasFaltantes=$tmp\NotasFaltantes
 IniMetre=$tmp\nenhum.ini
 UrlConsulta=http://127.0.0.1:$portaSefaz/nfce/services/NFeConsultaProtocolo4
 CertificadoPfx=$tmp\emp\1\Certificado
