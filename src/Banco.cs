@@ -287,23 +287,34 @@ namespace DuplicidadeNfce
             return lista;
         }
 
-        // XMLs que o Metre guardou no banco para esta linha de nota_saida (chefxml.xml, só leitura): pelo
-        // id_nota_saida e pelo id_xml da coluna XML. Devolve (descrição, conteúdo).
+        // XMLs que o Metre guardou no banco para esta linha de nota_saida (chefxml.xml, só leitura): pelo id_xml da
+        // coluna XML (chave primária) e, se houver índice, pelo id_nota_saida. A tabela tem GBs: consulta sem índice
+        // (ex.: com OR e subconsulta) varre tudo e deixa o processamento parado por minutos em cada nota.
         public static List<KeyValuePair<string, byte[]>> XmlsDaNota(Config cfg, string idNotaSaida, Log log)
         {
             long id = long.Parse(idNotaSaida);
             var lista = new List<KeyValuePair<string, byte[]>>();
             using (var s = Sessao.Abrir(cfg, x => log.Info("Banco: " + x), true))
             {
+                var ids = new List<string>();
+                var xml = s.Consultar("SELECT XML FROM " + cfg.DbBanco + ".nota_saida WHERE id_nota_saida = " + id);
+                long idXml;
+                if (xml.Count == 1 && long.TryParse(xml[0][0], out idXml)) ids.Add(idXml.ToString());
+                if (indiceXmlPorNota == null)
+                    indiceXmlPorNota = s.Consultar("SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = '" + cfg.DbBancoXml.Replace("'", "") +
+                        "' AND TABLE_NAME = 'xml' AND COLUMN_NAME = 'id_nota_saida' AND SEQ_IN_INDEX = 1")[0][0] != "0";
+                string onde = ids.Count > 0 ? "x.id_xml = " + ids[0] : null;
+                if (indiceXmlPorNota == true) onde = (onde != null ? onde + " UNION SELECT x.id_xml, x.XML FROM " + cfg.DbBancoXml + ".xml x WHERE " : "") + "x.id_nota_saida = " + id;
+                if (onde == null) return lista;
                 string[] nomes;
-                var linhas = Executar(s.Ptr, "SELECT x.id_xml, x.XML FROM " + cfg.DbBancoXml + ".xml x WHERE x.id_nota_saida = " + id +
-                    " OR x.id_xml = (SELECT n.XML FROM " + cfg.DbBanco + ".nota_saida n WHERE n.id_nota_saida = " + id + ")", true, out nomes);
-                foreach (var v in linhas)
+                foreach (var v in Executar(s.Ptr, "SELECT x.id_xml, x.XML FROM " + cfg.DbBancoXml + ".xml x WHERE " + onde, true, out nomes))
                     if (v[1] != null)
                         lista.Add(new KeyValuePair<string, byte[]>(cfg.DbBancoXml + ".xml id_xml " + Encoding.UTF8.GetString(v[0]), v[1]));
             }
             return lista;
         }
+
+        static bool? indiceXmlPorNota;
 
         // Linhas de nota_saida que já têm esta chave (a chave autorizada não pode ir para uma segunda linha).
         public static List<string> IdsComChave(Sessao s, Config cfg, string chave)

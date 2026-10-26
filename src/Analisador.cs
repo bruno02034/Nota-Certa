@@ -698,6 +698,7 @@ namespace DuplicidadeNfce
                 if (sel.MotivoPendente != null && sel.SemArquivo && sel.Sefaz != null && sel.Sefaz.Autorizada && sel.Sefaz.Prot.ChNFe == t.ChaveAutorizada)
                 {
                     AvaliarAjuste(t, l, avisos);
+                    log.Info("  Ajuste de chave: " + l.Status + " - " + l.Motivo);
                     continue;
                 }
                 if (sel.MotivoPendente != null)

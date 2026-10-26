@@ -144,6 +144,8 @@ namespace DuplicidadeNfce
             if (indiceChaves.TryGetValue(chave, out arqs))
                 lista.AddRange(arqs.Select(NotaXml.Ler));
             if (t.IdMetre != null)
+                Log.Tela("Nota " + t.Nota + ": procurando o XML da chave autorizada no banco " + Cfg.DbBancoXml + "...");
+            if (t.IdMetre != null)
                 foreach (var x in Banco.XmlsDaNota(Cfg, t.IdMetre, Log))
                 {
                     var n = NotaXml.LerConteudo(x.Key, x.Value);
@@ -162,13 +164,24 @@ namespace DuplicidadeNfce
             indiceChaves = new Dictionary<string, List<string>>();
             int lidos = 0;
             var inicio = DateTime.Now;
+            Log.Tela("Procurando o XML da chave autorizada em " + Raiz + " (todas as subpastas)...");
+            var buf = new byte[4096];
             foreach (var f in Directory.EnumerateFiles(Raiz, "*", SearchOption.AllDirectories)
                 .Where(ExtensaoValida).Where(f => !excluidas.Any(x => Dentro(f, x))))
             {
+                // O Id do infNFe fica no começo do arquivo (nfeProc, enviNFe ou NFe): basta o início de cada um.
                 string texto;
-                try { texto = Encoding.UTF8.GetString(NotaXml.LerSomenteLeitura(f)); }
+                try
+                {
+                    using (var fs = new FileStream(f, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+                    {
+                        int n = 0, r;
+                        while (n < buf.Length && (r = fs.Read(buf, n, buf.Length - n)) > 0) n += r;
+                        texto = Encoding.UTF8.GetString(buf, 0, n);
+                    }
+                }
                 catch (Exception ex) { Log.Info("  sem leitura (ignorado na busca): " + f + " - " + ex.Message); continue; }
-                lidos++;
+                if (++lidos % 5000 == 0) Log.Tela("Procurando o XML da chave autorizada em " + Raiz + ": " + lidos + " arquivo(s) lido(s)...");
                 foreach (var k in ReIdNFe.Matches(texto).Cast<System.Text.RegularExpressions.Match>().Select(m => m.Groups[1].Value).Distinct())
                 {
                     List<string> l;
@@ -182,8 +195,14 @@ namespace DuplicidadeNfce
 
         List<string> LinhasComChave(string chave)
         {
+            var inicio = DateTime.Now;
             using (var s = Banco.Sessao.Abrir(Cfg, x => Log.Info("Banco: " + x), true))
-                return Banco.IdsComChave(s, Cfg, chave);
+            {
+                var ids = Banco.IdsComChave(s, Cfg, chave);
+                Log.Info("  linhas de nota_saida com a chave autorizada: " + (ids.Count == 0 ? "nenhuma" : string.Join(", ", ids)) +
+                    " (" + (DateTime.Now - inicio).TotalSeconds.ToString("0.0") + "s)");
+                return ids;
+            }
         }
 
         public List<LinhaRelatorio> Listar()
