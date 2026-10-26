@@ -27,11 +27,16 @@ namespace DuplicidadeNfce
         // De onde vem a lista da contingência: "banco" (chef.nota_saida, só leitura), "csv:<arquivo>" (exportado do
         // HeidiSQL) ou "arquivos" (deduzida dos XMLs, sem saber o que já foi resolvido no Metre).
         public string FonteContingencia = "arquivos";
-        public string DbHost = "127.0.0.1";
-        public int DbPorta = 3307;
+        // Host e porta vazios = os do Metre (IniConexaoMetre, [Configuracao] ip/porta); sem ele, 127.0.0.1:3307.
+        // Usuário e senha não ficam no Conexao.ini: vêm daqui (duplicidade.ini).
+        public string DbHost = "";
+        public int DbPorta = 0;
+        public string IniConexaoMetre = @"C:\Chef\Conexao.ini";
+        public string OrigemConexaoBanco;
         public string DbUsuario = "metre";
         public string DbSenha = "";
         public string DbBanco = "chef";
+        public string DbBancoXml = "chefxml";
         public string DbSituacao = "Em contigencia";
         public string MariaDbDll = "";
         public string PastaBancoMetre = @"C:\Chef\Banco de Dados";
@@ -79,7 +84,9 @@ namespace DuplicidadeNfce
                 case "inimetre": IniMetre = valor; break;
                 case "fontecontingencia": FonteContingencia = valor; break;
                 case "dbhost": DbHost = valor; break;
-                case "dbporta": DbPorta = int.Parse(valor); break;
+                case "dbporta": DbPorta = valor == "" ? 0 : int.Parse(valor); break;
+                case "iniconexaometre": IniConexaoMetre = valor; break;
+                case "dbbancoxml": DbBancoXml = valor; break;
                 case "dbusuario": DbUsuario = valor; break;
                 case "dbsenha": DbSenha = valor; break;
                 case "dbbanco": DbBanco = valor; break;
@@ -92,6 +99,38 @@ namespace DuplicidadeNfce
                 case "limitenumerosfaltantes": LimiteNumerosFaltantes = int.Parse(valor); break;
                 default: throw new Exception(origem + ": opção desconhecida '" + chave + "'");
             }
+        }
+
+        // Completa host e porta do banco com o Conexao.ini do Metre.
+        public void ResolverConexaoBanco()
+        {
+            if (!string.IsNullOrEmpty(DbHost) && DbPorta > 0) return;
+            string ip = null, porta = null, secao = "";
+            if (!string.IsNullOrEmpty(IniConexaoMetre) && File.Exists(IniConexaoMetre))
+                foreach (string bruta in File.ReadAllLines(IniConexaoMetre, Encoding.Default))
+                {
+                    string l = bruta.Trim();
+                    if (l.StartsWith("[") && l.EndsWith("]")) { secao = l.Substring(1, l.Length - 2).Trim(); continue; }
+                    int eq = l.IndexOf('=');
+                    if (eq <= 0 || !secao.Equals("Configuracao", StringComparison.OrdinalIgnoreCase)) continue;
+                    string k = l.Substring(0, eq).Trim().ToLowerInvariant(), v = l.Substring(eq + 1).Trim();
+                    if (k == "ip") ip = v;
+                    else if (k == "porta") porta = v;
+                }
+            int p;
+            bool doIni = false;
+            if (string.IsNullOrEmpty(DbHost))
+            {
+                doIni |= !string.IsNullOrEmpty(ip);
+                DbHost = string.IsNullOrEmpty(ip) ? "127.0.0.1" : ip;
+            }
+            if (DbPorta <= 0)
+            {
+                bool ok = int.TryParse(porta, out p) && p > 0;
+                doIni |= ok;
+                DbPorta = ok ? p : 3307;
+            }
+            OrigemConexaoBanco = doIni ? "host/porta de " + IniConexaoMetre : null;
         }
 
         static bool Sim(string v)

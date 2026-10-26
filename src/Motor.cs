@@ -12,7 +12,7 @@ namespace DuplicidadeNfce
     {
         public readonly Config Cfg;
         public readonly bool SemSefaz;
-        public readonly string Raiz, Destino, PastaRel, ArqLog;
+        public readonly string Raiz, Destino, PastaRel, ArqLog, PastaBackups;
         public readonly Log Log;
         public List<NotaXml> Notas = new List<NotaXml>();
         public Analisador Analisador;
@@ -41,6 +41,8 @@ namespace DuplicidadeNfce
             foreach (var p in new[] { Destino, PastaRel })
                 if (Dentro(Raiz, p)) throw new Exception("por segurança, " + p + " não pode ser a pasta raiz nem conter os XMLs (" + Raiz + ")");
             Directory.CreateDirectory(PastaRel);
+            // Backups das linhas do banco antes do ajuste de chave, ao lado do exe.
+            PastaBackups = Path.Combine(dirExe, "backups");
             // Cópias e relatórios nunca são lidos como candidatos.
             excluidas = new[] { Destino, PastaRel };
 
@@ -68,7 +70,9 @@ namespace DuplicidadeNfce
         {
             // Lista da aba Contingência do Metre (banco ou CSV). Com ela, o período de leitura dos XMLs
             // passa a ser o das próprias notas pendentes.
-            Contingencia = Banco.Ler(Cfg, Log);
+            // O erro também vai para o log (antes só aparecia na janela e o log parava em "conectando").
+            try { Contingencia = Banco.Ler(Cfg, Log); }
+            catch (Exception ex) { Log.Info("ERRO ao ler a contingência do Metre: " + ex.Message); throw; }
             if (Contingencia != null && Contingencia.Count > 0 && !Cfg.TodasDatas)
             {
                 var datas = Contingencia.Select(c => c.DtEmissao ?? c.DtContingencia).Where(d => d.HasValue).Select(d => d.Value.Date).ToList();
@@ -121,7 +125,65 @@ namespace DuplicidadeNfce
             Log.Tela(Notas.Count + " arquivo(s) NOTA_* lido(s); " + Notas.Count(n => n.Erro != null) + " com erro de leitura; " +
                 Notas.Count(n => n.TemSobra) + " com conteúdo residual após </nfeProc>");
             foreach (var n in Notas.Where(n => n.Erro != null)) Log.Info("Erro de leitura: " + n.Caminho + " - " + n.Erro);
-            Analisador = new Analisador(Notas, consultar, Log, Contingencia);
+            bool comBanco = (Cfg.FonteContingencia ?? "").Trim().Equals("banco", StringComparison.OrdinalIgnoreCase);
+            Analisador = new Analisador(Notas, consultar, Log, Contingencia, comBanco
+                ? new FontesAjuste { BuscarXmls = BuscarXmlsChave, LinhasComChave = LinhasComChave }
+                : null);
+        }
+
+        // ---------- Ajuste de chave: o XML da chave autorizada fora das pastas lidas ----------
+        Dictionary<string, List<string>> indiceChaves;
+
+        // Qualquer XML com essa chave no Id: em qualquer subpasta da raiz, com qualquer nome, e os que o Metre
+        // guardou no banco (chefxml.xml) para a linha da contingência.
+        List<NotaXml> BuscarXmlsChave(Tentativa t, string chave)
+        {
+            var lista = new List<NotaXml>();
+            if (indiceChaves == null) IndexarChaves();
+            List<string> arqs;
+            if (indiceChaves.TryGetValue(chave, out arqs))
+                lista.AddRange(arqs.Select(NotaXml.Ler));
+            if (t.IdMetre != null)
+                foreach (var x in Banco.XmlsDaNota(Cfg, t.IdMetre, Log))
+                {
+                    var n = NotaXml.LerConteudo(x.Key, x.Value);
+                    if (n.Chave == chave || n.Erro != null) lista.Add(n);
+                    else Log.Info("  " + x.Key + ": chave " + n.Chave + " (não é a autorizada)");
+                }
+            Log.Info("  XMLs da chave autorizada fora das pastas lidas: " + lista.Count(n => n.Chave == chave) +
+                " (" + indiceChaves.Values.Sum(v => v.Count) + " arquivo(s) indexado(s) em " + Raiz + " e banco " + Cfg.DbBancoXml + ")");
+            return lista;
+        }
+
+        static readonly System.Text.RegularExpressions.Regex ReIdNFe = new System.Text.RegularExpressions.Regex(@"Id=""NFe(\d{44})""");
+
+        void IndexarChaves()
+        {
+            indiceChaves = new Dictionary<string, List<string>>();
+            int lidos = 0;
+            var inicio = DateTime.Now;
+            foreach (var f in Directory.EnumerateFiles(Raiz, "*", SearchOption.AllDirectories)
+                .Where(ExtensaoValida).Where(f => !excluidas.Any(x => Dentro(f, x))))
+            {
+                string texto;
+                try { texto = Encoding.UTF8.GetString(NotaXml.LerSomenteLeitura(f)); }
+                catch (Exception ex) { Log.Info("  sem leitura (ignorado na busca): " + f + " - " + ex.Message); continue; }
+                lidos++;
+                foreach (var k in ReIdNFe.Matches(texto).Cast<System.Text.RegularExpressions.Match>().Select(m => m.Groups[1].Value).Distinct())
+                {
+                    List<string> l;
+                    if (!indiceChaves.TryGetValue(k, out l)) indiceChaves[k] = l = new List<string>();
+                    l.Add(f);
+                }
+            }
+            Log.Info("Índice de chaves para o ajuste: " + lidos + " arquivo(s) em " + Raiz + " (todas as subpastas, qualquer nome) em " +
+                (int)(DateTime.Now - inicio).TotalSeconds + "s");
+        }
+
+        List<string> LinhasComChave(string chave)
+        {
+            using (var s = Banco.Sessao.Abrir(Cfg, x => Log.Info("Banco: " + x), true))
+                return Banco.IdsComChave(s, Cfg, chave);
         }
 
         public List<LinhaRelatorio> Listar()

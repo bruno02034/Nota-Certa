@@ -95,6 +95,25 @@ namespace DuplicidadeNfce
             return nota;
         }
 
+        // XML que não está em arquivo (ex.: guardado pelo Metre no banco chefxml). 'origem' faz o papel do caminho.
+        public static NotaXml LerConteudo(string origem, byte[] bytes)
+        {
+            var nota = new NotaXml { Caminho = origem, Nome = origem, Tipo = TipoArquivo.Outro };
+            try
+            {
+                nota.Tamanho = bytes.LongLength;
+                nota.Sha256 = HashSha256(bytes);
+                string texto = Encoding.UTF8.GetString(bytes).TrimStart('﻿');
+                if (!texto.TrimStart().StartsWith("<")) throw new Exception("conteúdo não é XML em texto (" + bytes.Length + " bytes)");
+                Interpretar(nota, CortarPrimeiroDocumento(nota, texto));
+            }
+            catch (Exception ex)
+            {
+                nota.Erro = ex.Message;
+            }
+            return nota;
+        }
+
         static string CortarPrimeiroDocumento(NotaXml nota, string texto)
         {
             // nfeProc (normal), enviNFe (Temp_ANTES_ENVIO: lote de envio) ou NFe solta.

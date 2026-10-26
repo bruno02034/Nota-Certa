@@ -95,6 +95,11 @@ namespace DuplicidadeNfce
         [DllImport("libmariadb.dll", CallingConvention = CallingConvention.Cdecl)] static extern void mysql_free_result(IntPtr r);
         [DllImport("libmariadb.dll", CallingConvention = CallingConvention.Cdecl)] static extern void mysql_close(IntPtr m);
         [DllImport("libmariadb.dll", CallingConvention = CallingConvention.Cdecl)] static extern IntPtr mysql_error(IntPtr m);
+        [DllImport("libmariadb.dll", CallingConvention = CallingConvention.Cdecl)] static extern int mysql_options(IntPtr m, int opcao, ref uint valor);
+        [DllImport("libmariadb.dll", CallingConvention = CallingConvention.Cdecl)] static extern ulong mysql_affected_rows(IntPtr m);
+        [DllImport("libmariadb.dll", CallingConvention = CallingConvention.Cdecl)] static extern IntPtr mysql_fetch_lengths(IntPtr r);
+        [DllImport("libmariadb.dll", CallingConvention = CallingConvention.Cdecl)] static extern IntPtr mysql_fetch_field_direct(IntPtr r, uint i);
+        const int MYSQL_OPT_CONNECT_TIMEOUT = 0, MYSQL_OPT_READ_TIMEOUT = 11, MYSQL_OPT_WRITE_TIMEOUT = 12;
 
         static byte[] Z(string s) { return s == null ? null : Encoding.UTF8.GetBytes(s + "\0"); }
 
@@ -136,37 +141,100 @@ namespace DuplicidadeNfce
         // 'passo' mostra o andamento (usado pelo --testar-banco para saber onde parou, se parar).
         public static List<string[]> Consultar(Config cfg, IEnumerable<string> sqls, Action<string> passo)
         {
-            if (passo == null) passo = s => { };
-            passo("procurando libmariadb.dll");
-            CarregarDll(cfg);
-            passo("DLL carregada: " + DllCarregada + " (processo " + (Environment.Is64BitProcess ? "64" : "32") + " bits)");
-            IntPtr m = mysql_init(IntPtr.Zero);
-            if (m == IntPtr.Zero) throw new Exception("mysql_init falhou");
-            try
+            using (var s = Sessao.Abrir(cfg, passo, true))
             {
-                passo("conectando em " + cfg.DbHost + ":" + cfg.DbPorta + " como " + cfg.DbUsuario);
-                if (mysql_real_connect(m, Z(cfg.DbHost), Z(cfg.DbUsuario), Z(cfg.DbSenha), Z(cfg.DbBanco), (uint)cfg.DbPorta, IntPtr.Zero, 0) == IntPtr.Zero)
-                    throw new Exception("conexão com o banco " + cfg.DbHost + ":" + cfg.DbPorta + " falhou: " + Erro(m));
-                passo("conectado; abrindo sessão somente leitura");
-                mysql_set_character_set(m, Z("utf8mb4"));
-                Executar(m, "SET SESSION TRANSACTION READ ONLY", false);
                 List<string[]> ultimo = null;
                 foreach (string sql in sqls)
                 {
-                    passo("consultando: " + (sql.Length > 70 ? sql.Substring(0, 70) + "..." : sql));
-                    ultimo = Executar(m, sql, true);
-                    passo(ultimo.Count + " linha(s) lida(s)");
+                    s.Passo("consultando: " + (sql.Length > 70 ? sql.Substring(0, 70) + "..." : sql));
+                    ultimo = s.Consultar(sql);
+                    s.Passo(ultimo.Count + " linha(s) lida(s)");
                 }
                 return ultimo ?? new List<string[]>();
             }
-            finally { mysql_close(m); }
         }
 
-        static List<string[]> Executar(IntPtr m, string sql, bool comResultado)
+        // Uma conexão com o banco do Metre. Somente leitura, salvo no ajuste de chave (AjusteChave), que abre a
+        // sua própria sessão de escrita e grava dentro de uma transação.
+        public sealed class Sessao : IDisposable
         {
+            IntPtr m;
+            public readonly Action<string> Passo;
+
+            Sessao(IntPtr m, Action<string> passo) { this.m = m; Passo = passo; }
+
+            public IntPtr Ptr { get { return m; } }
+
+            public static Sessao Abrir(Config cfg, Action<string> passo, bool somenteLeitura)
+            {
+                if (passo == null) passo = s => { };
+                cfg.ResolverConexaoBanco();
+                passo("procurando libmariadb.dll");
+                CarregarDll(cfg);
+                passo("DLL carregada: " + DllCarregada + " (processo " + (Environment.Is64BitProcess ? "64" : "32") + " bits)");
+                IntPtr m = mysql_init(IntPtr.Zero);
+                if (m == IntPtr.Zero) throw new Exception("mysql_init falhou");
+                try
+                {
+                    // Sem timeout, um MariaDB que não responde deixa a tela parada em "conectando" para sempre.
+                    uint conectar = 10, ler = (uint)Math.Max(60, cfg.TimeoutSegundos * 4);
+                    mysql_options(m, MYSQL_OPT_CONNECT_TIMEOUT, ref conectar);
+                    mysql_options(m, MYSQL_OPT_READ_TIMEOUT, ref ler);
+                    mysql_options(m, MYSQL_OPT_WRITE_TIMEOUT, ref ler);
+                    passo("conectando em " + cfg.DbHost + ":" + cfg.DbPorta + " como " + cfg.DbUsuario +
+                        (cfg.OrigemConexaoBanco != null ? " (" + cfg.OrigemConexaoBanco + ")" : ""));
+                    if (mysql_real_connect(m, Z(cfg.DbHost), Z(cfg.DbUsuario), Z(cfg.DbSenha), Z(cfg.DbBanco), (uint)cfg.DbPorta, IntPtr.Zero, 0) == IntPtr.Zero)
+                        throw new Exception("conexão com o banco " + cfg.DbHost + ":" + cfg.DbPorta + " falhou: " + Erro(m));
+                    passo(somenteLeitura ? "conectado; abrindo sessão somente leitura" : "conectado; sessão de escrita (ajuste de chave)");
+                    mysql_set_character_set(m, Z("utf8mb4"));
+                    var s = new Sessao(m, passo);
+                    if (somenteLeitura) s.Comando("SET SESSION TRANSACTION READ ONLY");
+                    return s;
+                }
+                catch
+                {
+                    mysql_close(m);
+                    throw;
+                }
+            }
+
+            public List<string[]> Consultar(string sql)
+            {
+                string[] nomes;
+                return Executar(m, sql, true, out nomes).Select(v => v.Select(b => b == null ? null : Encoding.UTF8.GetString(b)).ToArray()).ToList();
+            }
+
+            // Colunas e valores brutos (SELECT *), para o backup da linha antes de alterar.
+            public List<KeyValuePair<string, byte[]>> LinhaCompleta(string sql)
+            {
+                string[] nomes;
+                var linhas = Executar(m, sql, true, out nomes);
+                if (linhas.Count == 0) return null;
+                if (linhas.Count > 1) throw new Exception("esperada 1 linha, vieram " + linhas.Count + ": " + sql);
+                return nomes.Select((n, i) => new KeyValuePair<string, byte[]>(n, linhas[0][i])).ToList();
+            }
+
+            // INSERT/UPDATE/START TRANSACTION...; devolve as linhas afetadas.
+            public long Comando(string sql)
+            {
+                string[] nomes;
+                Executar(m, sql, false, out nomes);
+                return (long)mysql_affected_rows(m);
+            }
+
+            public void Dispose()
+            {
+                if (m != IntPtr.Zero) mysql_close(m);
+                m = IntPtr.Zero;
+            }
+        }
+
+        static List<byte[][]> Executar(IntPtr m, string sql, bool comResultado, out string[] nomes)
+        {
+            nomes = new string[0];
             if (mysql_query(m, Z(sql)) != 0) throw new Exception("consulta falhou: " + Erro(m));
             IntPtr r = mysql_store_result(m);
-            var linhas = new List<string[]>();
+            var linhas = new List<byte[][]>();
             if (r == IntPtr.Zero)
             {
                 if (comResultado) throw new Exception("consulta sem resultado: " + Erro(m));
@@ -175,14 +243,21 @@ namespace DuplicidadeNfce
             try
             {
                 int n = (int)mysql_num_fields(r);
+                nomes = new string[n];
+                // MYSQL_FIELD começa com 'char *name'.
+                for (int i = 0; i < n; i++) nomes[i] = TextoC(Marshal.ReadIntPtr(mysql_fetch_field_direct(r, (uint)i)));
                 IntPtr row;
                 while ((row = mysql_fetch_row(r)) != IntPtr.Zero)
                 {
-                    var v = new string[n];
+                    // unsigned long[] (32 bits no Windows, também no processo de 64 bits).
+                    IntPtr tams = mysql_fetch_lengths(r);
+                    var v = new byte[n][];
                     for (int i = 0; i < n; i++)
                     {
                         IntPtr p = Marshal.ReadIntPtr(row, i * IntPtr.Size);
-                        if (p != IntPtr.Zero) v[i] = TextoC(p);
+                        if (p == IntPtr.Zero) continue;
+                        v[i] = new byte[(uint)Marshal.ReadInt32(tams, i * 4)];
+                        Marshal.Copy(p, v[i], 0, v[i].Length);
                     }
                     linhas.Add(v);
                 }
@@ -191,7 +266,6 @@ namespace DuplicidadeNfce
             return linhas;
         }
 
-        // Valores de texto vêm terminados em zero (as colunas lidas não têm binário).
         static string TextoC(IntPtr p)
         {
             var b = new List<byte>();
@@ -213,6 +287,31 @@ namespace DuplicidadeNfce
             return lista;
         }
 
+        // XMLs que o Metre guardou no banco para esta linha de nota_saida (chefxml.xml, só leitura): pelo
+        // id_nota_saida e pelo id_xml da coluna XML. Devolve (descrição, conteúdo).
+        public static List<KeyValuePair<string, byte[]>> XmlsDaNota(Config cfg, string idNotaSaida, Log log)
+        {
+            long id = long.Parse(idNotaSaida);
+            var lista = new List<KeyValuePair<string, byte[]>>();
+            using (var s = Sessao.Abrir(cfg, x => log.Info("Banco: " + x), true))
+            {
+                string[] nomes;
+                var linhas = Executar(s.Ptr, "SELECT x.id_xml, x.XML FROM " + cfg.DbBancoXml + ".xml x WHERE x.id_nota_saida = " + id +
+                    " OR x.id_xml = (SELECT n.XML FROM " + cfg.DbBanco + ".nota_saida n WHERE n.id_nota_saida = " + id + ")", true, out nomes);
+                foreach (var v in linhas)
+                    if (v[1] != null)
+                        lista.Add(new KeyValuePair<string, byte[]>(cfg.DbBancoXml + ".xml id_xml " + Encoding.UTF8.GetString(v[0]), v[1]));
+            }
+            return lista;
+        }
+
+        // Linhas de nota_saida que já têm esta chave (a chave autorizada não pode ir para uma segunda linha).
+        public static List<string> IdsComChave(Sessao s, Config cfg, string chave)
+        {
+            return s.Consultar("SELECT id_nota_saida FROM " + cfg.DbBanco + ".nota_saida WHERE chave_acesso = '" + AjusteChave.SoDigitos(chave, 44) + "'")
+                .Select(v => v[0]).ToList();
+        }
+
         // --testar-banco: mostra cada passo e um resumo por situação (sem dados de clientes).
         public static void Testar(Config cfg, Action<string> mostrar)
         {
@@ -220,6 +319,21 @@ namespace DuplicidadeNfce
                 s => mostrar("  > " + s));
             mostrar("Notas por situação em " + cfg.DbBanco + ".nota_saida:");
             foreach (var v in resumo) mostrar("  " + (v[0] ?? "(vazio)") + ": " + v[1]);
+            // O "Ajustar chave no banco" precisa de UPDATE em nota_saida (o hash da senha não é mostrado).
+            var grants = Consultar(cfg, new[] { "SHOW GRANTS FOR CURRENT_USER()" }, null).Select(v => v[0] ?? "").ToList();
+            mostrar("Permissões de " + cfg.DbUsuario + ":");
+            foreach (var g in grants) mostrar("  " + System.Text.RegularExpressions.Regex.Replace(g, @"IDENTIFIED BY PASSWORD '[^']*'", "IDENTIFIED BY PASSWORD '***'"));
+            bool update = grants.Any(g =>
+            {
+                var m = System.Text.RegularExpressions.Regex.Match(g, @"^GRANT (.+?) ON (\S+) TO ", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                if (!m.Success) return false;
+                string priv = m.Groups[1].Value.ToUpperInvariant(), alvo = m.Groups[2].Value.Replace("`", "").ToLowerInvariant();
+                bool temUpdate = priv.Contains("ALL PRIVILEGES") || System.Text.RegularExpressions.Regex.IsMatch(priv, @"(^|, )UPDATE($|,| \()");
+                string b = cfg.DbBanco.ToLowerInvariant();
+                return temUpdate && (alvo == "*.*" || alvo == b + ".*" || alvo == b + ".nota_saida");
+            });
+            mostrar(update ? "Ajuste de chave: OK, o usuário tem UPDATE em " + cfg.DbBanco + ".nota_saida"
+                           : "Ajuste de chave: ATENÇÃO, não achei UPDATE em " + cfg.DbBanco + ".nota_saida nas permissões acima (o ajuste vai falhar sem alterar nada)");
             var lista = Consultar(cfg, new[] { SqlContingencia(cfg) }, s => mostrar("  > " + s))
                 .Select(v => Montar(v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7], v[8], v[9])).ToList();
             mostrar("Contingência ('" + cfg.DbSituacao + "'): " + lista.Count + " nota(s)");

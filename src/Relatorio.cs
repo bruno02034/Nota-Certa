@@ -15,7 +15,13 @@ namespace DuplicidadeNfce
         public const string ErroCopia = "ERRO_COPIA";
         public const string JaProcessada = "JÁ PROCESSADA";
         public const string Pendente = "PENDENTE";
-        public const string AjusteChave = "AJUSTE_CHAVE_BANCO (fora do escopo)";
+        // Sem XML da chave autorizada para copiar: troca a chave_acesso no banco do Metre (AjusteChave).
+        public const string AjusteChave = "AJUSTE DE CHAVE";
+        public const string ChaveAjustada = "CHAVE AJUSTADA";
+        public const string AjusteDesfeito = "AJUSTE DESFEITO";
+        public const string ErroAjuste = "ERRO_AJUSTE";
+        public const string ValorConfereManual = "VALOR CONFERE (MANUAL)";
+        public const string ValorDiferenteManual = "VALOR DIFERENTE (MANUAL)";
         public const string EmContingencia = "EM CONTINGÊNCIA";
         public const string OutroErro = "OUTRO ERRO";
         public const string JaAutorizada = "JÁ AUTORIZADA";

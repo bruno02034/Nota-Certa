@@ -71,14 +71,14 @@ namespace DuplicidadeNfce
         }
         public Action AoMarcar;
         // Só duplicidade com retorno 539 pode ser processada (as deduzidas ficam PENDENTE "sem retorno 539").
-        public bool PodeMarcar { get { var s = Linha.Status; return s != DuplicidadeNfce.Status.JaProcessada && s != DuplicidadeNfce.Status.Copiado && s != DuplicidadeNfce.Status.EmContingencia && s != DuplicidadeNfce.Status.OutroErro && s != DuplicidadeNfce.Status.JaAutorizada && !(s == DuplicidadeNfce.Status.Pendente && Linha.Motivo != null && Linha.Motivo.StartsWith("sem retorno 539")); } }
+        public bool PodeMarcar { get { var s = Linha.Status; return s != DuplicidadeNfce.Status.JaProcessada && s != DuplicidadeNfce.Status.Copiado && s != DuplicidadeNfce.Status.EmContingencia && s != DuplicidadeNfce.Status.OutroErro && s != DuplicidadeNfce.Status.JaAutorizada && s != DuplicidadeNfce.Status.ChaveAjustada && s != DuplicidadeNfce.Status.AjusteDesfeito && !(s == DuplicidadeNfce.Status.Pendente && Linha.Motivo != null && Linha.Motivo.StartsWith("sem retorno 539")); } }
         public string Nota { get { return Linha.Serie + "/" + Linha.Numero; } }
         public string Pedido { get { return Linha.Pedido ?? "-"; } }
         public string Data { get { return DataCurta(Linha.DhEmiSistema); } }
         public string ValorSistema { get { return Linha.ValorSistema.HasValue ? "R$ " + Analisador.Moeda(Linha.ValorSistema) : "-"; } }
         public string ValorSefaz { get { return Linha.ValorSefaz.HasValue ? "R$ " + Analisador.Moeda(Linha.ValorSefaz) : "-"; } }
         public string Arquivo { get { return Linha.ArquivoEscolhido ?? ""; } }
-        public string Status { get { return Linha.Status == DuplicidadeNfce.Status.AjusteChave ? "AJUSTE_CHAVE_BANCO" : Linha.Status; } }
+        public string Status { get { return Linha.Status; } }
         public string Tipo { get { return TipoDoStatus(Linha.Status); } }
 
         public static string TipoDoStatus(string s)
@@ -89,6 +89,9 @@ namespace DuplicidadeNfce
                 case DuplicidadeNfce.Status.ACopiar: return "ACopiar";
                 case DuplicidadeNfce.Status.AProcessar: return "AProcessar";
                 case DuplicidadeNfce.Status.AjusteChave: return "Ajuste";
+                case DuplicidadeNfce.Status.ValorConfereManual: return "Ajuste";
+                case DuplicidadeNfce.Status.ChaveAjustada: return "Ajustada";
+                case DuplicidadeNfce.Status.ErroAjuste: return "Erro";
                 case DuplicidadeNfce.Status.ErroCopia: return "Erro";
                 case DuplicidadeNfce.Status.JaProcessada: return "Ja";
                 case DuplicidadeNfce.Status.JaAutorizada: return "JaAutorizada";
@@ -150,6 +153,8 @@ namespace DuplicidadeNfce
         string ultimoResumo = "";
         int copiadasSessao;
         TelaFaltantes faltantes;
+        // Chaves autorizadas abertas no portal da SEFAZ nesta sessão: só elas aceitam "Valor confere/diferente".
+        readonly HashSet<string> abertasNoPortal = new HashSet<string>();
 
         public Janela(Opcoes op)
         {
@@ -187,6 +192,11 @@ namespace DuplicidadeNfce
             G<Button>("BtnMarcar").Click += (s, e) => { foreach (var l in linhas) l.Marcada = l.Linha.Status == Status.AProcessar; };
             G<Button>("BtnDesmarcar").Click += (s, e) => { foreach (var l in linhas) l.Marcada = false; };
             G<Button>("BtnRecolher").Click += (s, e) => { recolherManual = true; Recolher(); };
+            G<Button>("BtnConferirSefaz").Click += (s, e) => ConferirNaSefaz();
+            G<Button>("BtnValorConfere").Click += (s, e) => RegistrarConferencia(true);
+            G<Button>("BtnValorDiferente").Click += (s, e) => RegistrarConferencia(false);
+            G<Button>("BtnAjustarChave").Click += (s, e) => AjustarChave();
+            G<Button>("BtnDesfazerAjuste").Click += (s, e) => DesfazerAjuste();
             // Telas pequenas (servidor via AnyDesk): recolhe o menu e estreita os detalhes para a grade caber.
             W.SizeChanged += (s, e) =>
             {
@@ -462,7 +472,7 @@ namespace DuplicidadeNfce
             string tipo = l.Tipo;
             if (Marcado("PilAProcessar") && tipo != "AProcessar" && tipo != "ACopiar") return false;
             if (Marcado("PilCopiadas") && tipo != "Copiado") return false;
-            if (Marcado("PilAjuste") && tipo != "Ajuste") return false;
+            if (Marcado("PilAjuste") && tipo != "Ajuste" && tipo != "Ajustada") return false;
             if (Marcado("PilPendentes") && tipo != "Pendente" && tipo != "Erro" && tipo != "OutroErro" && tipo != "JaAutorizada") return false;
             if (Marcado("PilContingencia") && tipo != "Contingencia") return false;
             if (Marcado("PilJa") && tipo != "Ja") return false;
@@ -488,7 +498,7 @@ namespace DuplicidadeNfce
             Pilula("PilTodas", "Todas", linhas.Count);
             Pilula("PilAProcessar", "A processar", conta(new[] { "AProcessar", "ACopiar" }));
             Pilula("PilCopiadas", "Copiadas", conta(new[] { "Copiado" }));
-            Pilula("PilAjuste", "Ajuste de chave", conta(new[] { "Ajuste" }));
+            Pilula("PilAjuste", "Ajuste de chave", conta(new[] { "Ajuste", "Ajustada" }));
             Pilula("PilPendentes", "Pendentes", conta(new[] { "Pendente", "Erro", "OutroErro", "JaAutorizada" }));
             Pilula("PilContingencia", "Sem retorno", conta(new[] { "Contingencia" }));
             Pilula("PilJa", "Já processadas", conta(new[] { "Ja" }));
@@ -533,6 +543,143 @@ namespace DuplicidadeNfce
                     Avaliado = false
                 }).ToList();
             G<ItemsControl>("DetCandidatos").ItemsSource = cands;
+            MostrarAjuste(l);
+        }
+
+        // ---------- Ajuste de chave no banco ----------
+        LinhaRelatorio Selecionada()
+        {
+            var g = G<DataGrid>("Grade").SelectedItem as LinhaGrid;
+            return g != null ? g.Linha : null;
+        }
+
+        void MostrarAjuste(LinhaRelatorio l)
+        {
+            var a = l.Ajuste;
+            G<FrameworkElement>("DetAjuste").Visibility = a == null ? Visibility.Collapsed : Visibility.Visible;
+            if (a == null) return;
+            string texto;
+            if (l.Status == Status.ChaveAjustada)
+                texto = "chave_acesso trocada no banco (antes " + a.ChaveAntiga + "). Feche e abra o Metre para atualizar." +
+                    (a.Backup != null ? "\nBackup: " + a.Backup : "");
+            else if (l.Status == Status.AjusteChave)
+                texto = a.OrigemValor + ".\nid_nota_saida " + a.IdMetre + " · " + a.ChaveAtual + " → " + a.ChaveNova;
+            else if (a.PodeConferirPortal)
+                texto = "Sem XML da chave autorizada: confira o valor no portal. \"Conferir na SEFAZ\" copia a chave e abre o portal; " +
+                    "depois marque se o valor de lá é R$ " + Analisador.Moeda(a.ValorSistema) + " (valor do sistema).";
+            else
+                texto = "O ajuste não está liberado: veja o motivo acima.";
+            G<TextBlock>("DetAjusteTexto").Text = texto;
+            bool portal = a.PodeConferirPortal && l.Status != Status.ChaveAjustada && l.Status != Status.AjusteDesfeito;
+            G<FrameworkElement>("DetAjustePortal").Visibility = portal ? Visibility.Visible : Visibility.Collapsed;
+            G<Button>("BtnConferirSefaz").IsEnabled = portal && !ocupado;
+            G<Button>("BtnValorConfere").IsEnabled = G<Button>("BtnValorDiferente").IsEnabled = portal && !ocupado && abertasNoPortal.Contains(a.ChaveNova);
+            var ajustar = G<Button>("BtnAjustarChave");
+            ajustar.Visibility = l.Status == Status.ChaveAjustada ? Visibility.Collapsed : Visibility.Visible;
+            ajustar.IsEnabled = !ocupado && AjusteChave.Trava(l) == null;
+            ajustar.ToolTip = AjusteChave.Trava(l) ?? "Troca só a chave_acesso desta linha em " + cfg.DbBanco + ".nota_saida";
+            var desfazer = G<Button>("BtnDesfazerAjuste");
+            desfazer.Visibility = l.Status == Status.ChaveAjustada ? Visibility.Visible : Visibility.Collapsed;
+            desfazer.IsEnabled = !ocupado && a.Backup != null && File.Exists(a.Backup);
+        }
+
+        void ConferirNaSefaz()
+        {
+            var l = Selecionada();
+            if (l == null || l.Ajuste == null) return;
+            try { Clipboard.SetText(l.Ajuste.ChaveNova); }
+            catch (Exception ex) { Aviso("Não foi possível copiar a chave (" + ex.Message + "). Copie à mão: " + l.Ajuste.ChaveNova); }
+            abertasNoPortal.Add(l.Ajuste.ChaveNova);
+            Abrir(AjusteChave.UrlPortalMG, null);
+            MostrarStatus("Chave " + l.Ajuste.ChaveNova + " copiada; cole no portal e compare o valor com R$ " + Analisador.Moeda(l.Ajuste.ValorSistema));
+            MostrarAjuste(l);
+        }
+
+        void RegistrarConferencia(bool confere)
+        {
+            var l = Selecionada();
+            if (l == null || l.Ajuste == null || motor == null) return;
+            string pergunta = confere
+                ? "Confirma que o portal da SEFAZ mostra para a nota " + l.Serie + "/" + l.Numero + " o valor R$ " + Analisador.Moeda(l.Ajuste.ValorSistema) + "?"
+                : "Confirma que o valor no portal da SEFAZ é DIFERENTE de R$ " + Analisador.Moeda(l.Ajuste.ValorSistema) + "?";
+            if (MessageBox.Show(W, pergunta + "\n\nChave " + l.Ajuste.ChaveNova + "\n\nFica registrado como conferência manual, com data, hora e usuário.",
+                Program.NomeSistema, MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+            try
+            {
+                AjusteChave.RegistrarConferencia(l, confere, motor.Historico, motor.Log);
+                motor.Analisador.ReavaliarAjuste(l, motor.Historico);
+            }
+            catch (Exception ex) { Erro(ex.Message); }
+            AtualizarLinha(l);
+        }
+
+        void AjustarChave()
+        {
+            var l = Selecionada();
+            if (l == null || l.Ajuste == null || motor == null || ocupado) return;
+            string trava = AjusteChave.Trava(l);
+            if (trava != null) { Aviso("O ajuste não está liberado: " + trava); return; }
+            var a = l.Ajuste;
+            if (MessageBox.Show(W, "Ajustar a chave no banco do Metre?\n\n" +
+                "Nota " + l.Serie + "/" + l.Numero + " · R$ " + Analisador.Moeda(a.ValorSistema) + " · id_nota_saida " + a.IdMetre + "\n\n" +
+                "Chave atual:\n" + a.ChaveAtual + "\n→ chave nova (autorizada):\n" + a.ChaveNova + "\n\n" +
+                "Só o campo chave_acesso desta linha é alterado. Antes, a linha inteira vai para um backup em " + motor.PastaBackups + ".",
+                Program.NomeSistema, MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
+            var m = motor;
+            Ocupado(true, "Ajustando a chave no banco...");
+            Task.Factory.StartNew(() => AjusteChave.Ajustar(m.Cfg, l, m.PastaBackups, m.Historico, m.Log))
+                .ContinueWith(t =>
+                {
+                    Ocupado(false, null);
+                    if (t.IsFaulted)
+                    {
+                        l.Status = Status.ErroAjuste;
+                        l.Motivo = "ajuste NÃO feito: " + t.Exception.InnerException.Message;
+                        AtualizarLinha(l);
+                        Erro(l.Motivo);
+                        return;
+                    }
+                    var r = t.Result;
+                    l.Status = Status.ChaveAjustada;
+                    l.Motivo = "chave_acesso ajustada em " + r.DataHora + ": " + a.ChaveAtual + " → " + a.ChaveNova + " (backup " + r.CaminhoDestino + ")";
+                    a.ChaveAntiga = a.ChaveAtual;
+                    a.Backup = r.CaminhoDestino;
+                    AtualizarLinha(l);
+                    MostrarStatus("Nota " + l.Serie + "/" + l.Numero + ": chave ajustada no banco. " + AjusteChave.AvisoMetre);
+                    Aviso(AjusteChave.AvisoMetre);
+                }, TaskScheduler.FromCurrentSynchronizationContext());
+        }
+
+        void DesfazerAjuste()
+        {
+            var l = Selecionada();
+            if (l == null || l.Ajuste == null || l.Ajuste.Backup == null || motor == null || ocupado) return;
+            var a = l.Ajuste;
+            if (MessageBox.Show(W, "Desfazer o ajuste da nota " + l.Serie + "/" + l.Numero + "?\n\n" +
+                "A chave_acesso volta de\n" + (l.Status == Status.ChaveAjustada ? a.ChaveNova : "?") + "\npara\n" + a.ChaveAntiga + "\n\n(backup " + a.Backup + ")",
+                Program.NomeSistema, MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
+            var m = motor;
+            Ocupado(true, "Desfazendo o ajuste no banco...");
+            Task.Factory.StartNew(() => AjusteChave.Desfazer(m.Cfg, a.Backup, m.PastaBackups, m.Historico, m.Log))
+                .ContinueWith(t =>
+                {
+                    Ocupado(false, null);
+                    if (t.IsFaulted) { Erro("Ajuste NÃO desfeito: " + t.Exception.InnerException.Message); return; }
+                    l.Status = Status.AjusteDesfeito;
+                    l.Motivo = "ajuste desfeito em " + t.Result.DataHora + ": chave_acesso voltou para " + a.ChaveAntiga + "; clique em Listar para recarregar";
+                    AtualizarLinha(l);
+                    MostrarStatus("Nota " + l.Serie + "/" + l.Numero + ": ajuste desfeito. " + AjusteChave.AvisoMetre);
+                    Aviso("Ajuste desfeito. Feche e abra o Metre para atualizar.");
+                }, TaskScheduler.FromCurrentSynchronizationContext());
+        }
+
+        void AtualizarLinha(LinhaRelatorio l)
+        {
+            var g = linhas.FirstOrDefault(x => x.Linha == l);
+            if (g != null) { g.Atualizar(l); g.Marcada = false; }
+            visao.Refresh();
+            AtualizarContagens();
+            MostrarDetalhes(G<DataGrid>("Grade").SelectedItem as LinhaGrid);
         }
 
         // ---------- Botões ----------
@@ -652,6 +799,9 @@ namespace DuplicidadeNfce
             var grade = G<DataGrid>("Grade");
             var alvo = linhas.FirstOrDefault(l => l.Linha.Status == Status.ACopiar || l.Linha.Status == Status.Copiado);
             if (alvo != null) grade.SelectedItem = alvo;
+            // NOTACERTA_DETALHE_FIM=1: mostra o fim do painel de detalhes (bloco de ajuste de chave).
+            if (Environment.GetEnvironmentVariable("NOTACERTA_DETALHE_FIM") == "1")
+                W.Dispatcher.BeginInvoke(new Action(() => G<ScrollViewer>("DetPainel").ScrollToBottom()), DispatcherPriority.Loaded);
             W.Dispatcher.BeginInvoke(new Action(() =>
             {
                 var raiz = (FrameworkElement)W.Content;

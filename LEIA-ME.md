@@ -42,6 +42,9 @@ marque as notas → *Processar marcadas* (consulta a SEFAZ, escolhe o arquivo e 
 | JÁ PROCESSADA | já consta como copiada no `historico.csv` |
 | PENDENTE | dúvida: SEFAZ não consultada, sem retorno 539, nenhum ou mais de um candidato, destino já existe… |
 | ERRO_COPIA | a cópia não conferiu com o original |
+| AJUSTE DE CHAVE | autorizada na SEFAZ, sem XML da chave autorizada para copiar e com o mesmo valor: ajustar a chave no banco |
+| CHAVE AJUSTADA | `chave_acesso` trocada no banco; falta fechar e abrir o Metre |
+| AJUSTE DESFEITO / ERRO_AJUSTE | ajuste desfeito pelo backup / ajuste recusado (nada foi alterado) |
 
 ## Lista da contingência (banco do Metre)
 
@@ -49,6 +52,34 @@ Com `FonteContingencia=banco`, a lista vem de `chef.nota_saida` com `situacao = 
 assim), por uma sessão **somente leitura** (só `SELECT`), usando a `libmariadb.dll` do HeidiSQL. Preencha `DbSenha`
 no `duplicidade.ini` do servidor e confira com `.\NotaCerta.exe --testar-banco`. Linhas cuja chave já está autorizada
 (criadas ao importar um NFCE) aparecem como JÁ AUTORIZADA e não são tocadas.
+
+Host e porta vêm do `C:\Chef\Conexao.ini` do Metre (`[Configuracao] ip` e `porta`) quando `DbHost`/`DbPorta` estão
+vazios; usuário e senha ficam no `duplicidade.ini` (o Metre não os guarda em INI legível). A conexão tem timeout, e um
+erro de banco também vai para o log.
+
+## Ajustar chave no banco
+
+Quando a SEFAZ confirma a chave autorizada (cStat 100 ou 150) mas não há nenhum XML dessa chave para copiar, a
+linha não fica mais só PENDENTE:
+
+1. O NotaCerta procura o XML da chave autorizada em todas as subpastas de `C:\Chef\NFCe` (qualquer nome) e no
+   banco `chefxml.xml` (só leitura). Se um XML tiver o DigestValue igual ao `digVal` da SEFAZ, o `vNF` dele é o
+   valor autorizado.
+2. Sem XML, o painel de detalhes mostra **Conferir na SEFAZ** (copia a chave e abre o portal) e, depois dele,
+   **Valor confere** / **Valor diferente**. A conferência fica no `historico.csv` como MANUAL, com data, hora e usuário.
+3. Com valor igual ao do sistema, a linha vira AJUSTE DE CHAVE e o botão **Ajustar chave no banco** é liberado se:
+   SEFAZ 100/150 para a chave autorizada; as duas chaves com os mesmos UF, AAMM, CNPJ, modelo, série e número;
+   chave autorizada com 44 dígitos e DV válido; valor do sistema = valor autorizado; chave autorizada em nenhuma
+   outra linha de `nota_saida`.
+
+O ajuste é linha a linha, com confirmação. Antes, a linha inteira (`SELECT *`) vai para `backups\` ao lado do exe.
+Numa transação, tudo é conferido de novo (linha travada com `FOR UPDATE`) e só então roda
+`UPDATE chef.nota_saida SET chave_acesso = '<autorizada>' WHERE id_nota_saida = <id> AND numero = <n> AND serie = <s>
+AND chave_acesso = '<atual>'`. Se não afetar exatamente 1 linha, ou a releitura não mostrar a chave nova, é feito
+rollback. **Só o campo `chave_acesso` daquela linha muda.** Depois do ajuste, feche e abra o Metre.
+**Desfazer ajuste** volta a chave antiga pelo backup, com as mesmas travas. O usuário do banco precisa de
+`UPDATE` em `chef.nota_saida` (é permissão do usuário no MariaDB, não da senha): `.\NotaCerta.exe --testar-banco`
+mostra as permissões e avisa se falta o UPDATE.
 
 ## Pastas das cópias
 
@@ -116,3 +147,7 @@ Linha de comando:
 - `testes\testar_amostras.ps1` roda os testes sobre `amostras\` (usa uma SEFAZ **simulada** local; nunca chama a real).
 - `testes\testar_faltantes.ps1` testa as Notas Faltantes com XMLs sintéticos (CNPJ fictício) e a SEFAZ simulada
   `testes\sefaz_respostas.ps1`.
+- `testes\testar_ajuste.ps1` testa o ajuste de chave num **MariaDB de teste** criado na hora (pasta temporária,
+  porta livre, desligado no fim; nunca o banco do Metre), com dados fictícios. Um caso real entra só por parâmetro
+  (`-Cnpj -Numero -CnfSistema -CnfAutorizada -Valor -DigVal -NProt …`). `-Manter` deixa o banco e a SEFAZ de teste no
+  ar para abrir a interface com `--config <pasta>\teste.ini`.

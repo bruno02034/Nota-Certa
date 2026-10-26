@@ -263,6 +263,7 @@
         <DataTrigger Binding="{Binding Tipo}" Value="ACopiar"><Setter TargetName="b" Property="Background" Value="#E0EDFF"/><Setter TargetName="t" Property="Foreground" Value="#1D5FD1"/></DataTrigger>
         <DataTrigger Binding="{Binding Tipo}" Value="AProcessar"><Setter TargetName="b" Property="Background" Value="#EFF5FF"/><Setter TargetName="t" Property="Foreground" Value="#1E7BFF"/></DataTrigger>
         <DataTrigger Binding="{Binding Tipo}" Value="Ajuste"><Setter TargetName="b" Property="Background" Value="#FFEDE3"/><Setter TargetName="t" Property="Foreground" Value="#D9480F"/></DataTrigger>
+        <DataTrigger Binding="{Binding Tipo}" Value="Ajustada"><Setter TargetName="b" Property="Background" Value="#DCFCE7"/><Setter TargetName="t" Property="Foreground" Value="#15803D"/></DataTrigger>
         <DataTrigger Binding="{Binding Tipo}" Value="Pendente"><Setter TargetName="b" Property="Background" Value="#FDE8E8"/><Setter TargetName="t" Property="Foreground" Value="#C81E1E"/></DataTrigger>
         <DataTrigger Binding="{Binding Tipo}" Value="Erro"><Setter TargetName="b" Property="Background" Value="#C81E1E"/><Setter TargetName="t" Property="Foreground" Value="White"/></DataTrigger>
         <DataTrigger Binding="{Binding Tipo}" Value="Contingencia"><Setter TargetName="b" Property="Background" Value="#FFF7E0"/><Setter TargetName="t" Property="Foreground" Value="#9A6700"/></DataTrigger>
@@ -625,6 +626,23 @@
                     <TextBox x:Name="DetArquivo" Style="{StaticResource CampoChave}" FontFamily="Segoe UI"/>
                     <TextBlock Style="{StaticResource Rotulo}" Text="Motivo"/>
                     <TextBlock x:Name="DetMotivo" TextWrapping="Wrap" FontSize="12"/>
+                    <!-- Ajuste de chave no banco: só aparece em duplicidade sem XML da chave autorizada para copiar -->
+                    <Border x:Name="DetAjuste" Visibility="Collapsed" Margin="0,12,0,0" Padding="12,10" CornerRadius="8" Background="#FFF7F2" BorderBrush="#FFD3BC" BorderThickness="1">
+                      <StackPanel>
+                        <TextBlock Text="Ajuste de chave no banco" FontWeight="SemiBold" FontSize="12.5" Foreground="#D9480F"/>
+                        <TextBlock x:Name="DetAjusteTexto" TextWrapping="Wrap" FontSize="11.5" Foreground="#4B5563" Margin="0,4,0,8"/>
+                        <WrapPanel x:Name="DetAjustePortal">
+                          <Button x:Name="BtnConferirSefaz" Style="{StaticResource BtnAzul}" Content="Conferir na SEFAZ" Margin="0,0,6,6" Padding="10,6"
+                                  ToolTip="Copia a chave autorizada e abre o portal da SEFAZ no navegador"/>
+                          <Button x:Name="BtnValorConfere" Style="{StaticResource BtnSecundario}" Content="Valor confere" Margin="0,0,6,6" Padding="10,6"/>
+                          <Button x:Name="BtnValorDiferente" Style="{StaticResource BtnSecundario}" Content="Valor diferente" Margin="0,0,6,6" Padding="10,6"/>
+                        </WrapPanel>
+                        <WrapPanel>
+                          <Button x:Name="BtnAjustarChave" Style="{StaticResource BtnPrimario}" Content="Ajustar chave no banco" Margin="0,0,6,6" Padding="12,7"/>
+                          <Button x:Name="BtnDesfazerAjuste" Style="{StaticResource BtnSecundario}" Content="Desfazer ajuste" Margin="0,0,6,6" Padding="10,6"/>
+                        </WrapPanel>
+                      </StackPanel>
+                    </Border>
                     <TextBlock Style="{StaticResource Rotulo}" Text="Candidatos (arquivos com a chave autorizada)" Margin="0,14,0,6"/>
                     <ItemsControl x:Name="DetCandidatos">
                       <ItemsControl.ItemTemplate>

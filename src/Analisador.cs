@@ -55,6 +55,16 @@ namespace DuplicidadeNfce
         public NotaXml Fonte;   // arquivo autorizado a copiar (só nas linhas "A COPIAR")
         public Selecao Sel;     // decisão sobre os candidatos (null antes de processar)
         public List<string> ArquivosChaveAutorizada = new List<string>();
+        public InfoAjuste Ajuste;     // sem XML da chave autorizada para copiar: ajuste da chave no banco
+        public Tentativa Tentativa;   // para reavaliar o ajuste depois de uma conferência manual
+    }
+
+    // Onde mais procurar o XML da chave autorizada e o que conferir no banco antes de propor o ajuste de chave
+    // (o Motor liga às pastas e ao banco do Metre; null = sem banco, sem ajuste).
+    class FontesAjuste
+    {
+        public Func<Tentativa, string, List<NotaXml>> BuscarXmls;   // qualquer pasta/nome e chefxml.xml
+        public Func<string, List<string>> LinhasComChave;           // ids de nota_saida que já têm a chave
     }
 
     class Selecao
@@ -67,6 +77,7 @@ namespace DuplicidadeNfce
         public string MotivoPendente;   // null = escolhido
         public bool ValorNaoConferido;  // nenhum arquivo conferiu com o digVal: vale o ASSINADA único da chave
         public string MotivoEscolha;
+        public bool SemArquivo;         // nenhum arquivo lido tem a chave autorizada no Id
         public List<Candidato> Candidatos = new List<Candidato>();
     }
 
@@ -95,11 +106,14 @@ namespace DuplicidadeNfce
         readonly Dictionary<string, string> autorizadaPorNota = new Dictionary<string, string>();
 
         readonly List<LinhaContingencia> contingencia;   // lista do Metre (banco/CSV); null = deduzir dos XMLs
+        readonly FontesAjuste fontes;
+        Historico historicoAtual;
 
         public Analisador(List<NotaXml> notas, Func<string, List<NotaXml>, RespostaSefaz> consultar, Log log,
-            List<LinhaContingencia> contingencia = null)
+            List<LinhaContingencia> contingencia = null, FontesAjuste fontes = null)
         {
             this.contingencia = contingencia;
+            this.fontes = fontes;
             this.notas = notas;
             this.consultar = consultar;
             this.log = log;
@@ -338,6 +352,7 @@ namespace DuplicidadeNfce
 
             List<NotaXml> arqs;
             if (!porChave.TryGetValue(k, out arqs)) arqs = new List<NotaXml>();
+            sel.SemArquivo = arqs.Count == 0;
             log.Info("");
             log.Info("Chave autorizada " + k + ": " + arqs.Count + " arquivo(s) com essa chave no Id do infNFe");
 
@@ -577,7 +592,8 @@ namespace DuplicidadeNfce
                 // Com a lista do Metre (banco/CSV), estar na aba Contingência já diz que não foi resolvida:
                 // o histórico não bloqueia (ele pode ter cópias erradas, como os _NFCE de 22/10).
                 var reg = contingencia == null ? historico.BuscarCopiado(t.ChaveAutorizada) : null;
-                if (ForaDoFluxo(t, l)) { }
+                if (Ajustada(t, l, historico)) { }
+                else if (ForaDoFluxo(t, l)) { }
                 else if (t.ChaveAutorizada == null && t.Candidatas.Count > 0)
                 {
                     l.Status = Status.AProcessar;
@@ -615,6 +631,7 @@ namespace DuplicidadeNfce
         public List<LinhaRelatorio> Analisar(string pastaCopia, Func<Tentativa, bool> incluir, IEnumerable<string> notasSemTentativa,
             Historico historico, Action<int, int> progresso)
         {
+            historicoAtual = historico;
             var linhas = new List<LinhaRelatorio>();
             foreach (string alvo in notasSemTentativa)
             {
@@ -645,6 +662,7 @@ namespace DuplicidadeNfce
                 linhas.Add(l);
                 var avisos = new List<string>(t.Avisos);
 
+                if (Ajustada(t, l, historico)) continue;
                 if (ForaDoFluxo(t, l)) continue;
                 if (t.ChaveAutorizada == null && t.Candidatas.Count > 0 && !ConfirmarCandidata(t, l))
                     continue;
@@ -675,6 +693,13 @@ namespace DuplicidadeNfce
                     l.DigValSefaz = sel.Sefaz.Prot.DigVal;
                 }
                 l.ValorSefaz = sel.ValorSefaz;
+                l.Tentativa = t;
+                // Autorizada na SEFAZ, mas nenhum XML dessa chave para copiar: o caminho é ajustar a chave no banco.
+                if (sel.MotivoPendente != null && sel.SemArquivo && sel.Sefaz != null && sel.Sefaz.Autorizada && sel.Sefaz.Prot.ChNFe == t.ChaveAutorizada)
+                {
+                    AvaliarAjuste(t, l, avisos);
+                    continue;
+                }
                 if (sel.MotivoPendente != null)
                 {
                     if (sel.Indicado != null)
@@ -712,6 +737,138 @@ namespace DuplicidadeNfce
             }
             if (progresso != null) progresso(escolhidas.Count, escolhidas.Count);
             return linhas.OrderBy(x => int.Parse(x.Serie)).ThenBy(x => long.Parse(x.Numero)).ThenBy(x => x.DhEmiSistema).ToList();
+        }
+
+        // Linha do Metre cuja chave_acesso já foi trocada pelo NotaCerta: o Metre só precisa ser reiniciado.
+        bool Ajustada(Tentativa t, LinhaRelatorio l, Historico historico)
+        {
+            if (contingencia == null || t.IdMetre == null) return false;
+            var reg = historico.BuscarAjuste(t.Chave);
+            if (reg == null || reg.Arquivo == null || !reg.Arquivo.EndsWith("id_nota_saida=" + t.IdMetre)) return false;
+            l.Status = Status.ChaveAjustada;
+            l.ChaveAutorizada = t.Chave;
+            l.Classificacao = "Duplicidade (chave ajustada no banco)";
+            l.Motivo = "chave_acesso ajustada em " + reg.DataHora + " (antes " + reg.CaminhoOrigem + "); feche e abra o Metre para atualizar";
+            l.Ajuste = new InfoAjuste
+            {
+                IdMetre = t.IdMetre, Numero = t.Numero, Serie = t.Serie, ChaveAtual = t.Chave, ChaveNova = t.Chave,
+                ChaveAntiga = reg.CaminhoOrigem, Backup = reg.CaminhoDestino, ValorSistema = t.Valor
+            };
+            return true;
+        }
+
+        // Duplicidade autorizada na SEFAZ sem nenhum XML dessa chave nas pastas lidas. O valor autorizado vem de um
+        // XML da chave achado em outro lugar (DigestValue = digVal) ou da conferência manual no portal; com valor
+        // igual ao do sistema e todas as travas, a linha vira AJUSTE DE CHAVE (troca da chave_acesso no banco).
+        void AvaliarAjuste(Tentativa t, LinhaRelatorio l, List<string> avisos)
+        {
+            var sel = l.Sel;
+            string k = t.ChaveAutorizada, digVal = sel.Sefaz.Prot.DigVal;
+            l.Ajuste = null;
+            l.ValorSefaz = null;
+            if (fontes == null || t.IdMetre == null)
+            {
+                Pendente(l, "nenhum arquivo com a chave autorizada; o ajuste de chave exige a lista do banco do Metre (FonteContingencia=banco)", avisos);
+                return;
+            }
+            var a = l.Ajuste = new InfoAjuste
+            {
+                IdMetre = t.IdMetre, Numero = t.Numero, Serie = t.Serie, ChaveAtual = t.Chave, ChaveNova = k, ValorSistema = t.Valor
+            };
+            // Primeiro o que bloqueia de qualquer jeito, para não mandar conferir no portal à toa.
+            List<string> outras;
+            try { outras = fontes.LinhasComChave(k); }
+            catch (Exception ex)
+            {
+                Pendente(l, "não foi possível conferir no banco se a chave autorizada já está em outra linha: " + ex.Message, avisos);
+                return;
+            }
+            if (outras.Count > 0)
+            {
+                Pendente(l, "a chave autorizada já está em outra linha de nota_saida (id_nota_saida " + string.Join(", ", outras) + "); ajuste bloqueado", avisos);
+                return;
+            }
+
+            List<NotaXml> extras;
+            try { extras = fontes.BuscarXmls(t, k); }
+            catch (Exception ex)
+            {
+                log.Info("  busca do XML da chave autorizada falhou: " + ex.Message);
+                avisos.Add("busca do XML da chave autorizada falhou: " + ex.Message);
+                extras = new List<NotaXml>();
+            }
+            sel.Candidatos.Clear();
+            var conferem = new List<NotaXml>();
+            foreach (var x in extras)
+            {
+                string motivo = null;
+                if (x.Erro != null) motivo = "erro de leitura: " + x.Erro;
+                else if (x.Chave != k) motivo = "outra chave no Id: " + x.Chave;
+                else if (x.DigestDeclarado != digVal) motivo = "DigestValue " + x.DigestDeclarado + " ≠ digVal SEFAZ";
+                else if (x.DigestCalculado != x.DigestDeclarado) motivo = "DigestValue declarado não confere com o conteúdo";
+                else if (!x.VNF.HasValue) motivo = "sem vNF";
+                if (motivo == null) conferem.Add(x);
+                sel.Candidatos.Add(new Candidato
+                {
+                    Caminho = x.Caminho, Aceito = motivo == null, Tamanho = x.Tamanho, VNF = x.VNF,
+                    Motivo = motivo ?? "chave autorizada no Id e DigestValue = digVal SEFAZ: fixa o valor autorizado (não é copiado)"
+                });
+                log.Info("  " + (motivo == null ? "[OK]  " : "[X]   ") + x.Caminho + " (vNF " + Moeda(x.VNF) + ")" + (motivo == null ? "" : " - " + motivo));
+            }
+
+            var valores = conferem.Select(x => x.VNF.Value).Distinct().ToList();
+            if (valores.Count > 1)
+            {
+                Pendente(l, "XMLs da chave autorizada com valores diferentes: " + string.Join(" | ", conferem.Select(x => x.Nome + "=" + Moeda(x.VNF))), avisos);
+                return;
+            }
+            if (valores.Count == 1)
+            {
+                a.ValorConferido = valores[0];
+                a.OrigemValor = "valor autorizado pelo XML " + conferem[0].Nome + " (DigestValue = digVal da SEFAZ)";
+            }
+            else
+            {
+                a.PodeConferirPortal = true;
+                var c = historicoAtual != null ? historicoAtual.BuscarConferencia(k) : null;
+                if (c != null && c.Status == Status.ValorConfereManual && AjusteChave.ValorDoRegistro(c) == t.Valor)
+                {
+                    a.ValorConferido = t.Valor;
+                    a.ValorManual = true;
+                    a.OrigemValor = "valor conferido MANUALMENTE no portal da SEFAZ em " + c.DataHora + " (" + c.Arquivo + ")";
+                }
+                else if (c != null && c.Status == Status.ValorDiferenteManual && AjusteChave.ValorDoRegistro(c) == t.Valor)
+                {
+                    Pendente(l, "valor diferente no portal da SEFAZ (conferido manualmente em " + c.DataHora + "); a chave não é ajustada", avisos);
+                    return;
+                }
+                else
+                {
+                    Pendente(l, "nenhum XML com a chave autorizada (pastas, outros nomes e banco do Metre) e a consulta da SEFAZ não traz o valor: " +
+                        "confira no portal (botão \"Conferir na SEFAZ\")", avisos);
+                    return;
+                }
+            }
+            l.ValorSefaz = a.ValorConferido;
+            if (avisos.Count > 0) { Pendente(l, "verificar manualmente", avisos); return; }
+            if (a.ValorConferido != t.Valor)
+            {
+                Pendente(l, "valor autorizado " + Moeda(a.ValorConferido) + " ≠ sistema " + Moeda(t.Valor) + " (" + a.OrigemValor + "); a chave não é ajustada", avisos);
+                return;
+            }
+            l.Status = Status.AjusteChave;
+            string trava = AjusteChave.Trava(l);
+            if (trava != null) { Pendente(l, "ajuste de chave bloqueado: " + trava, avisos); return; }
+            l.Motivo = "nenhum XML da chave autorizada para copiar; " + a.OrigemValor + ": " + Moeda(a.ValorConferido) + " = sistema. " +
+                "Ajustar chave_acesso no banco: " + t.Chave + " → " + k + " (SEFAZ cStat " + sel.Sefaz.Prot.CStat + ", nProt " + sel.Sefaz.Prot.NProt + ")";
+        }
+
+        // Depois de uma conferência manual no portal: refaz a avaliação do ajuste da linha.
+        public void ReavaliarAjuste(LinhaRelatorio l, Historico historico)
+        {
+            if (l.Tentativa == null || l.Sel == null) throw new Exception("linha não processada");
+            historicoAtual = historico;
+            AvaliarAjuste(l.Tentativa, l, new List<string>(l.Tentativa.Avisos));
         }
 
         static void Pendente(LinhaRelatorio l, string motivo, List<string> avisos)

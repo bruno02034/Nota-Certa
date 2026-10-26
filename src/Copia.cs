@@ -51,6 +51,25 @@ namespace DuplicidadeNfce
             return chaveAutorizada != null && copiados.TryGetValue(chaveAutorizada, out r) ? r : null;
         }
 
+        // Último ajuste de chave no banco para esta chave autorizada, se ainda valer (não desfeito).
+        // Nesses registros: Arquivo = "<tabela> id_nota_saida=N", CaminhoOrigem = chave antiga, CaminhoDestino = backup.
+        public RegistroHistorico BuscarAjuste(string chaveAutorizada)
+        {
+            var r = Ultimo(chaveAutorizada, Status.ChaveAjustada, Status.AjusteDesfeito);
+            return r != null && r.Status == Status.ChaveAjustada ? r : null;
+        }
+
+        // Última conferência manual do valor no portal da SEFAZ (Tamanho = valor do sistema conferido).
+        public RegistroHistorico BuscarConferencia(string chaveAutorizada)
+        {
+            return Ultimo(chaveAutorizada, Status.ValorConfereManual, Status.ValorDiferenteManual);
+        }
+
+        RegistroHistorico Ultimo(string chave, params string[] status)
+        {
+            return chave == null ? null : Todos.LastOrDefault(r => r.ChaveAutorizada == chave && status.Contains(r.Status));
+        }
+
         public void Registrar(RegistroHistorico r)
         {
             bool novo = !File.Exists(caminho);
@@ -60,6 +79,8 @@ namespace DuplicidadeNfce
             {
                 r.DataHora, r.Serie, r.Numero, Csv.Formula(r.ChaveAutorizada), r.Arquivo, r.CaminhoOrigem, r.CaminhoDestino, r.Tamanho, r.Sha256, r.Status
             }.Select(Csv.Campo)));
+            // Ajuste de chave e conferência manual podem ser os primeiros registros (pasta ainda sem cópias).
+            if (novo) Directory.CreateDirectory(Path.GetDirectoryName(caminho));
             if (novo) File.WriteAllText(caminho, sb.ToString(), new UTF8Encoding(true));
             else File.AppendAllText(caminho, sb.ToString(), new UTF8Encoding(false));
             Todos.Add(r);
