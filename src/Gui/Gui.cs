@@ -189,7 +189,7 @@ namespace DuplicidadeNfce
             G<Button>("BtnProcessar").Click += (s, e) => Processar();
             G<Button>("BtnAbrirPasta").Click += (s, e) => AbrirPastaDuplicidade();
             G<Button>("BtnExportar").Click += (s, e) => Exportar();
-            G<Button>("BtnVerLog").Click += (s, e) => { if (motor != null) Abrir("notepad.exe", motor.ArqLog); };
+            G<Button>("BtnVerLog").Click += (s, e) => { if (motor != null) Abrir("notepad.exe", motor.ArqLog); else Aviso("Ainda não houve busca nesta sessão. Os logs anteriores estão em Relatórios."); };
             G<Button>("BtnMarcar").Click += (s, e) => { foreach (var l in linhas) l.Marcada = l.Linha.Status == Status.AProcessar; };
             G<Button>("BtnDesmarcar").Click += (s, e) => { foreach (var l in linhas) l.Marcada = false; };
             G<Button>("BtnRecolher").Click += (s, e) => { recolherManual = true; Recolher(); };
@@ -258,14 +258,15 @@ namespace DuplicidadeNfce
             G<Button>("BtnAtualizarHist").Click += (s, e) => CarregarHistorico();
             G<Button>("BtnAbrirRel").Click += (s, e) => AbrirRelatorioSelecionado();
             G<DataGrid>("GradeRelatorios").MouseDoubleClick += (s, e) => AbrirRelatorioSelecionado();
-            G<Button>("BtnPastaRel").Click += (s, e) => { if (motor != null) Abrir("explorer.exe", motor.PastaRel); };
+            G<Button>("BtnPastaRel").Click += (s, e) => { if (Directory.Exists(PastaRelatorios)) Abrir("explorer.exe", PastaRelatorios); };
             G<Button>("BtnEditarIni").Click += (s, e) => Abrir("notepad.exe", op.ArqConfig);
             G<Button>("BtnRecarregar").Click += (s, e) =>
             {
                 cfg = op.CarregarConfig();
                 CarregarConfigTela();
                 CarregarSelo();
-                Listar();
+                // Só busca de novo se já havia uma lista na tela.
+                if (motor != null) Listar();
             };
             W.Closed += (s, e) => { if (motor != null) motor.Dispose(); };
 
@@ -304,7 +305,9 @@ namespace DuplicidadeNfce
                     faltantes.Capturar();
                     return;
                 }
-                Listar();
+                // A busca só roda quando o usuário pede (Listar contingência); a captura de tela lista sozinha.
+                if (op.Captura != null) Listar();
+                else MostrarStatus("Escolha o período e clique em \"Listar contingência\" para buscar as notas.");
             };
         }
 
@@ -738,11 +741,24 @@ namespace DuplicidadeNfce
         }
 
         // ---------- Botões ----------
+        // Pastas pelo ini quando ainda não houve nenhuma listagem (a busca não roda mais sozinha ao abrir).
+        string PastaDestino { get { return motor != null ? motor.Destino : System.IO.Path.GetFullPath(cfg.PastaDestino); } }
+        string PastaRelatorios
+        {
+            get
+            {
+                if (motor != null) return motor.PastaRel;
+                return System.IO.Path.GetFullPath(System.IO.Path.IsPathRooted(cfg.PastaRelatorios) ? cfg.PastaRelatorios
+                    : System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, cfg.PastaRelatorios));
+            }
+        }
+
         void AbrirPastaDuplicidade()
         {
-            if (motor == null) return;
-            string p = motor.UltimaPastaExecucao != null && Directory.Exists(motor.UltimaPastaExecucao) ? motor.UltimaPastaExecucao : Directory.Exists(motor.PastaCopia) ? motor.PastaCopia : motor.Destino;
-            if (!Directory.Exists(p)) { Aviso("A pasta " + motor.Destino + " ainda não existe: nenhuma nota foi copiada."); return; }
+            string p = motor == null ? PastaDestino
+                : motor.UltimaPastaExecucao != null && Directory.Exists(motor.UltimaPastaExecucao) ? motor.UltimaPastaExecucao
+                : Directory.Exists(motor.PastaCopia) ? motor.PastaCopia : motor.Destino;
+            if (!Directory.Exists(p)) { Aviso("A pasta " + PastaDestino + " ainda não existe: nenhuma nota foi copiada."); return; }
             Abrir("explorer.exe", p);
         }
 
@@ -753,7 +769,7 @@ namespace DuplicidadeNfce
             {
                 Filter = "Relatório CSV (*.csv)|*.csv",
                 FileName = "duplicidade_" + DateTime.Now.ToString("yyyyMMdd_HHmm") + ".csv",
-                InitialDirectory = motor != null ? motor.PastaRel : ""
+                InitialDirectory = Directory.Exists(PastaRelatorios) ? PastaRelatorios : ""
             };
             if (dlg.ShowDialog(W) != true) return;
             Relatorio.GravarCsv(dlg.FileName, visao.Cast<LinhaGrid>().Select(l => l.Linha).ToList());
@@ -762,8 +778,7 @@ namespace DuplicidadeNfce
 
         void CarregarHistorico()
         {
-            if (motor == null) return;
-            var h = new Historico(motor.Destino);
+            var h = new Historico(PastaDestino);
             G<TextBlock>("TxtHistCaminho").Text = h.Caminho + (File.Exists(h.Caminho) ? "" : " (ainda não existe)");
             G<DataGrid>("GradeHistorico").ItemsSource = h.Todos.AsEnumerable().Reverse().Select(r => new HistoricoView
             {
@@ -774,9 +789,10 @@ namespace DuplicidadeNfce
 
         void CarregarRelatorios()
         {
-            if (motor == null) return;
-            G<TextBlock>("TxtRelCaminho").Text = motor.PastaRel;
-            G<DataGrid>("GradeRelatorios").ItemsSource = new DirectoryInfo(motor.PastaRel).GetFiles()
+            string pasta = PastaRelatorios;
+            G<TextBlock>("TxtRelCaminho").Text = pasta;
+            if (!Directory.Exists(pasta)) { G<DataGrid>("GradeRelatorios").ItemsSource = null; return; }
+            G<DataGrid>("GradeRelatorios").ItemsSource = new DirectoryInfo(pasta).GetFiles()
                 .Where(f => f.Extension == ".csv" || f.Extension == ".log")
                 .OrderByDescending(f => f.LastWriteTime)
                 .Select(f => new ArquivoView
@@ -806,7 +822,7 @@ namespace DuplicidadeNfce
                 Par("Pasta das cópias (base)", cfg.PastaDestino),
                 Par("Cópias de hoje", System.IO.Path.Combine(cfg.PastaDestino, DateTime.Today.ToString("yyyy-MM-dd"))),
                 Par("Histórico", System.IO.Path.Combine(cfg.PastaDestino, Historico.NomeArquivo)),
-                Par("Relatórios e logs", motor != null ? motor.PastaRel : cfg.PastaRelatorios),
+                Par("Relatórios e logs", PastaRelatorios),
                 Par("UF / ambiente", cfg.UF + " / " + (cfg.Ambiente == 1 ? "1 - produção" : "2 - homologação")),
                 Par("Consulta SEFAZ", SafeUrl()),
                 Par("Certificado (.pfx)", MetreIni.Pfxs.Count > 0 ? string.Join("; ", MetreIni.Pfxs) + " (do INI do emissor)" : cfg.CertificadoPfx + " e " + cfg.PastaEmpresas + @"\*\Certificado"),
