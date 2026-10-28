@@ -76,6 +76,7 @@ namespace DuplicidadeNfce
         public decimal? ValorSefaz;
         public string MotivoPendente;   // null = escolhido
         public bool ValorNaoConferido;  // nenhum arquivo conferiu com o digVal: vale o ASSINADA único da chave
+        public decimal? ValorConferido; // vNF dos arquivos que conferem com o digVal, mesmo sem ASSINADA para copiar
         public string MotivoEscolha;
         public bool SemArquivo;         // nenhum arquivo lido tem a chave autorizada no Id
         public List<Candidato> Candidatos = new List<Candidato>();
@@ -382,7 +383,8 @@ namespace DuplicidadeNfce
             if (sel.Sefaz.Prot.ChNFe != k) { sel.MotivoPendente = "SEFAZ devolveu protocolo de outra chave: " + sel.Sefaz.Prot.ChNFe; return sel; }
 
             var escolhido = Escolher(arqs, sel.Sefaz.Prot, "SEFAZ", sel, out motivo, out copias);
-            if (escolhido == null) { sel.MotivoPendente = motivo; return sel; }
+            // Sem ASSINADA para copiar o valor conferido pelo conteúdo ainda vale (aparece na tela e permite o ajuste de chave).
+            if (escolhido == null) { sel.ValorSefaz = sel.ValorConferido; sel.MotivoPendente = motivo; return sel; }
             sel.Escolhido = escolhido;
             sel.ValorSefaz = escolhido.VNF;
             sel.MotivoEscolha = (sel.ValorNaoConferido
@@ -425,6 +427,7 @@ namespace DuplicidadeNfce
             string chaveAut = prot.ChNFe ?? (arqs.Count > 0 ? arqs[0].Chave : null);
             decimal valorAut;
             sel.ValorNaoConferido = false;
+            sel.ValorConferido = null;
             if (validos.Count == 0)
             {
                 // Nenhum arquivo confere com a SEFAZ (o Metre regravou o XML ao transmitir e não salvou o
@@ -459,6 +462,7 @@ namespace DuplicidadeNfce
                     return null;
                 }
                 valorAut = valores[0];
+                sel.ValorConferido = valorAut;
             }
             var assinadas = arqs.Where(a => a.Tipo == TipoArquivo.Assinada && a.Erro == null && a.Chave == chaveAut).ToList();
             var preferidos = assinadas.Where(a => a.VNF == valorAut).ToList();
@@ -698,6 +702,16 @@ namespace DuplicidadeNfce
                 if (sel.MotivoPendente != null && sel.SemArquivo && sel.Sefaz != null && sel.Sefaz.Autorizada && sel.Sefaz.Prot.ChNFe == t.ChaveAutorizada)
                 {
                     AvaliarAjuste(t, l, avisos);
+                    log.Info("  Ajuste de chave: " + l.Status + " - " + l.Motivo);
+                    continue;
+                }
+                // Há XML da chave que confere com a SEFAZ (ex.: só o Temp_ANTES_ENVIO), mas nenhum ASSINADA para copiar.
+                // Com o mesmo valor do sistema o caminho é o ajuste de chave, que não copia nada.
+                if (sel.MotivoPendente != null && sel.ValorConferido.HasValue && t.Valor == sel.ValorConferido && fontes != null && t.IdMetre != null &&
+                    sel.Sefaz != null && sel.Sefaz.Autorizada && sel.Sefaz.Prot.ChNFe == t.ChaveAutorizada)
+                {
+                    AvaliarAjuste(t, l, avisos, sel.ValorConferido,
+                        "valor autorizado conferido pelo XML da chave (DigestValue = digVal da SEFAZ); sem ASSINADA para copiar");
                     log.Info("  Ajuste de chave: " + l.Status + " - " + l.Motivo);
                     continue;
                 }
