@@ -85,6 +85,12 @@ namespace DuplicidadeNfce
                 "F: ASSINADA autorizado na pasta e MESMO valor -> AJUSTE DE CHAVE, nada para importar (" + F.Motivo + ")");
             Verdade(G.Status == Status.ACopiar && G.Fonte != null && G.CaminhoDestino.Contains("importar-1") && G.Ajuste == null,
                 "G: ASSINADA autorizado na pasta e valor DIFERENTE -> fluxo de cópia para importação, como antes (" + G.Motivo + ")");
+            var H = nota("2008"); var I = nota("2009");
+            Verdade(H.Status == Status.AjusteChave && H.ValorSefaz == 35.90m && H.Fonte == null && H.CaminhoDestino == null && AjusteChave.Trava(H) == null &&
+                H.Ajuste.OrigemValor.Contains("sem ASSINADA"),
+                "H: só o Temp confere com o digVal, sem ASSINADA, MESMO valor -> AJUSTE DE CHAVE (" + H.Motivo + ")");
+            Verdade(I.Status == Status.Pendente && I.ValorSefaz == 15.00m && I.Fonte == null && I.CaminhoDestino == null && (I.Ajuste == null || AjusteChave.Trava(I) != null),
+                "I: só o Temp confere, sem ASSINADA, valor DIFERENTE -> PENDENTE com o Valor SEFAZ na tela (" + I.Motivo + ")");
             Verdade(linhas.Where(l => l.Status == Status.AjusteChave).All(l => AjusteChave.Trava(l) == null), "linhas AJUSTE DE CHAVE sem travas");
 
             // ---------- Conferência manual ----------

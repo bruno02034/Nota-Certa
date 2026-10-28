@@ -110,10 +110,12 @@ try {
         @{ N = 2004; S = '30000005'; A = '30000006'; Id = $IdMetre + 3; V = '20.90' },   # D: chave autorizada já em outra linha
         @{ N = 2005; S = '30000007'; A = '30000008'; Id = $IdMetre + 4; V = '25.00' },   # E: valor autorizado diferente
         @{ N = 2006; S = '30000009'; A = '30000010'; Id = $IdMetre + 5; V = '30.00' },   # F: ASSINADA autorizado na pasta, mesmo valor
-        @{ N = 2007; S = '30000011'; A = '30000012'; Id = $IdMetre + 6; V = '40.00' }    # G: ASSINADA autorizado na pasta, valor diferente
+        @{ N = 2007; S = '30000011'; A = '30000012'; Id = $IdMetre + 6; V = '40.00' },   # G: ASSINADA autorizado na pasta, valor diferente
+        @{ N = 2008; S = '30000013'; A = '30000014'; Id = $IdMetre + 7; V = '35.90' },   # H: só o Temp da chave autorizada, mesmo valor
+        @{ N = 2009; S = '30000015'; A = '30000016'; Id = $IdMetre + 8; V = '12.00' }    # I: só o Temp da chave autorizada, valor diferente
     )
     foreach ($n in $notas) { $n.Sis = Chave $n.N $n.S; $n.Aut = Chave $n.N $n.A }
-    $B, $C, $D, $E, $F, $G = $notas
+    $B, $C, $D, $E, $F, $G, $H, $I = $notas
 
     Rejeicao539 $Numero $aSis $aAut $Valor
     foreach ($n in $notas) { Rejeicao539 $n.N $n.Sis $n.Aut $n.V }
@@ -128,6 +130,12 @@ try {
     Gravar (Join-Path $xmls "10_2026\19\NOTA_$($F.N)_SERIE_${Serie}_ASSINADA_19_10_2026_13_00_00.xml") $fXml.Xml
     $gXml = NFe $G.Aut $G.N '45.00'; Resposta $G.Aut $gXml.Digest '131260000000007' '100'
     Gravar (Join-Path $xmls "10_2026\19\NOTA_$($G.N)_SERIE_${Serie}_ASSINADA_19_10_2026_13_10_00.xml") $gXml.Xml
+    # H e I: da chave autorizada só existe o Temp_ANTES_ENVIO (lote <enviNFe>), que confere com o digVal; nenhum ASSINADA.
+    foreach ($x in @(@{ N = $H; V = '35.90'; Hora = '13_20_00' }, @{ N = $I; V = '15.00'; Hora = '13_30_00' })) {
+        $t = NFe $x.N.Aut $x.N.N $x.V; Resposta $x.N.Aut $t.Digest ('13126000000' + $x.N.N) '100'
+        Gravar (Join-Path $xmls "10_2026\19\NOTA_$($x.N.N)_SERIE_${Serie}_CHAVE_$($x.N.Aut)_Temp_ANTES_ENVIO_19_10_2026_$($x.Hora).xml") `
+            "<enviNFe versao=`"4.00`" xmlns=`"$Ns`"><idLote>1</idLote><indSinc>1</indSinc>$($t.Xml)</enviNFe>"
+    }
     $aTentativa = NFe $aSis $Numero $Valor
 
     $sql = @"
@@ -147,6 +155,8 @@ INSERT INTO chef.nota_saida (id_nota_saida, XML, numero, serie, chave_acesso, dt
   ($($E.Id), NULL, $($E.N), $Serie, '$($E.Sis)', '2026-10-19', 4, $($E.V), '2026-10-19 12:30:00', NULL, 'Lote processado', 'Em contigencia', NULL),
   ($($F.Id), NULL, $($F.N), $Serie, '$($F.Sis)', '2026-10-19', 5, $($F.V), '2026-10-19 13:00:00', NULL, 'Lote processado', 'Em contigencia', NULL),
   ($($G.Id), NULL, $($G.N), $Serie, '$($G.Sis)', '2026-10-19', 6, $($G.V), '2026-10-19 13:10:00', NULL, 'Lote processado', 'Em contigencia', NULL),
+  ($($H.Id), NULL, $($H.N), $Serie, '$($H.Sis)', '2026-10-19', 7, $($H.V), '2026-10-19 13:20:00', NULL, 'Lote processado', 'Em contigencia', NULL),
+  ($($I.Id), NULL, $($I.N), $Serie, '$($I.Sis)', '2026-10-19', 8, $($I.V), '2026-10-19 13:30:00', NULL, 'Lote processado', 'Em contigencia', NULL),
   (500, NULL, $($D.N), $Serie, '$($D.Aut)', '2026-10-19', 3, $($D.V), NULL, NULL, NULL, 'Autorizada', NULL),
   (501, NULL, 1999, $Serie, '$(Chave 1999 '40000001')', '2026-10-19', 9, 10.00, NULL, NULL, NULL, 'Autorizada', NULL);
 INSERT INTO chefxml.xml (id_xml, XML, id_nota_saida, id_pedido) VALUES

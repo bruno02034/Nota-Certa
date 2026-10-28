@@ -68,7 +68,9 @@ Duplicidade (539) com a chave autorizada confirmada na SEFAZ (cStat 100 ou 150) 
 
 Com a lista vinda de CSV ou dos arquivos (sem o banco), valor igual continua indo para a cópia, como antes.
 
-1. O valor autorizado vem do XML da chave nas pastas do período (DigestValue = `digVal`) ou, sem arquivo, do banco
+1. O valor autorizado vem do XML da chave nas pastas do período (DigestValue = `digVal`; vale qualquer XML que confira,
+   inclusive só o `Temp_ANTES_ENVIO` sem ASSINADA: com valor igual vira ajuste; com valor diferente fica PENDENTE,
+   porque sem ASSINADA não há o que importar) ou, sem arquivo, do banco
    `chefxml.xml` (só leitura, pela chave primária). O `C:\Chef\NFCe` inteiro não é varrido: deixava o processamento
    lento demais.
 2. Sem XML nenhum (a consulta da SEFAZ não traz o valor), o painel de detalhes mostra **Conferir na SEFAZ** (copia a chave e abre o portal) e, depois dele,
