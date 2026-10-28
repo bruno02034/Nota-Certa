@@ -979,12 +979,13 @@
         <DockPanel Margin="18,16,18,12">
           <DockPanel DockPanel.Dock="Top" Margin="0,0,0,10">
             <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
-              <Button x:Name="BtnEditarIni" Style="{StaticResource BtnSecundario}" Content="Editar duplicidade.ini"/>
+              <Button x:Name="BtnSenhaBanco" Style="{StaticResource BtnSecundario}" Content="Senha do banco"/>
+              <Button x:Name="BtnEditarIni" Style="{StaticResource BtnSecundario}" Content="Editar duplicidade.ini" Margin="8,0,0,0"/>
               <Button x:Name="BtnRecarregar" Style="{StaticResource BtnPrimario}" Content="Recarregar" Margin="8,0,0,0"/>
             </StackPanel>
             <StackPanel>
               <TextBlock Style="{StaticResource TituloCard}" Text="CONFIGURAÇÕES EM USO"/>
-              <TextBlock Text="A senha do certificado nunca é exibida; aparece só de onde ela foi lida." FontSize="11.5" Foreground="{StaticResource TextoSec}" Margin="0,4,0,0"/>
+              <TextBlock Text="As senhas do certificado e do banco nunca são exibidas; aparece só de onde vêm." FontSize="11.5" Foreground="{StaticResource TextoSec}" Margin="0,4,0,0"/>
             </StackPanel>
           </DockPanel>
           <ScrollViewer VerticalScrollBarVisibility="Auto">

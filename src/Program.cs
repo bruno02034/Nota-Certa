@@ -153,7 +153,8 @@ a cópia nunca move nem sobrescreve, e fica registrada em historico.csv na pasta
         static int TestarBanco(Opcoes op)
         {
             var cfg = op.CarregarConfig();
-            Console.WriteLine("Configuração: " + op.ArqConfig + (string.IsNullOrEmpty(cfg.DbSenha) ? "  (ATENÇÃO: DbSenha vazia)" : ""));
+            Console.WriteLine("Configuração: " + op.ArqConfig + (cfg.ErroSenhaProtegida != null ? "  (ATENÇÃO: " + cfg.ErroSenhaProtegida + ")"
+                : string.IsNullOrEmpty(cfg.DbSenha) ? "  (ATENÇÃO: senha do banco não informada; abra a interface para digitá-la)" : ""));
             Banco.Testar(cfg, Console.WriteLine);
             return 0;
         }

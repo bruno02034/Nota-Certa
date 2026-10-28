@@ -260,6 +260,9 @@ namespace DuplicidadeNfce
             G<DataGrid>("GradeRelatorios").MouseDoubleClick += (s, e) => AbrirRelatorioSelecionado();
             G<Button>("BtnPastaRel").Click += (s, e) => { if (Directory.Exists(PastaRelatorios)) Abrir("explorer.exe", PastaRelatorios); };
             G<Button>("BtnEditarIni").Click += (s, e) => Abrir("notepad.exe", op.ArqConfig);
+            G<Button>("BtnSenhaBanco").Click += (s, e) => PedirSenhaBanco(cfg.DbSenha != ""
+                ? "Digite a nova senha do banco do Metre. Ela substitui a guardada."
+                : "Informe a senha do banco do Metre para listar a contingência e ajustar chaves.");
             G<Button>("BtnRecarregar").Click += (s, e) =>
             {
                 cfg = op.CarregarConfig();
@@ -307,7 +310,11 @@ namespace DuplicidadeNfce
                 }
                 // A busca só roda quando o usuário pede (Listar contingência); a captura de tela lista sozinha.
                 if (op.Captura != null) Listar();
-                else MostrarStatus("Escolha o período e clique em \"Listar contingência\" para buscar as notas.");
+                else
+                {
+                    MostrarStatus("Escolha o período e clique em \"Listar contingência\" para buscar as notas.");
+                    ConferirSenhaBanco();
+                }
             };
         }
 
@@ -827,11 +834,57 @@ namespace DuplicidadeNfce
                 Par("Consulta SEFAZ", SafeUrl()),
                 Par("Certificado (.pfx)", MetreIni.Pfxs.Count > 0 ? string.Join("; ", MetreIni.Pfxs) + " (do INI do emissor)" : cfg.CertificadoPfx + " e " + cfg.PastaEmpresas + @"\*\Certificado"),
                 Par("INIs do emissor lidos", MetreIni.Lidos.Count > 0 ? string.Join("; ", MetreIni.Lidos) : "nenhum encontrado em " + cfg.IniMetre),
-                Par("Fontes de senha encontradas", MetreIni.Senhas.Count > 0 ? string.Join("; ", MetreIni.Senhas.Select(s => s.Origem)) : "nenhuma"),
+                Par("Banco do Metre", UsaBanco ? cfg.DbUsuario + " em " + (string.IsNullOrEmpty(cfg.DbHost) ? "(do Conexao.ini)" : cfg.DbHost + ":" + cfg.DbPorta) : "não usado"),
+                Par("Senha do banco", EstadoSenhaBanco()),
+                Par("Fontes de senha encontradas",MetreIni.Senhas.Count > 0 ? string.Join("; ", MetreIni.Senhas.Select(s => s.Origem)) : "nenhuma"),
                 Par("Dias extras p/ candidatos", cfg.DiasExtrasCandidatos.ToString()),
                 Par("Modo", op.SemSefaz ? "TESTE (--sem-sefaz): SEFAZ simulada, nada é copiado" : "normal")
             };
             G<ItemsControl>("ListaConfig").ItemsSource = itens;
+        }
+
+        bool UsaBanco { get { return (cfg.FonteContingencia ?? "").Trim().Equals("banco", StringComparison.OrdinalIgnoreCase); } }
+
+        // Ao abrir: a senha do banco em texto no ini é criptografada; sem senha (ou se a guardada não abre) pede na tela.
+        void ConferirSenhaBanco()
+        {
+            if (!UsaBanco) return;
+            if (cfg.SenhaEmTextoNoIni)
+            {
+                try
+                {
+                    SenhaBanco.GravarNoIni(op.ArqConfig, cfg.DbSenha);
+                    cfg.SenhaEmTextoNoIni = false;
+                    cfg.DbSenhaProtegida = "gravada";
+                    MostrarStatus("A senha do banco que estava em texto no duplicidade.ini foi criptografada.");
+                }
+                catch (Exception ex) { Aviso("Não foi possível criptografar a senha do banco no " + op.ArqConfig + ": " + ex.Message); }
+                return;
+            }
+            if (cfg.DbSenha == "")
+                PedirSenhaBanco(cfg.ErroSenhaProtegida != null
+                    ? "A senha guardada não abre neste computador (o ini veio de outra máquina?). Digite a senha do banco."
+                    : "Informe a senha do banco do Metre para listar a contingência e ajustar chaves.");
+        }
+
+        void PedirSenhaBanco(string motivo)
+        {
+            string senha = TelaSenha.Pedir(W, op.CarregarConfig, op.ArqConfig, motivo);
+            if (senha == null) return;
+            cfg.DbSenha = senha;
+            cfg.DbSenhaProtegida = "gravada";
+            cfg.SenhaEmTextoNoIni = false;
+            cfg.ErroSenhaProtegida = null;
+            if (G<Grid>("PagConfig").Visibility == Visibility.Visible) CarregarConfigTela();
+            MostrarStatus("Senha do banco salva (criptografada no duplicidade.ini).");
+        }
+
+        string EstadoSenhaBanco()
+        {
+            if (cfg.SenhaEmTextoNoIni) return "em texto no duplicidade.ini (será criptografada ao abrir o programa)";
+            if (cfg.ErroSenhaProtegida != null) return "guardada, mas não abre neste computador: use \"Senha do banco\"";
+            if (cfg.DbSenha != "") return "guardada criptografada (Windows), nunca exibida";
+            return UsaBanco ? "não informada: use \"Senha do banco\"" : "não usada (FonteContingencia=" + cfg.FonteContingencia + ")";
         }
 
         string SafeUrl()

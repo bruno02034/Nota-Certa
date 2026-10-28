@@ -35,6 +35,10 @@ namespace DuplicidadeNfce
         public string OrigemConexaoBanco;
         public string DbUsuario = "metre";
         public string DbSenha = "";
+        // A mesma senha criptografada pelo Windows (gravada pela tela de senha da interface; ver SenhaBanco).
+        public string DbSenhaProtegida = "";
+        public bool SenhaEmTextoNoIni;
+        public string ErroSenhaProtegida;
         public string DbBanco = "chef";
         public string DbBancoXml = "chefxml";
         public string DbSituacao = "Em contigencia";
@@ -61,6 +65,12 @@ namespace DuplicidadeNfce
                 int eq = linha.IndexOf('=');
                 if (eq < 0) throw new Exception(caminho + " linha " + linhaN + ": esperado chave=valor");
                 c.Definir(linha.Substring(0, eq).Trim(), linha.Substring(eq + 1).Trim(), caminho + " linha " + linhaN);
+            }
+            c.SenhaEmTextoNoIni = c.DbSenha != "";
+            if (c.DbSenha == "" && c.DbSenhaProtegida != "")
+            {
+                try { c.DbSenha = SenhaBanco.Abrir(c.DbSenhaProtegida); }
+                catch (Exception ex) { c.ErroSenhaProtegida = ex.Message; }
             }
             return c;
         }
@@ -89,6 +99,7 @@ namespace DuplicidadeNfce
                 case "dbbancoxml": DbBancoXml = valor; break;
                 case "dbusuario": DbUsuario = valor; break;
                 case "dbsenha": DbSenha = valor; break;
+                case "dbsenhaprotegida": DbSenhaProtegida = valor; break;
                 case "dbbanco": DbBanco = valor; break;
                 case "dbsituacao": DbSituacao = valor; break;
                 case "mariadbdll": MariaDbDll = valor; break;

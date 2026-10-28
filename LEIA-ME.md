@@ -49,12 +49,17 @@ marque as notas → *Processar marcadas* (consulta a SEFAZ, escolhe o arquivo e 
 ## Lista da contingência (banco do Metre)
 
 Com `FonteContingencia=banco`, a lista vem de `chef.nota_saida` com `situacao = 'Em contigencia'` (o Metre grava
-assim), por uma sessão **somente leitura** (só `SELECT`), usando a `libmariadb.dll` do HeidiSQL. Preencha `DbSenha`
-no `duplicidade.ini` do servidor e confira com `.\NotaCerta.exe --testar-banco`. Linhas cuja chave já está autorizada
+assim), por uma sessão **somente leitura** (só `SELECT`), usando a `libmariadb.dll` do HeidiSQL. Informe a senha do banco
+pela interface e confira com `.\NotaCerta.exe --testar-banco`. Linhas cuja chave já está autorizada
 (criadas ao importar um NFCE) aparecem como JÁ AUTORIZADA e não são tocadas.
 
+**Senha do banco:** não é digitada no ini. Ao abrir, a interface pede a senha (campo mascarado), testa a conexão e a
+grava em `DbSenhaProtegida`, criptografada pelo Windows (DPAPI da máquina): ilegível no ini e só abre naquele
+computador. Para trocar: *Configurações > Senha do banco*. Uma senha antiga deixada em `DbSenha=` é criptografada e
+apagada do ini na primeira abertura. Se o ini for copiado para outro computador, a senha é pedida de novo.
+
 Host e porta vêm do `C:\Chef\Conexao.ini` do Metre (`[Configuracao] ip` e `porta`) quando `DbHost`/`DbPorta` estão
-vazios; usuário e senha ficam no `duplicidade.ini` (o Metre não os guarda em INI legível). A conexão tem timeout, e um
+vazios; o usuário fica no `duplicidade.ini` e a senha, criptografada nele (o Metre não os guarda em INI legível). A conexão tem timeout, e um
 erro de banco também vai para o log.
 
 ## Ajustar chave no banco

@@ -65,6 +65,31 @@ namespace DuplicidadeNfce
             Verdade(AjusteChave.MesmaNumeracao(chaveA, autA), "caso A: mesmos UF, AAMM, CNPJ, modelo, série e número");
             Verdade(!AjusteChave.MesmaNumeracao(chaveA, autA.Substring(0, 33) + "9" + autA.Substring(34)), "número diferente é recusado");
 
+            // ---------- Senha do banco criptografada no ini ----------
+            {
+                string iniSenha = Path.Combine(trabalho, "senha_teste.ini");
+                File.Copy(ini, iniSenha, true);
+                string senha = Config.Carregar(ini).DbSenha, antesIni = File.ReadAllText(iniSenha);
+                Verdade(Config.Carregar(iniSenha).SenhaEmTextoNoIni, "senha em texto no ini é detectada");
+                SenhaBanco.GravarNoIni(iniSenha, senha);
+                string texto = File.ReadAllText(iniSenha);
+                var c2 = Config.Carregar(iniSenha);
+                Verdade(!texto.Contains(senha) && texto.Contains("DbSenha=\r\n") && texto.Contains(SenhaBanco.Chave + "="), "gravada criptografada: DbSenha vazio e a senha não aparece no ini");
+                Verdade(c2.DbSenha == senha && !c2.SenhaEmTextoNoIni && c2.ErroSenhaProtegida == null, "ini criptografado abre a mesma senha");
+                Verdade(texto.Replace("\r", "").Split('\n').Length == antesIni.Replace("\r", "").Split('\n').Length + 1 &&
+                    texto.Contains("PastaRaiz=" + c2.PastaRaiz), "demais linhas do ini preservadas");
+                SenhaBanco.GravarNoIni(iniSenha, "outra");
+                Verdade(Config.Carregar(iniSenha).DbSenha == "outra" && File.ReadAllText(iniSenha).Split(new[] { SenhaBanco.Chave }, StringSplitOptions.None).Length == 2,
+                    "trocar a senha substitui a linha (não duplica)");
+                File.WriteAllText(iniSenha, File.ReadAllText(iniSenha).Replace(SenhaBanco.Chave + "=", SenhaBanco.Chave + "=QUJD"));
+                var c3 = Config.Carregar(iniSenha);
+                Verdade(c3.DbSenha == "" && c3.ErroSenhaProtegida != null, "senha protegida inválida (outro computador) -> pede de novo (" + c3.ErroSenhaProtegida + ")");
+                // O resto do teste roda com a senha criptografada no ini.
+                File.Copy(ini, iniSenha, true);
+                SenhaBanco.GravarNoIni(iniSenha, senha);
+                ini = iniSenha;
+            }
+
             // ---------- Processamento ----------
             var m = NovoMotor(ini, trabalho);
             Verdade(m.Cfg.OrigemConexaoBanco != null && m.Cfg.DbPorta.ToString() == Environment.GetEnvironmentVariable("TESTE_PORTA"), "host/porta lidos do Conexao.ini (" + m.Cfg.DbHost + ":" + m.Cfg.DbPorta + ")");
