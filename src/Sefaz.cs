@@ -66,13 +66,27 @@ namespace DuplicidadeNfce
             this.cert = cert;
             Url = UrlConsulta(cfg);
             ServicePointManager.SecurityProtocol = (SecurityProtocolType)3072; // TLS 1.2
-            if (!cfg.ValidarCertificadoServidor)
-                ServicePointManager.ServerCertificateValidationCallback = delegate { return true; };
         }
 
+        // Desligar a validação do certificado do servidor só vale para o simulador local.
+        static bool ValidacaoDesligada(Config cfg)
+        {
+            Uri u;
+            return !cfg.ValidarCertificadoServidor && Uri.TryCreate(UrlConsulta(cfg), UriKind.Absolute, out u) && u.IsLoopback;
+        }
+
+        // A resposta da SEFAZ decide o que é copiado e o que é gravado no banco (ajuste de chave): só o servidor
+        // oficial (https em *.gov.br) ou um simulador local (127.0.0.1, testes) são aceitos no UrlConsulta.
         public static string UrlConsulta(Config cfg)
         {
-            if (!string.IsNullOrEmpty(cfg.UrlConsulta)) return cfg.UrlConsulta;
+            if (!string.IsNullOrEmpty(cfg.UrlConsulta))
+            {
+                Uri u;
+                if (!Uri.TryCreate(cfg.UrlConsulta, UriKind.Absolute, out u) ||
+                    !(u.IsLoopback || (u.Scheme == Uri.UriSchemeHttps && u.Host.ToLowerInvariant().EndsWith(".gov.br"))))
+                    throw new Exception("UrlConsulta não permitida: " + cfg.UrlConsulta + " (só https em *.gov.br, ou 127.0.0.1 para testes)");
+                return cfg.UrlConsulta;
+            }
             if (cfg.UF.ToUpperInvariant() == "MG")
                 return cfg.Ambiente == 1
                     ? "https://nfce.fazenda.mg.gov.br/nfce/services/NFeConsultaProtocolo4"
@@ -94,7 +108,9 @@ namespace DuplicidadeNfce
                 if (!clientes.TryGetValue(cnpj, out cli) && !semCertificado.TryGetValue(cnpj, out erro))
                 {
                     log.Tela("Consulta SEFAZ: " + UrlConsulta(cfg) + " (ambiente " + cfg.Ambiente + ")");
-                    if (!cfg.ValidarCertificadoServidor) log.Tela("AVISO: validação do certificado do servidor da SEFAZ desligada.");
+                    if (!cfg.ValidarCertificadoServidor)
+                        log.Tela(ValidacaoDesligada(cfg) ? "AVISO: validação do certificado do servidor desligada (simulador local)."
+                            : "AVISO: ValidarCertificadoServidor=nao ignorado; o certificado da SEFAZ é sempre validado fora de 127.0.0.1.");
                     string arqPfx;
                     var cert = CarregarCertificado(cfg, cnpj, log, out erro, out arqPfx);
                     if (cert == null)
@@ -146,6 +162,7 @@ namespace DuplicidadeNfce
                 req.Timeout = cfg.TimeoutSegundos * 1000;
                 req.ServicePoint.Expect100Continue = false;
                 req.ClientCertificates.Add(cert);
+                if (ValidacaoDesligada(cfg)) req.ServerCertificateValidationCallback = delegate { return true; };
                 byte[] corpo = Encoding.UTF8.GetBytes(envelope);
                 req.ContentLength = corpo.Length;
                 using (var s = req.GetRequestStream()) s.Write(corpo, 0, corpo.Length);
@@ -178,9 +195,11 @@ namespace DuplicidadeNfce
 
         static void Interpretar(RespostaSefaz r, string chave)
         {
-            var xd = new XmlDocument();
-            xd.XmlResolver = null;
-            xd.LoadXml(r.XmlBruto);
+            // Resposta de rede: sem DTD nem entidades (como na leitura dos XMLs do disco, NotaXml).
+            var xd = new XmlDocument { XmlResolver = null };
+            using (var sr = new StringReader(r.XmlBruto))
+            using (var xr = XmlReader.Create(sr, new XmlReaderSettings { DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null }))
+                xd.Load(xr);
             var ns = new XmlNamespaceManager(xd.NameTable);
             ns.AddNamespace("n", NsNfe);
             var ret = xd.SelectSingleNode("//n:retConsSitNFe", ns);

@@ -674,7 +674,8 @@ namespace DuplicidadeNfce
                     try
                     {
                         var xd = new XmlDocument { XmlResolver = null };
-                        xd.Load(caminho);
+                        using (var xr = XmlReader.Create(caminho, new XmlReaderSettings { DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null }))
+                            xd.Load(xr);
                         var ns = new XmlNamespaceManager(xd.NameTable);
                         ns.AddNamespace("n", NsNfe);
                         return Txt(xd, "/n:procEventoNFe/n:evento/n:infEvento/n:chNFe", ns) == chave &&

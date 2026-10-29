@@ -113,6 +113,15 @@ número, fica EM CONTINGÊNCIA.
 - Nada é escolhido pelo nome do arquivo: só pelo conteúdo (chave no `Id` + `DigestValue` = `digVal` da SEFAZ,
   com o digest recalculado).
 - Sem resposta da SEFAZ, nada é copiado.
+- A consulta só vai para o servidor oficial (`https` em `*.gov.br`); `UrlConsulta` com outro endereço é recusada
+  (exceto `127.0.0.1`, o simulador dos testes), e o certificado da SEFAZ é sempre validado fora de `127.0.0.1`.
+  Respostas com DTD/entidades são recusadas.
+- A `libmariadb.dll` não é procurada na pasta do exe (só na do MariaDB/HeidiSQL ou em `MariaDbDll`).
+- Os backups do ajuste de chave são assinados (chave aleatória em `backups\chave_backups.bin`, criptografada pelo
+  Windows). *Desfazer ajuste* recusa backup editado, sem assinatura (versões antigas) ou sem esse arquivo de chave;
+  nesses casos o desfazer é feito à mão no banco, com a `chave_antiga` do backup.
+- Nos CSVs, texto que começa com `=`, `+`, `-` ou `@` ganha um apóstrofo, para o Excel não executar como fórmula.
+- Nomes de banco do ini (`DbBanco`, `DbBancoXml`) só aceitam letras, números e `_`.
 
 ## Notas Faltantes
 

@@ -4,6 +4,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace DuplicidadeNfce
 {
@@ -56,12 +57,31 @@ namespace DuplicidadeNfce
         public static string Campo(string s)
         {
             s = s ?? "";
+            // Texto vindo de XML, banco ou nome de arquivo não pode virar fórmula no Excel (=, +, -, @...):
+            // ganha um apóstrofo na frente. Só a fórmula de texto da Formula() passa como está.
+            if (PareceFormula(s) && !FormulaNossa(s)) s = "'" + s;
             if (s.IndexOfAny(new[] { ';', '"', '\n', '\r' }) >= 0) return "\"" + s.Replace("\"", "\"\"") + "\"";
             return s;
         }
 
+        static bool PareceFormula(string s)
+        {
+            if (s.Length == 0) return false;
+            char c = s[0];
+            if (c == '=' || c == '+' || c == '@' || c == '\t' || c == '\r' || c == '\n') return true;
+            decimal n;
+            return c == '-' && s.Length > 1 && !decimal.TryParse(s, NumberStyles.Number, CultureInfo.GetCultureInfo("pt-BR"), out n);
+        }
+
+        static bool FormulaNossa(string s) { return Regex.IsMatch(s, "^=\"[0-9]*\"$"); }
+
         // Chaves e protocolos como fórmula de texto, senão o Excel converte para notação científica.
-        public static string Formula(string s) { return string.IsNullOrEmpty(s) ? "" : "=\"" + s + "\""; }
+        // Só para números: qualquer outra coisa vai como texto comum (e o Campo neutraliza).
+        public static string Formula(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return "";
+            return Regex.IsMatch(s, "^[0-9]+$") ? "=\"" + s + "\"" : s;
+        }
 
         public static string SemFormula(string s)
         {
@@ -87,6 +107,9 @@ namespace DuplicidadeNfce
                 else sb.Append(c);
             }
             campos.Add(sb.ToString());
+            // Desfaz o apóstrofo que o Campo põe na frente de texto com cara de fórmula.
+            for (int i = 0; i < campos.Count; i++)
+                if (campos[i].Length > 1 && campos[i][0] == '\'' && PareceFormula(campos[i].Substring(1))) campos[i] = campos[i].Substring(1);
             return campos;
         }
     }

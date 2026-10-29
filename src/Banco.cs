@@ -116,8 +116,9 @@ namespace DuplicidadeNfce
         {
             var tentativas = new List<string>();
             if (!string.IsNullOrEmpty(cfg.MariaDbDll)) tentativas.Add(cfg.MariaDbDll);
-            tentativas.Add(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "libmariadb.dll"));
-            // Instalação do MariaDB do Metre (a DLL fica em bin\ ou lib\) e o HeidiSQL.
+            // Instalação do MariaDB do Metre (a DLL fica em bin\ ou lib\) e o HeidiSQL. A pasta do exe NÃO entra
+            // (uma DLL falsa largada ao lado do NotaCerta.exe rodaria com a senha do banco); para usar uma DLL de
+            // outro lugar, informe MariaDbDll no ini.
             foreach (string pasta in new[] { cfg.PastaBancoMetre, @"C:\Program Files\HeidiSQL", @"C:\Program Files (x86)\HeidiSQL" })
             {
                 if (string.IsNullOrEmpty(pasta) || !Directory.Exists(pasta)) continue;
@@ -276,7 +277,7 @@ namespace DuplicidadeNfce
         static string SqlContingencia(Config cfg)
         {
             return "SELECT " + string.Join(", ", Colunas) + " FROM " + cfg.DbBanco + ".nota_saida WHERE situacao = '" +
-                cfg.DbSituacao.Replace("'", "''") + "' ORDER BY data_contigencia";
+                cfg.DbSituacao.Replace("\\", "\\\\").Replace("'", "''") + "' ORDER BY data_contigencia";
         }
 
         public static List<LinhaContingencia> LerBanco(Config cfg, Log log)
@@ -301,7 +302,7 @@ namespace DuplicidadeNfce
                 long idXml;
                 if (xml.Count == 1 && long.TryParse(xml[0][0], out idXml)) ids.Add(idXml.ToString());
                 if (indiceXmlPorNota == null)
-                    indiceXmlPorNota = s.Consultar("SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = '" + cfg.DbBancoXml.Replace("'", "") +
+                    indiceXmlPorNota = s.Consultar("SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = '" + cfg.DbBancoXml +
                         "' AND TABLE_NAME = 'xml' AND COLUMN_NAME = 'id_nota_saida' AND SEQ_IN_INDEX = 1")[0][0] != "0";
                 string onde = ids.Count > 0 ? "x.id_xml = " + ids[0] : null;
                 if (indiceXmlPorNota == true) onde = (onde != null ? onde + " UNION SELECT x.id_xml, x.XML FROM " + cfg.DbBancoXml + ".xml x WHERE " : "") + "x.id_nota_saida = " + id;

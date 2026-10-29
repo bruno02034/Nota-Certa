@@ -198,7 +198,68 @@ namespace DuplicidadeNfce
             m = NovoMotor(ini, trabalho);
             var A3 = Processar(m).First(l => l.ChaveSistema == chaveA);
             Verdade(A3.Status == Status.AjusteChave && A3.Ajuste.ValorManual, "reprocessada: AJUSTE DE CHAVE pela conferência manual registrada");
+
+            // ---------- Backup adulterado não pode ser desfeito ----------
+            var r2 = AjusteChave.Ajustar(m.Cfg, A3, m.PastaBackups, m.Historico, m.Log);
+            string tabelaAjustada = Tabela();
+            Func<string, string, bool> recusado = (conteudo, desc) =>
+            {
+                string arq = Path.Combine(m.PastaBackups, "adulterado_" + desc + ".txt");
+                File.WriteAllText(arq, conteudo, new System.Text.UTF8Encoding(true));
+                string erro = null;
+                try { AjusteChave.Desfazer(m.Cfg, arq, m.PastaBackups, m.Historico, m.Log); } catch (Exception ex) { erro = ex.Message; }
+                File.Delete(arq);
+                Console.WriteLine("      erro: " + erro);
+                return erro != null && Tabela() == tabelaAjustada;
+            };
+            string original = File.ReadAllText(r2.CaminhoDestino);
+            Verdade(original.Contains("\nassinatura="), "backup do ajuste sai assinado");
+            Verdade(recusado(original.Replace("id_nota_saida=" + idA, "id_nota_saida=500"), "id"), "backup com id_nota_saida trocado -> desfazer recusado, banco intocado");
+            Verdade(recusado(original.Substring(0, original.LastIndexOf("assinatura=")), "semassinatura"), "backup sem assinatura -> desfazer recusado");
+            Verdade(recusado(original.Replace("chave_nova=", "chave_nova= "), "espaco"), "backup com um espaço a mais -> desfazer recusado");
+            AjusteChave.Desfazer(m.Cfg, r2.CaminhoDestino, m.PastaBackups, m.Historico, m.Log);
+            Verdade(ChaveNoBanco(idA) == chaveA && Tabela() == tabelaAntes, "backup íntegro desfaz normalmente");
             m.Dispose();
+
+            // ---------- CSV: texto com cara de fórmula não vira fórmula no Excel ----------
+            {
+                string csv = Path.Combine(trabalho, "formula.csv");
+                Relatorio.GravarCsv(csv, new List<LinhaRelatorio> { new LinhaRelatorio
+                {
+                    Numero = "1", Serie = "1", Pedido = "=2+5+cmd|'/C calc'!A1", Origem = "@SUM(1)", Motivo = "+HYPERLINK(\"x\")",
+                    ArquivoEscolhido = "-2+3", ChaveSistema = chaveA, ChaveAutorizada = "=1+1", Status = "-", ValorSistema = 10.5m
+                } });
+                var campos = File.ReadAllLines(csv)[1].Split(';')
+                    .Select(c => c.StartsWith("\"") && c.EndsWith("\"") ? c.Substring(1, c.Length - 2).Replace("\"\"", "\"") : c).ToList();
+                Verdade(campos.All(t => !(t.StartsWith("=") || t.StartsWith("+") || t.StartsWith("@") || (t.StartsWith("-") && t.Length > 1)) || t == "=\"" + chaveA + "\"") &&
+                    campos[2].StartsWith("'=") && campos[6].StartsWith("'@") && campos[7] == "'=1+1" && campos[18].StartsWith("'+") && campos[13] == "'-2+3",
+                    "CSV: campos com = + - @ saem com apóstrofo; só a chave numérica fica como fórmula de texto");
+                var lido = Csv.Dividir(File.ReadAllLines(csv)[1]);
+                Verdade(lido[2] == "=2+5+cmd|'/C calc'!A1" && lido[6] == "@SUM(1)" && lido[7] == "=1+1" && Csv.SemFormula(lido[5]) == chaveA && lido[16] == "-",
+                    "CSV: ao reler, o apóstrofo some e o texto volta igual");
+            }
+
+            // ---------- ini: UrlConsulta, validação TLS e nome do banco ----------
+            {
+                Func<string, string> url = u => { var c = Config.Carregar(ini); c.UrlConsulta = u; try { return ClienteSefaz.UrlConsulta(c); } catch (Exception ex) { return "ERRO " + ex.Message; } };
+                Verdade(url("http://servidor-falso.exemplo/nfce").StartsWith("ERRO") && url("https://sefaz.falsa.com.br/x").StartsWith("ERRO") &&
+                    url("http://nfce.fazenda.mg.gov.br/x").StartsWith("ERRO") && url("https://evil.gov.br.exemplo.com/x").StartsWith("ERRO"),
+                    "UrlConsulta fora de https *.gov.br / 127.0.0.1 é recusada");
+                Verdade(url("https://nfce.fazenda.mg.gov.br/nfce/services/NFeConsultaProtocolo4").StartsWith("https") && url("http://127.0.0.1:9/x").StartsWith("http"),
+                    "UrlConsulta oficial e simulador local aceitos");
+                string erroBanco = null;
+                try { Config.Carregar(ini).Definir("DbBanco", "chef.nota_saida; DROP TABLE x; --", "teste"); } catch (Exception ex) { erroBanco = ex.Message; }
+                Verdade(erroBanco != null && erroBanco.Contains("nome de banco inválido"), "DbBanco com SQL é recusado ao ler o ini");
+            }
+
+            // ---------- Resposta da SEFAZ com DTD/entidades é recusada ----------
+            {
+                var interpretar = typeof(ClienteSefaz).GetMethod("Interpretar", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+                var resp = new RespostaSefaz { XmlBruto = "<?xml version=\"1.0\"?><!DOCTYPE x [<!ENTITY a \"aaaa\"><!ENTITY b \"&a;&a;&a;\">]><retConsSitNFe xmlns=\"http://www.portalfiscal.inf.br/nfe\"><cStat>&b;</cStat></retConsSitNFe>" };
+                string erro = null;
+                try { interpretar.Invoke(null, new object[] { resp, autA }); } catch (Exception ex) { erro = (ex.InnerException ?? ex).Message; }
+                Verdade(erro != null && erro.Contains("DTD"), "resposta da SEFAZ com DTD é recusada (" + erro + ")");
+            }
 
             Console.WriteLine(falhas == 0 ? "TODOS OS TESTES PASSARAM" : falhas + " FALHA(S)");
             return falhas == 0 ? 0 : 1;

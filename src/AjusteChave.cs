@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Text;
 
 namespace DuplicidadeNfce
@@ -225,14 +226,54 @@ namespace DuplicidadeNfce
                 }
                 sb.AppendLine(kv.Key + "=" + v);
             }
+            sb.AppendLine(LinhaAssinatura + Assinar(pasta, sb.ToString(), true));
             File.WriteAllText(arq, sb.ToString(), new UTF8Encoding(true));
             return arq;
+        }
+
+        // O "Desfazer" grava no banco o que o backup diz: o arquivo é assinado (HMAC-SHA256) com uma chave aleatória
+        // guardada em backups\, criptografada pelo Windows. Backup editado à mão (ou sem assinatura) é recusado.
+        const string LinhaAssinatura = "assinatura=";
+        const string ArqChaveBackups = "chave_backups.bin";
+        static readonly byte[] EntropiaBackups = Encoding.UTF8.GetBytes("NotaCerta/Backups/v1");
+
+        static string Assinar(string pasta, string texto, bool criarChave)
+        {
+            string arqChave = Path.Combine(pasta, ArqChaveBackups);
+            byte[] chave;
+            if (File.Exists(arqChave))
+                chave = ProtectedData.Unprotect(File.ReadAllBytes(arqChave), EntropiaBackups, DataProtectionScope.LocalMachine);
+            else if (criarChave)
+            {
+                chave = new byte[32];
+                using (var rng = RandomNumberGenerator.Create()) rng.GetBytes(chave);
+                File.WriteAllBytes(arqChave, ProtectedData.Protect(chave, EntropiaBackups, DataProtectionScope.LocalMachine));
+            }
+            else throw new Exception("chave de assinatura dos backups não encontrada (" + arqChave + ")");
+            using (var h = new HMACSHA256(chave))
+                return BitConverter.ToString(h.ComputeHash(Encoding.UTF8.GetBytes(texto))).Replace("-", "");
+        }
+
+        static void ConferirAssinatura(string arq)
+        {
+            string texto = File.ReadAllText(arq, Encoding.UTF8);
+            int p = texto.LastIndexOf("\n" + LinhaAssinatura, StringComparison.Ordinal);
+            if (p < 0)
+                throw new Exception("backup sem assinatura (feito por uma versão antiga ou editado): o desfazer automático não é seguro. " +
+                    "Se precisar, desfaça à mão no banco com a chave_antiga deste arquivo: " + arq);
+            string assinado = texto.Substring(0, p + 1), assinatura = texto.Substring(p + 1 + LinhaAssinatura.Length).Trim();
+            string esperada;
+            try { esperada = Assinar(Path.GetDirectoryName(Path.GetFullPath(arq)), assinado, false); }
+            catch (Exception ex) { throw new Exception("não foi possível conferir a assinatura do backup: " + ex.Message.Trim()); }
+            if (!string.Equals(assinatura, esperada, StringComparison.OrdinalIgnoreCase))
+                throw new Exception("o backup foi alterado depois do ajuste (assinatura não confere); desfazer recusado: " + arq);
         }
 
         // Só o cabeçalho (antes de [linha]).
         static Dictionary<string, string> LerBackup(string arq)
         {
             if (!File.Exists(arq)) throw new Exception("backup não encontrado: " + arq);
+            ConferirAssinatura(arq);
             var d = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             foreach (string l in File.ReadAllLines(arq, Encoding.UTF8))
             {

@@ -96,11 +96,11 @@ namespace DuplicidadeNfce
                 case "dbhost": DbHost = valor; break;
                 case "dbporta": DbPorta = valor == "" ? 0 : int.Parse(valor); break;
                 case "iniconexaometre": IniConexaoMetre = valor; break;
-                case "dbbancoxml": DbBancoXml = valor; break;
+                case "dbbancoxml": DbBancoXml = NomeBanco(valor, origem); break;
                 case "dbusuario": DbUsuario = valor; break;
                 case "dbsenha": DbSenha = valor; break;
                 case "dbsenhaprotegida": DbSenhaProtegida = valor; break;
-                case "dbbanco": DbBanco = valor; break;
+                case "dbbanco": DbBanco = NomeBanco(valor, origem); break;
                 case "dbsituacao": DbSituacao = valor; break;
                 case "mariadbdll": MariaDbDll = valor; break;
                 case "pastabancometre": PastaBancoMetre = valor; break;
@@ -142,6 +142,14 @@ namespace DuplicidadeNfce
                 DbPorta = ok ? p : 3307;
             }
             OrigemConexaoBanco = doIni ? "host/porta de " + IniConexaoMetre : null;
+        }
+
+        // Nome de banco entra direto no SQL (chef.nota_saida): só letras, números e _.
+        static string NomeBanco(string v, string origem)
+        {
+            if (!System.Text.RegularExpressions.Regex.IsMatch(v, "^[A-Za-z0-9_]{1,64}$"))
+                throw new Exception(origem + ": nome de banco inválido '" + v + "' (use só letras, números e _)");
+            return v;
         }
 
         static bool Sim(string v)
