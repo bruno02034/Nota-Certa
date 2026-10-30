@@ -98,6 +98,11 @@ autorizada.
 - Banco `chefxml`: o XML autorizado guardado pelo Metre é gravado em `importar-N` com o nome de `Temp_ANTES_ENVIO`, e
   a origem aparece na linha e no `historico.csv`.
 
+Em **Configurações** dá para mudar sem abrir o ini: lista da contingência (banco ou só arquivos), **pasta do Chef**
+(`C:\Chef` ou `\\SERVIDOR\Chef`, que ajusta juntas as pastas de XMLs, cópias, certificado e INIs) e pastas extras, uma
+por linha. **Salvar ajustes** grava só o que mudou no `duplicidade.ini` e vale na busca seguinte. Com `Conexao.ini` pela
+rede dizendo `localhost`, o banco é procurado no computador que compartilha a pasta.
+
 **Sem conexão com o banco:** com `FonteContingencia=arquivos` e as pastas apontando para `\\SERVIDOR\Chef`, a busca pelo
 dia da autorização e as pastas extras funcionam. A lista vem dos XMLs (pode diferir da aba Contingência do Metre), o
 período é o informado na tela e não há ajuste de chave: valor igual também vai para a cópia.

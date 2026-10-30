@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Text;
@@ -115,6 +116,52 @@ namespace DuplicidadeNfce
             }
         }
 
+        // Pasta do Chef em uso, deduzida da pasta dos XMLs (<Chef>\NFCe).
+        public string PastaChef
+        {
+            get
+            {
+                string p = (PastaRaiz ?? "").TrimEnd('\\');
+                return p.EndsWith(@"\NFCe", StringComparison.OrdinalIgnoreCase) ? p.Substring(0, p.Length - 5) : p;
+            }
+        }
+
+        // As opções que dependem da pasta do Chef (C:\Chef neste computador ou \\SERVIDOR\Chef pela rede).
+        public static Dictionary<string, string> OpcoesDaPastaChef(string chef)
+        {
+            return new Dictionary<string, string>
+            {
+                { "PastaRaiz", chef + @"\NFCe" },
+                { "PastaDestino", chef + @"\NFCe\Duplicidade" },
+                { "PastaNotasFaltantes", chef + @"\NFCe\NotasFaltantes" },
+                { "CertificadoPfx", chef + @"\Empresa\1\Certificado" },
+                { "PastaEmpresas", chef + @"\Empresa" },
+                { "IniMetre", chef + @"\NFCe.ini;" + chef + @"\Config.ini" },
+                { "IniConexaoMetre", chef + @"\Conexao.ini" },
+                { "PastaBancoMetre", chef + @"\Banco de Dados" }
+            };
+        }
+
+        // Troca só as opções informadas no ini (a que não existir entra no fim); comentários, senha e o resto ficam como estão.
+        public static void GravarOpcoes(string arqIni, IDictionary<string, string> opcoes)
+        {
+            var linhas = File.Exists(arqIni) ? new List<string>(File.ReadAllLines(arqIni, Encoding.UTF8)) : new List<string>();
+            var faltam = new Dictionary<string, string>(opcoes, StringComparer.OrdinalIgnoreCase);
+            for (int i = 0; i < linhas.Count; i++)
+            {
+                string l = linhas[i].Trim();
+                int eq = l.IndexOf('=');
+                if (l == "" || l.StartsWith("#") || l.StartsWith(";") || eq <= 0) continue;
+                string k = l.Substring(0, eq).Trim(), v;
+                if (faltam.TryGetValue(k, out v)) { linhas[i] = k + "=" + v; faltam.Remove(k); }
+            }
+            foreach (var o in faltam) linhas.Add(o.Key + "=" + o.Value);
+            string tmp = arqIni + ".tmp";
+            File.WriteAllLines(tmp, linhas, new UTF8Encoding(false));
+            if (File.Exists(arqIni)) File.Replace(tmp, arqIni, null);
+            else File.Move(tmp, arqIni);
+        }
+
         // Completa host e porta do banco com o Conexao.ini do Metre.
         public void ResolverConexaoBanco()
         {
@@ -131,6 +178,9 @@ namespace DuplicidadeNfce
                     if (k == "ip") ip = v;
                     else if (k == "porta") porta = v;
                 }
+            // \\SERVIDOR\Chef\Conexao.ini costuma dizer localhost: lá é o próprio servidor; daqui, é quem compartilha a pasta.
+            if (IniConexaoMetre != null && IniConexaoMetre.StartsWith(@"\\") && (ip == "localhost" || ip == "127.0.0.1" || ip == "::1"))
+                ip = IniConexaoMetre.Substring(2).Split('\\')[0];
             int p;
             bool doIni = false;
             if (string.IsNullOrEmpty(DbHost))

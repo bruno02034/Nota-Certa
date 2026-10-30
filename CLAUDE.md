@@ -29,7 +29,7 @@ descreve as regras de negócio em detalhe; leia-o antes de mudar comportamento. 
 - Nenhum teste chama a SEFAZ real: `sefaz_simulada.ps1`/`sefaz_respostas.ps1` servem respostas locais
   (`UrlConsulta=` no ini aponta para elas). Nunca testar contra o banco do Metre do cliente.
 - Captura de tela da interface (sem mexer no mouse): `NotaCerta.exe --gui --captura <png>` com as variáveis
-  `NOTACERTA_LARGURA`/`NOTACERTA_ALTURA`/`NOTACERTA_PAGINA=faltantes`/`NOTACERTA_DETALHE_FIM`/`NOTACERTA_FALT_SERIE`/
+  `NOTACERTA_LARGURA`/`NOTACERTA_ALTURA`/`NOTACERTA_PAGINA=faltantes` ou `config`/`NOTACERTA_DETALHE_FIM`/`NOTACERTA_FALT_SERIE`/
   `NOTACERTA_FALT_NUMEROS`. Sem série/números a captura de Faltantes fica esperando e trava o exe (o build falha).
 
 ## Arquitetura

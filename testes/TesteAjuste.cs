@@ -92,6 +92,34 @@ namespace DuplicidadeNfce
                 ini = iniSenha;
             }
 
+            // ---------- Ajustes salvos pela tela de Configurações ----------
+            {
+                string iniTela = Path.Combine(trabalho, "tela.ini");
+                File.WriteAllText(iniTela, "# comentario\r\nPastaRaiz=C:\\Chef\\NFCe\r\nDbSenhaProtegida=QUJD\r\nDbUsuario=metre\r\n");
+                var chefRede = Config.OpcoesDaPastaChef(@"\\SERVIDOR\Chef");
+                chefRede["PastasXmlExtras"] = @"\\CAIXA1\Chef\NFCe;D:\Xmls";
+                chefRede["FonteContingencia"] = "arquivos";
+                Config.GravarOpcoes(iniTela, chefRede);
+                string textoTela = File.ReadAllText(iniTela);
+                var cTela = Config.Carregar(iniTela);
+                Verdade(textoTela.Contains("# comentario") && textoTela.Contains("DbSenhaProtegida=QUJD") && textoTela.Contains("DbUsuario=metre") &&
+                    textoTela.Split(new[] { "PastaRaiz=" }, StringSplitOptions.None).Length == 2,
+                    "Salvar ajustes: comentários e senha preservados, opção trocada sem duplicar");
+                Verdade(cTela.PastaRaiz == @"\\SERVIDOR\Chef\NFCe" && cTela.PastaChef == @"\\SERVIDOR\Chef" && cTela.IniMetre == @"\\SERVIDOR\Chef\NFCe.ini;\\SERVIDOR\Chef\Config.ini" &&
+                    cTela.PastaBancoMetre == @"\\SERVIDOR\Chef\Banco de Dados" && cTela.FonteContingencia == "arquivos" && cTela.PastasXmlExtras == @"\\CAIXA1\Chef\NFCe;D:\Xmls",
+                    "Salvar ajustes: o ini gravado é lido de volta com a pasta de rede");
+                string conexaoRede = Path.Combine(trabalho, "conexao_localhost.ini");
+                File.WriteAllText(conexaoRede, "[Configuracao]\r\nip = localhost\r\nporta = 3307\r\n");
+                // Caminho de rede de verdade: a pasta administrativa da própria máquina, por IP.
+                var cRede = new Config { IniConexaoMetre = @"\\127.0.0.1\" + conexaoRede.Replace(":", "$") };
+                if (File.Exists(cRede.IniConexaoMetre))
+                {
+                    cRede.ResolverConexaoBanco();
+                    Verdade(cRede.DbHost == "127.0.0.1" && cRede.DbPorta == 3307, "Conexao.ini pela rede dizendo localhost -> usa o computador do compartilhamento (" + cRede.DbHost + ":" + cRede.DbPorta + ")");
+                }
+                else Console.WriteLine("AVISO pasta administrativa inacessível: Conexao.ini pela rede não testado");
+            }
+
             // ---------- Processamento ----------
             var m = NovoMotor(ini, trabalho);
             Verdade(m.Cfg.OrigemConexaoBanco != null && m.Cfg.DbPorta.ToString() == Environment.GetEnvironmentVariable("TESTE_PORTA"), "host/porta lidos do Conexao.ini (" + m.Cfg.DbHost + ":" + m.Cfg.DbPorta + ")");

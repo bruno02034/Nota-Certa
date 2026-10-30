@@ -266,6 +266,7 @@ namespace DuplicidadeNfce
             G<Button>("BtnSenhaBanco").Click += (s, e) => PedirSenhaBanco(cfg.DbSenha != ""
                 ? "Digite a nova senha do banco do Metre. Ela substitui a guardada."
                 : "Informe a senha do banco do Metre para listar a contingência e ajustar chaves.");
+            G<Button>("BtnSalvarAjustes").Click += (s, e) => SalvarAjustes();
             G<Button>("BtnRecarregar").Click += (s, e) =>
             {
                 cfg = op.CarregarConfig();
@@ -305,6 +306,12 @@ namespace DuplicidadeNfce
             {
                 CarregarSelo();
                 // Captura de tela da página de Notas Faltantes (desenvolvimento): ela mesma processa e salva o PNG.
+                if (op.Captura != null && Environment.GetEnvironmentVariable("NOTACERTA_PAGINA") == "config")
+                {
+                    G<RadioButton>("MenuConfig").IsChecked = true;
+                    Capturar();
+                    return;
+                }
                 if (op.Captura != null && Environment.GetEnvironmentVariable("NOTACERTA_PAGINA") == "faltantes")
                 {
                     G<RadioButton>("MenuFaltantes").IsChecked = true;
@@ -842,6 +849,41 @@ namespace DuplicidadeNfce
                 Par("Fontes de senha encontradas",MetreIni.Senhas.Count > 0 ? string.Join("; ", MetreIni.Senhas.Select(s => s.Origem)) : "nenhuma")
             };
             G<ItemsControl>("ListaConfig").ItemsSource = itens;
+            G<TextBox>("TxtCfgChef").Text = cfg.PastaChef;
+            G<TextBox>("TxtCfgExtras").Text = string.Join(Environment.NewLine, (cfg.PastasXmlExtras ?? "").Split(';').Select(x => x.Trim()).Where(x => x != ""));
+            string fonte = (cfg.FonteContingencia ?? "").Trim().ToLowerInvariant();
+            G<RadioButton>("RadCfgBanco").IsChecked = fonte == "banco";
+            G<RadioButton>("RadCfgArquivos").IsChecked = fonte == "arquivos";
+        }
+
+        // Grava no duplicidade.ini só o que mudou na tela; vale na próxima busca, sem reabrir o programa.
+        void SalvarAjustes()
+        {
+            var opcoes = new Dictionary<string, string>();
+            string chef = G<TextBox>("TxtCfgChef").Text.Trim().TrimEnd('\\');
+            if (!chef.Equals(cfg.PastaChef, StringComparison.OrdinalIgnoreCase))
+            {
+                if (chef == "" || !Directory.Exists(System.IO.Path.Combine(chef, "NFCe")))
+                {
+                    Erro("Pasta do Chef não encontrada: " + (chef == "" ? "(vazia)" : System.IO.Path.Combine(chef, "NFCe")) + ". Nada foi salvo.");
+                    return;
+                }
+                foreach (var o in Config.OpcoesDaPastaChef(chef)) opcoes[o.Key] = o.Value;
+            }
+            var extras = G<TextBox>("TxtCfgExtras").Text.Split(new[] { '\r', '\n', ';' }, StringSplitOptions.RemoveEmptyEntries).Select(x => x.Trim()).Where(x => x != "").ToList();
+            if (string.Join(";", extras) != (cfg.PastasXmlExtras ?? "")) opcoes["PastasXmlExtras"] = string.Join(";", extras);
+            string fonte = G<RadioButton>("RadCfgBanco").IsChecked == true ? "banco" : G<RadioButton>("RadCfgArquivos").IsChecked == true ? "arquivos" : null;
+            if (fonte != null && !fonte.Equals((cfg.FonteContingencia ?? "").Trim(), StringComparison.OrdinalIgnoreCase)) opcoes["FonteContingencia"] = fonte;
+            if (opcoes.Count == 0) { MostrarStatus("Nenhum ajuste foi alterado."); return; }
+            try { Config.GravarOpcoes(op.ArqConfig, opcoes); }
+            catch (Exception ex) { Erro("Não foi possível salvar no " + op.ArqConfig + ": " + ex.Message); return; }
+            cfg = op.CarregarConfig();
+            CarregarConfigTela();
+            CarregarSelo();
+            var fora = extras.Where(p => !Directory.Exists(p)).ToList();
+            MostrarStatus("Ajustes salvos." + (fora.Count > 0 ? " Pasta extra inacessível agora: " + string.Join("; ", fora) : ""));
+            ConferirSenhaBanco();
+            if (motor != null) Listar();
         }
 
         bool UsaBanco { get { return (cfg.FonteContingencia ?? "").Trim().Equals("banco", StringComparison.OrdinalIgnoreCase); } }
