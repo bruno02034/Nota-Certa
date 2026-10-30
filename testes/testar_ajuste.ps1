@@ -39,8 +39,9 @@ function Chave($numero, $cnf) {
 }
 
 # NFe "assinada" (DigestValue calculado como na NF-e; a SignatureValue é fictícia, o NotaCerta não a usa).
-function NFe($chave, $numero, $vNF) {
-    $inf = "<infNFe versao=`"4.00`" Id=`"NFe$chave`"><ide><cUF>31</cUF><cNF>$($chave.Substring(35,8))</cNF><natOp>VENDA</natOp><mod>65</mod><serie>$Serie</serie><nNF>$numero</nNF><dhEmi>2026-10-19T13:47:50-03:00</dhEmi><tpNF>1</tpNF><tpEmis>9</tpEmis><cDV>$($chave.Substring(43,1))</cDV><tpAmb>1</tpAmb></ide><emit><CNPJ>$Cnpj</CNPJ><xNome>EMPRESA TESTE</xNome></emit><total><ICMSTot><vNF>$vNF</vNF></ICMSTot></total></infNFe>"
+function NFe($chave, $numero, $vNF, $dhEmi = '2026-10-19T13:47:50-03:00', $pedido = $null) {
+    $det = if ($pedido) { "<det nItem=`"1`"><prod><xPed>$pedido</xPed></prod></det>" } else { '' }
+    $inf = "<infNFe versao=`"4.00`" Id=`"NFe$chave`"><ide><cUF>31</cUF><cNF>$($chave.Substring(35,8))</cNF><natOp>VENDA</natOp><mod>65</mod><serie>$Serie</serie><nNF>$numero</nNF><dhEmi>$dhEmi</dhEmi><tpNF>1</tpNF><tpEmis>9</tpEmis><cDV>$($chave.Substring(43,1))</cDV><tpAmb>1</tpAmb></ide><emit><CNPJ>$Cnpj</CNPJ><xNome>EMPRESA TESTE</xNome></emit>$det<total><ICMSTot><vNF>$vNF</vNF></ICMSTot></total></infNFe>"
     $d2 = New-Object Xml.XmlDocument; $d2.PreserveWhitespace = $true; $d2.LoadXml("<NFe xmlns=`"$Ns`">$inf</NFe>")
     $d3 = New-Object Xml.XmlDocument; $d3.PreserveWhitespace = $true; $d3.LoadXml($d2.DocumentElement.FirstChild.OuterXml)
     $t = New-Object Security.Cryptography.Xml.XmlDsigC14NTransform; $t.LoadInput($d3)
@@ -61,9 +62,9 @@ function Rejeicao539($numero, $chave, $autorizada, $vNF, $dia = '19') {
 }
 
 # $extra vai depois do xMotivo do protocolo (ex.: cMsg/xMsg do "autorizado com alerta").
-function Resposta($chave, $digVal, $nProt, $cStatProt, $xMotivoProt = 'Autorizado o uso da NF-e', $extra = '') {
+function Resposta($chave, $digVal, $nProt, $cStatProt, $xMotivoProt = 'Autorizado o uso da NF-e', $extra = '', $dhRecbto = '2026-10-21T17:42:05-03:00') {
     $x = "<cStat>100</cStat><xMotivo>Autorizado o uso da NF-e</xMotivo><cUF>31</cUF><dhRecbto>2026-10-26T15:34:30-03:00</dhRecbto><chNFe>$chave</chNFe>" +
-        "<protNFe versao=`"4.00`"><infProt Id=`"ID$nProt`"><tpAmb>1</tpAmb><verAplic>TESTE</verAplic><chNFe>$chave</chNFe><dhRecbto>2026-10-21T17:42:05-03:00</dhRecbto><nProt>$nProt</nProt><digVal>$digVal</digVal><cStat>$cStatProt</cStat><xMotivo>$xMotivoProt</xMotivo>$extra</infProt></protNFe>"
+        "<protNFe versao=`"4.00`"><infProt Id=`"ID$nProt`"><tpAmb>1</tpAmb><verAplic>TESTE</verAplic><chNFe>$chave</chNFe><dhRecbto>$dhRecbto</dhRecbto><nProt>$nProt</nProt><digVal>$digVal</digVal><cStat>$cStatProt</cStat><xMotivo>$xMotivoProt</xMotivo>$extra</infProt></protNFe>"
     [IO.File]::WriteAllText((Join-Path $respostas "$chave.xml"), $x, $utf8)
 }
 
@@ -191,6 +192,25 @@ try {
     $rXml = NFe $R.ChAut $R.N $R.V; Resposta $R.ChAut $rXml.Digest '131260000002018' '999' 'Situacao invalida'
     foreach ($x in $P, $Q, $R, $V) {
         $sqlNotas += "($($x.Id), NULL, $($x.N), $Serie, '$($x.Sis)', '2026-10-19', 0, $($x.V), '2026-10-19 15:00:00', NULL, 'Lote processado', 'Em contigencia', NULL)"
+    }
+
+    # Número reaproveitado: o XML autorizado é de outra venda, na pasta do dia da autorização (12/10), fora do período.
+    # W: valor diferente; X: valor igual (por coincidência); Y: mesmo pedido da linha; Z: o Temp de 12/10 não confere com o digVal.
+    $reaprov = @(
+        @{ N = 2022; S = '30000041'; A = '30000042'; V = '100.56'; VAut = '77.00'; Ped = 6022; PedAut = 6122 },
+        @{ N = 2023; S = '30000043'; A = '30000044'; V = '25.00'; VAut = '25.00'; Ped = 6023; PedAut = 6123 },
+        @{ N = 2024; S = '30000045'; A = '30000046'; V = '31.00'; VAut = '31.00'; Ped = 6024; PedAut = 6024 },
+        @{ N = 2025; S = '30000047'; A = '30000048'; V = '33.00'; VAut = '44.00'; Ped = 6025; PedAut = 6125; DigestErrado = $true }
+    )
+    foreach ($x in $reaprov) {
+        $x.Id = $idNovo++; $x.Sis = Chave $x.N $x.S; $x.ChAut = Chave $x.N $x.A
+        Rejeicao539 $x.N $x.Sis $x.ChAut $x.V
+        $aut = NFe $x.ChAut $x.N $x.VAut '2026-10-12T14:53:42-03:00' $x.PedAut
+        $dig = if ($x.DigestErrado) { 'BBBBBBBBBBBBBBBBBBBBBBBBBBB=' } else { $aut.Digest }
+        Resposta $x.ChAut $dig ('13126000000' + $x.N) '100' 'Autorizado o uso da NF-e' '' '2026-10-12T14:53:45-03:00'
+        Gravar (Join-Path $xmls "10_2026\12\NOTA_$($x.N)_MODELO_65_SERIE_${Serie}_CHAVE_$($x.ChAut)_Temp_ANTES_ENVIO_12_10_2026_14_53_43.xml") `
+            "<enviNFe versao=`"4.00`" xmlns=`"$Ns`"><idLote>1</idLote><indSinc>1</indSinc>$($aut.Xml)</enviNFe>"
+        $sqlNotas += "($($x.Id), NULL, $($x.N), $Serie, '$($x.Sis)', '2026-10-19', $($x.Ped), $($x.V), '2026-10-19 12:09:00', NULL, 'Lote processado', 'Em contigencia', NULL)"
     }
 
     $sql = @"

@@ -79,14 +79,20 @@ Duplicidade (539) com a chave autorizada confirmada na SEFAZ (situação 100 ou 
 
 | Valor do sistema x SEFAZ | O que acontece |
 |---|---|
-| **diferente** | fluxo de sempre: o ASSINADA autorizado é copiado em `importar-N` para importar no Metre |
+| **diferente** | fluxo de sempre: o ASSINADA autorizado (sem ASSINADA, o `Temp_ANTES_ENVIO` que confere com o `digVal`) é copiado em `importar-N` para importar no Metre |
 | **igual** | nada a importar: só a `chave_acesso` da linha é trocada pela autorizada (AJUSTE DE CHAVE) |
 
 Com a lista vinda de CSV ou dos arquivos (sem o banco), valor igual continua indo para a cópia, como antes.
 
-1. O valor autorizado vem do XML da chave nas pastas do período (DigestValue = `digVal`; vale qualquer XML que confira,
-   inclusive só o `Temp_ANTES_ENVIO` sem ASSINADA: com valor igual vira ajuste; com valor diferente fica PENDENTE,
-   porque sem ASSINADA não há o que importar) ou, sem arquivo, do banco
+**Número reaproveitado:** a SEFAZ pode apontar uma chave autorizada dias antes, de outra venda com o mesmo número (visto
+em 30/10: número de 12/10 usado de novo em 18/10). Sem XML da chave nas pastas lidas, a data de autorização devolvida
+pela SEFAZ indica a pasta: são lidos só os arquivos daquele número nesse dia e no anterior. Se o XML autorizado tiver
+outro pedido e outro dia de emissão, a linha avisa NÚMERO REAPROVEITADO com os dados das duas vendas e vai para
+importação mesmo com valor igual, porque o ajuste ligaria a chave à venda errada. Importar troca a venda do sistema pela
+autorizada.
+
+1. O valor autorizado vem do XML da chave nas pastas do período ou do dia da autorização (DigestValue = `digVal`; vale
+   qualquer XML que confira, inclusive só o `Temp_ANTES_ENVIO` sem ASSINADA) ou, sem arquivo, do banco
    `chefxml.xml` (só leitura, sempre por índice). No banco valem o XML apontado pela linha (`nota_saida.XML`), os da
    linha (`id_nota_saida`) e os **do mesmo pedido**: o Metre grava as tentativas de emissão, inclusive a que a SEFAZ
    autorizou, com `id_nota_saida` vazio e o mesmo `id_pedido`, a poucos registros do XML da linha. Por isso são lidos
@@ -113,7 +119,7 @@ mostra as permissões e avisa se falta o UPDATE.
 ## Pastas das cópias
 
 Cada processamento copia em `Duplicidade\AAAA-MM-DD\<hora>\importar-N\`. Quando o mesmo número aparece várias
-vezes na contingência, o mesmo ASSINADA autorizado vai em `importar-1`, `importar-2`, `importar-3`… (uma cópia
+vezes na contingência, o mesmo arquivo autorizado vai em `importar-1`, `importar-2`, `importar-3`… (uma cópia
 por linha). Importe no Metre `importar-1`, depois `importar-2` e assim por diante.
 
 ## Como as duplicidades são achadas

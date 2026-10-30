@@ -139,7 +139,7 @@ namespace DuplicidadeNfce
             foreach (var n in Notas.Where(n => n.Erro != null)) Log.Info("Erro de leitura: " + n.Caminho + " - " + n.Erro);
             bool comBanco = (Cfg.FonteContingencia ?? "").Trim().Equals("banco", StringComparison.OrdinalIgnoreCase);
             Analisador = new Analisador(Notas, consultar, Log, Contingencia, comBanco
-                ? new FontesAjuste { BuscarXmls = BuscarXmlsChave, LinhasComChave = LinhasComChave }
+                ? new FontesAjuste { BuscarXmls = BuscarXmlsChave, LinhasComChave = LinhasComChave, XmlsDoDiaDaAutorizacao = XmlsDoDiaDaAutorizacao }
                 : null);
         }
 
@@ -158,6 +158,30 @@ namespace DuplicidadeNfce
                 else Log.Info("  " + x.Key + ": chave " + n.Chave + " (não é a autorizada)");
             }
             Log.Info("  XMLs da chave autorizada no banco " + Cfg.DbBancoXml + ": " + lista.Count(n => n.Chave == chave));
+            return lista;
+        }
+
+        // Número reaproveitado (o XML autorizado é de um dia fora do período da contingência): a data de autorização da
+        // SEFAZ diz a pasta. Só os arquivos desse número, nesse dia e no anterior (virada da meia-noite), sem varrer C:\Chef\NFCe.
+        List<NotaXml> XmlsDoDiaDaAutorizacao(string chave, string dhRecbto)
+        {
+            var lista = new List<NotaXml>();
+            DateTime? dia = DiaEmissao(dhRecbto);
+            if (dia == null) return lista;
+            string numero = long.Parse(chave.Substring(25, 9)).ToString();
+            foreach (var d in new[] { dia.Value, dia.Value.AddDays(-1) })
+            {
+                string dir = Path.Combine(Raiz, d.ToString("MM_yyyy"), d.ToString("dd"));
+                if (!Directory.Exists(dir)) continue;
+                foreach (var f in Directory.EnumerateFiles(dir, "NOTA_" + numero + "_*", SearchOption.AllDirectories).Where(ExtensaoValida)
+                    .Where(f => !excluidas.Any(x => Dentro(f, x))))
+                {
+                    var n = NotaXml.Ler(f);
+                    if (n.Chave != chave) continue;
+                    n.DataPasta = d;
+                    lista.Add(n);
+                }
+            }
             return lista;
         }
 

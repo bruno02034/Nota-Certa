@@ -65,6 +65,7 @@ namespace DuplicidadeNfce
     {
         public Func<Tentativa, string, List<NotaXml>> BuscarXmls;   // qualquer pasta/nome e chefxml.xml
         public Func<string, List<string>> LinhasComChave;           // ids de nota_saida que já têm a chave
+        public Func<string, string, List<NotaXml>> XmlsDoDiaDaAutorizacao;  // chave + dhRecbto da SEFAZ: arquivos fora do período
     }
 
     class Selecao
@@ -382,12 +383,25 @@ namespace DuplicidadeNfce
             if (!sel.Sefaz.Autorizada) { sel.MotivoPendente = "situação na SEFAZ não é autorizada: " + sel.Sefaz.Situacao; return sel; }
             if (sel.Sefaz.Prot.ChNFe != k) { sel.MotivoPendente = "SEFAZ devolveu protocolo de outra chave: " + sel.Sefaz.Prot.ChNFe; return sel; }
 
+            if (arqs.Count == 0 && fontes != null && fontes.XmlsDoDiaDaAutorizacao != null)
+            {
+                try { arqs = fontes.XmlsDoDiaDaAutorizacao(k, sel.Sefaz.Prot.DhRecbto); }
+                catch (Exception ex) { log.Info("  busca na pasta do dia da autorização falhou: " + ex.Message); }
+                if (arqs.Count > 0)
+                {
+                    porChave[k] = arqs;
+                    sel.SemArquivo = false;
+                    log.Info("  " + arqs.Count + " arquivo(s) da chave na pasta do dia da autorização (" + sel.Sefaz.Prot.DhRecbto + ")");
+                }
+            }
             var escolhido = Escolher(arqs, sel.Sefaz.Prot, "SEFAZ", sel, out motivo, out copias);
             // Sem ASSINADA para copiar o valor conferido pelo conteúdo ainda vale (aparece na tela e permite o ajuste de chave).
             if (escolhido == null) { sel.ValorSefaz = sel.ValorConferido; sel.MotivoPendente = motivo; return sel; }
             sel.Escolhido = escolhido;
             sel.ValorSefaz = escolhido.VNF;
-            sel.MotivoEscolha = (sel.ValorNaoConferido
+            sel.MotivoEscolha = (escolhido.Tipo == TipoArquivo.Temp
+                    ? "Temp_ANTES_ENVIO da chave autorizada, sem ASSINADA (nProt " + sel.Sefaz.Prot.NProt + "), conteúdo idêntico ao autorizado"
+                    : sel.ValorNaoConferido
                     ? "ASSINADA da chave autorizada (nProt " + sel.Sefaz.Prot.NProt + "); nenhum XML do computador confere com o digVal, valor não conferido pelo conteúdo"
                     : "ASSINADA da chave autorizada com o mesmo valor da SEFAZ (nProt " + sel.Sefaz.Prot.NProt + ")" +
                       (escolhido.DigestDeclarado == sel.Sefaz.Prot.DigVal ? ", conteúdo idêntico ao autorizado" : ", conteúdo assinado difere do XML autorizado")) +
@@ -466,6 +480,10 @@ namespace DuplicidadeNfce
             }
             var assinadas = arqs.Where(a => a.Tipo == TipoArquivo.Assinada && a.Erro == null && a.Chave == chaveAut).ToList();
             var preferidos = assinadas.Where(a => a.VNF == valorAut).ToList();
+            // Sem ASSINADA da chave, o Temp_ANTES_ENVIO que confere com o digVal é o que o Metre importa (testado em 30/10).
+            if (assinadas.Count == 0)
+                preferidos = validos.Where(a => a.Tipo == TipoArquivo.Temp && a.Chave == chaveAut && a.VNF == valorAut &&
+                    a.Nome.ToUpperInvariant().Contains("TEMP_ANTES_ENVIO")).ToList();
             foreach (var c in sel.Candidatos.Where(c => assinadas.Any(a => a.Caminho == c.Caminho)))
             {
                 var a = assinadas.First(x => x.Caminho == c.Caminho);
@@ -500,7 +518,7 @@ namespace DuplicidadeNfce
             foreach (var c in sel.Candidatos.Where(c => c.Caminho != escolhido.Caminho && validos.Any(v => v.Caminho == c.Caminho)))
             {
                 c.Aceito = false;
-                c.Motivo = "confere com a SEFAZ (confirma o conteúdo e o valor " + Moeda(valorAut) + "), mas não é copiado: vale o ASSINADA";
+                c.Motivo = "confere com a SEFAZ (confirma o conteúdo e o valor " + Moeda(valorAut) + "), mas não é copiado: vale " + escolhido.Nome;
             }
             return escolhido;
         }
@@ -702,6 +720,9 @@ namespace DuplicidadeNfce
                 }
                 l.ValorSefaz = sel.ValorSefaz;
                 l.Tentativa = t;
+                List<NotaXml> daChave;
+                if (porChave.TryGetValue(t.ChaveAutorizada, out daChave)) l.ArquivosChaveAutorizada = daChave.Select(a => a.Caminho).OrderBy(c => c).ToList();
+                string outraVenda = OutraVenda(t, sel);
                 // Autorizada na SEFAZ, mas nenhum XML dessa chave para copiar: o caminho é ajustar a chave no banco.
                 if (sel.MotivoPendente != null && sel.SemArquivo && sel.Sefaz != null && sel.Sefaz.Autorizada && sel.Sefaz.Prot.ChNFe == t.ChaveAutorizada)
                 {
@@ -711,7 +732,7 @@ namespace DuplicidadeNfce
                 }
                 // Há XML da chave que confere com a SEFAZ (ex.: só o Temp_ANTES_ENVIO), mas nenhum ASSINADA para copiar.
                 // Com o mesmo valor do sistema o caminho é o ajuste de chave, que não copia nada.
-                if (sel.MotivoPendente != null && sel.ValorConferido.HasValue && t.Valor == sel.ValorConferido && fontes != null && t.IdMetre != null &&
+                if (sel.MotivoPendente != null && sel.ValorConferido.HasValue && t.Valor == sel.ValorConferido && outraVenda == null && fontes != null && t.IdMetre != null &&
                     sel.Sefaz != null && sel.Sefaz.Autorizada && sel.Sefaz.Prot.ChNFe == t.ChaveAutorizada)
                 {
                     AvaliarAjuste(t, l, avisos, sel.ValorConferido,
@@ -726,7 +747,7 @@ namespace DuplicidadeNfce
                         l.ArquivoEscolhido = "(indicado) " + sel.Indicado.Nome;
                         l.CaminhoOrigem = sel.Indicado.Caminho;
                     }
-                    Pendente(l, sel.MotivoPendente, avisos);
+                    Pendente(l, (outraVenda != null ? outraVenda + "; " : "") + sel.MotivoPendente, avisos);
                     continue;
                 }
 
@@ -737,8 +758,9 @@ namespace DuplicidadeNfce
                 // Regra do Bruno (26/10): valor do sistema IGUAL ao da SEFAZ não vai para importação; só a chave_acesso
                 // da linha é trocada no banco (ajuste de chave). Valor DIFERENTE segue o fluxo de cópia abaixo.
                 // Sem o banco do Metre (arquivos/CSV) não há como ajustar: continua a cópia, como antes.
+                // Número reaproveitado é outra venda: mesmo com valor igual vai para importação, nunca para o ajuste.
                 bool mesmoValor = t.Valor == sel.ValorSefaz;
-                if (mesmoValor && fontes != null && t.IdMetre != null)
+                if (mesmoValor && outraVenda == null && fontes != null && t.IdMetre != null)
                 {
                     l.ArquivoEscolhido = null;
                     l.CaminhoOrigem = null;
@@ -762,11 +784,26 @@ namespace DuplicidadeNfce
                 }
                 l.Fonte = sel.Escolhido;
                 l.Status = Status.ACopiar;
-                l.Motivo = (mesmoValor ? "sistema " + Moeda(t.Valor) + " = SEFAZ (mesmo valor); " : "sistema " + Moeda(t.Valor) + " ≠ SEFAZ " + Moeda(sel.ValorSefaz) + "; ") +
+                l.Motivo = (outraVenda != null ? outraVenda + "; " : "") +
+                    (mesmoValor ? "sistema " + Moeda(t.Valor) + " = SEFAZ (mesmo valor); " : "sistema " + Moeda(t.Valor) + " ≠ SEFAZ " + Moeda(sel.ValorSefaz) + "; ") +
                     sel.MotivoEscolha;
             }
             if (progresso != null) progresso(escolhidas.Count, escolhidas.Count);
             return linhas.OrderBy(x => int.Parse(x.Serie)).ThenBy(x => long.Parse(x.Numero)).ThenBy(x => x.DhEmiSistema).ToList();
+        }
+
+        // O número foi usado por outra venda quando o XML autorizado tem outro pedido e outro dia de emissão que a linha
+        // do sistema (visto em 30/10: número de 12/10 reaproveitado em 18/10). Importar troca a venda do sistema pela autorizada.
+        string OutraVenda(Tentativa t, Selecao sel)
+        {
+            var aut = sel.Escolhido;
+            List<NotaXml> arqs;
+            if (aut == null && sel.Sefaz != null && sel.Sefaz.Prot != null && porChave.TryGetValue(t.ChaveAutorizada, out arqs))
+                aut = arqs.FirstOrDefault(a => a.Erro == null && a.DigestCalculado == sel.Sefaz.Prot.DigVal);
+            if (aut == null || string.IsNullOrEmpty(aut.Pedido) || string.IsNullOrEmpty(t.Pedido) || aut.Pedido == t.Pedido) return null;
+            if (aut.DhEmi == null || t.DhEmi == null || aut.DhEmi.Length < 10 || t.DhEmi.Length < 10 || aut.DhEmi.Substring(0, 10) == t.DhEmi.Substring(0, 10)) return null;
+            return "NÚMERO REAPROVEITADO: a autorizada é outra venda (emitida em " + aut.DhEmi.Substring(0, 10) + ", pedido " + aut.Pedido + ", " + Moeda(aut.VNF) +
+                "); no sistema: " + t.DhEmi.Substring(0, 10) + ", pedido " + t.Pedido + ", " + Moeda(t.Valor) + ". Importar troca a venda do sistema pela autorizada";
         }
 
         // Linha do Metre cuja chave_acesso já foi trocada pelo NotaCerta: o Metre só precisa ser reiniciado.

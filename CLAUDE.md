@@ -47,7 +47,10 @@ Fluxo da duplicidade (mesmo caminho para interface e linha de comando):
    de cada linha (`LinhaRelatorio` + `Status` em `Relatorio.cs`):
    - **valor do sistema ≠ SEFAZ** → copia o **ASSINADA** da chave autorizada com o valor da SEFAZ para
      `Duplicidade\AAAA-MM-DD\<hora>\importar-N` (uma cópia por linha da contingência; `Copia.cs` confere tamanho e
-     SHA-256 e registra no `historico.csv`). O `_NFCE` só confirma o valor, nunca é copiado.
+     SHA-256 e registra no `historico.csv`). Sem ASSINADA da chave, vale o `Temp_ANTES_ENVIO` com DigestValue = `digVal`.
+     O `_NFCE` só confirma o valor, nunca é copiado.
+   - **número reaproveitado** (XML autorizado com outro pedido e outro dia): sem arquivo nas pastas lidas, o `dhRecbto`
+     da SEFAZ indica a pasta do dia (só os arquivos daquele número). Vai para importação mesmo com valor igual.
    - **valor igual** → AJUSTE DE CHAVE (`AjusteChave.cs`): troca só `chef.nota_saida.chave_acesso` daquela linha,
      botão linha a linha, com backup da linha em `backups\`, transação com `FOR UPDATE` e `UPDATE ... WHERE id AND
      numero AND serie AND chave_acesso=<atual>` exigindo 1 linha afetada; "Desfazer" volta pelo backup.

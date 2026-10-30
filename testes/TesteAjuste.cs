@@ -122,10 +122,27 @@ namespace DuplicidadeNfce
                 "G: ASSINADA autorizado na pasta e valor DIFERENTE -> fluxo de cópia para importação, como antes (" + G.Motivo + ")");
             var H = nota("2008"); var I = nota("2009");
             Verdade(H.Status == Status.AjusteChave && H.ValorSefaz == 35.90m && H.Fonte == null && H.CaminhoDestino == null && AjusteChave.Trava(H) == null &&
-                H.Ajuste.OrigemValor.Contains("sem ASSINADA"),
+                H.Ajuste.OrigemValor.Contains("DigestValue = digVal"),
                 "H: só o Temp confere com o digVal, sem ASSINADA, MESMO valor -> AJUSTE DE CHAVE (" + H.Motivo + ")");
-            Verdade(I.Status == Status.Pendente && I.ValorSefaz == 15.00m && I.Fonte == null && I.CaminhoDestino == null && (I.Ajuste == null || AjusteChave.Trava(I) != null),
-                "I: só o Temp confere, sem ASSINADA, valor DIFERENTE -> PENDENTE com o Valor SEFAZ na tela (" + I.Motivo + ")");
+            Verdade(I.Status == Status.ACopiar && I.ValorSefaz == 15.00m && I.CaminhoDestino.Contains("importar-1") && I.CaminhoDestino.Contains("Temp_ANTES_ENVIO") &&
+                I.Fonte != null && I.Ajuste == null,
+                "I: só o Temp confere, sem ASSINADA, valor DIFERENTE -> copia o Temp_ANTES_ENVIO para importar (" + I.Motivo + ")");
+            // ---------- Número reaproveitado: XML autorizado na pasta do dia da autorização, fora do período ----------
+            var W2 = nota("2022"); var X2 = nota("2023"); var Y2 = nota("2024"); var Z2 = nota("2025");
+            Verdade(W2.Status == Status.ACopiar && W2.ValorSefaz == 77.00m && W2.CaminhoDestino.Contains("Temp_ANTES_ENVIO") &&
+                W2.Motivo.Contains("NÚMERO REAPROVEITADO") && W2.Motivo.Contains("pedido 6122") && W2.Motivo.Contains("pedido 6022"),
+                "Reaproveitado, valor diferente: acha pela data de autorização e separa o Temp, mostrando as duas vendas (" + W2.Motivo + ")");
+            Verdade(X2.Status == Status.ACopiar && X2.Ajuste == null && X2.Fonte != null && X2.Motivo.Contains("NÚMERO REAPROVEITADO"),
+                "Reaproveitado, valor igual por coincidência: vai para importação, nunca para o ajuste (" + X2.Motivo + ")");
+            string origemW2 = W2.Fonte.Caminho;
+            Copiador.Executar(new List<LinhaRelatorio> { W2 }, m.Historico, m.Log);
+            Verdade(W2.Status == Status.Copiado && File.Exists(W2.CaminhoDestino) && File.Exists(origemW2) &&
+                NotaXml.HashSha256(File.ReadAllBytes(W2.CaminhoDestino)) == NotaXml.HashSha256(File.ReadAllBytes(origemW2)),
+                "Reaproveitado: Temp copiado igual ao original, que continua na pasta (" + W2.CaminhoDestino + ")");
+            Verdade(Y2.Status == Status.AjusteChave && !Y2.Motivo.Contains("REAPROVEITADO"),
+                "Mesmo pedido, outro dia e valor igual: é a mesma venda -> AJUSTE DE CHAVE (" + Y2.Motivo + ")");
+            Verdade(Z2.Status != Status.Copiado && Z2.Fonte == null && Z2.ValorSefaz == null,
+                "Temp do dia da autorização sem DigestValue = digVal: nada é copiado (" + Z2.Motivo + ")");
             Verdade(linhas.Where(l => l.Status == Status.AjusteChave).All(l => AjusteChave.Trava(l) == null), "linhas AJUSTE DE CHAVE sem travas");
 
             // ---------- XML autorizado só no chefxml, pelo pedido (REJEICAO no servidor, sem ASSINADA) ----------
