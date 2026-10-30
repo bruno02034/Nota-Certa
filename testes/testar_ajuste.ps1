@@ -214,6 +214,8 @@ INSERT INTO chef.nota_saida (id_nota_saida, XML, numero, serie, chave_acesso, dt
   ($($I.Id), NULL, $($I.N), $Serie, '$($I.Sis)', '2026-10-19', 8, $($I.V), '2026-10-19 13:30:00', NULL, 'Lote processado', 'Em contigencia', NULL),
   (500, NULL, $($D.N), $Serie, '$($D.Aut)', '2026-10-19', 3, $($D.V), NULL, NULL, NULL, 'Autorizada', NULL),
   (501, NULL, 1999, $Serie, '$(Chave 1999 '40000001')', '2026-10-19', 9, 10.00, NULL, NULL, NULL, 'Autorizada', NULL),
+  (600, NULL, 1990, $Serie, '$(Chave 1990 '40000002')', '2026-10-01', 10, 11.00, '2026-10-01 09:00:00', NULL, 'Lote processado', CONVERT(UNHEX('$(Hex 'Em Contigência 2')') USING utf8), NULL),
+  (601, NULL, 1991, $Serie, '$(Chave 1991 '40000003')', '2026-10-19', 11, 12.00, '2026-10-19 09:00:00', NULL, 'Lote processado', CONVERT(UNHEX('$(Hex 'Em Contigência2')') USING utf8), NULL),
   $($sqlNotas -join ",`n  ");
 INSERT INTO chefxml.xml (id_xml, XML, id_nota_saida, id_pedido) VALUES
   ($IdXml, CONVERT(UNHEX('$(Hex $aTentativa.Xml)') USING utf8), $IdMetre, $Pedido),

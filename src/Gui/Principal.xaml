@@ -363,6 +363,12 @@
               <TextBlock x:Name="Rot5" Text="Notas Faltantes" Margin="12,0,0,0" VerticalAlignment="Center"/>
             </StackPanel>
           </RadioButton>
+          <RadioButton x:Name="MenuContingencia2" Style="{StaticResource Menu}">
+            <StackPanel Orientation="Horizontal">
+              <Path Style="{StaticResource Icone}" Width="18" Height="18" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}" Data="M4,5 H20 V9 H4 Z M5,9 V19 H19 V9 M10,13 H14"/>
+              <TextBlock x:Name="Rot6" Text="Contingência 2" Margin="12,0,0,0" VerticalAlignment="Center"/>
+            </StackPanel>
+          </RadioButton>
           <RadioButton x:Name="MenuHistorico" Style="{StaticResource Menu}">
             <StackPanel Orientation="Horizontal">
               <Path Style="{StaticResource Icone}" Width="18" Height="18" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}" Data="M12,3 A9,9 0 1 1 11.99,3 M12,7 V12 L15.5,14"/>
@@ -919,6 +925,42 @@
             </DockPanel>
           </Grid>
         </Grid>
+      </Grid>
+
+      <!-- ===== Página: Contingência 2 (só consulta) ===== -->
+      <Grid x:Name="PagContingencia2" Grid.Row="1" Visibility="Collapsed">
+        <Border Style="{StaticResource CardFundo}"/>
+        <Border Style="{StaticResource CardLinha}"/>
+        <DockPanel Margin="18,16,18,12">
+          <DockPanel DockPanel.Dock="Top" Margin="0,0,0,10">
+            <Button x:Name="BtnListarCont2" DockPanel.Dock="Right" Style="{StaticResource BtnPrimario}" Content="Listar Contingência 2" VerticalAlignment="Top"/>
+            <StackPanel>
+              <TextBlock Style="{StaticResource TituloCard}" Text="CONTINGÊNCIA 2 (SOMENTE CONSULTA)"/>
+              <TextBlock x:Name="TxtCont2Status" FontSize="11.5" Foreground="{StaticResource TextoSec}" Margin="0,4,0,0" TextWrapping="Wrap"
+                         Text="Clique em Listar para buscar no banco do Metre as notas em &quot;Em Contigência 2&quot; e &quot;Em Contigência2&quot;."/>
+            </StackPanel>
+          </DockPanel>
+          <Border DockPanel.Dock="Top" Background="#FFF7E0" CornerRadius="6" Padding="12,8" Margin="0,0,0,10">
+            <TextBlock TextWrapping="Wrap" Foreground="#9A6700" FontSize="12"
+                       Text="⚠ Notas escondidas da aba Contingência do Metre (antigas ou com problema). Não devem ser transmitidas e o NotaCerta não processa, copia nem ajusta nenhuma delas: esta lista serve só para localizar uma nota."/>
+          </Border>
+          <Grid>
+            <DataGrid x:Name="GradeCont2">
+              <DataGrid.Columns>
+                <DataGridTextColumn Header="NOTA" Binding="{Binding Nota}" Width="100" IsReadOnly="True" ElementStyle="{StaticResource TextoForte}"/>
+                <DataGridTextColumn Header="PEDIDO" Binding="{Binding Pedido}" Width="80" IsReadOnly="True"/>
+                <DataGridTextColumn Header="EMISSÃO" Binding="{Binding Emissao}" Width="120" IsReadOnly="True"/>
+                <DataGridTextColumn Header="CONTINGÊNCIA" Binding="{Binding Contingencia}" Width="120" IsReadOnly="True"/>
+                <DataGridTextColumn Header="VALOR" Binding="{Binding Valor}" Width="100" IsReadOnly="True" ElementStyle="{StaticResource TextoDireita}"/>
+                <DataGridTextColumn Header="SITUAÇÃO" Binding="{Binding Situacao}" Width="140" IsReadOnly="True"/>
+                <DataGridTextColumn Header="CHAVE" Binding="{Binding Chave}" Width="330" IsReadOnly="True"/>
+                <DataGridTextColumn Header="MOTIVO" Binding="{Binding Motivo}" Width="*" MinWidth="160" IsReadOnly="True" ElementStyle="{StaticResource TextoCortado}"/>
+              </DataGrid.Columns>
+            </DataGrid>
+            <TextBlock x:Name="GradeCont2Vazia" Text="Nenhuma nota listada." Foreground="{StaticResource TextoSec}"
+                       HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed"/>
+          </Grid>
+        </DockPanel>
       </Grid>
 
       <!-- ===== Página: Histórico ===== -->

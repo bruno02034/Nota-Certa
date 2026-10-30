@@ -153,6 +153,7 @@ namespace DuplicidadeNfce
         string ultimoResumo = "";
         int copiadasSessao;
         TelaFaltantes faltantes;
+        TelaContingencia2 contingencia2;
         // Chaves autorizadas abertas no portal da SEFAZ nesta sessão: só elas aceitam "Valor confere/diferente".
         readonly HashSet<string> abertasNoPortal = new HashSet<string>();
         Dictionary<TextBlock, string> titulosFalt;   // títulos dos cards das Notas Faltantes, sem o espaçamento
@@ -252,6 +253,8 @@ namespace DuplicidadeNfce
             G<RadioButton>("MenuDuplicidades").Checked += (s, e) => Pagina("PagDuplicidades", "Processamento");
             faltantes = new TelaFaltantes(W, () => cfg, op);
             G<RadioButton>("MenuFaltantes").Checked += (s, e) => Pagina("PagFaltantes", "Busca");
+            contingencia2 = new TelaContingencia2(W, () => cfg);
+            G<RadioButton>("MenuContingencia2").Checked += (s, e) => Pagina("PagContingencia2", "Consulta");
             G<RadioButton>("MenuHistorico").Checked += (s, e) => { Pagina("PagHistorico", "Histórico"); CarregarHistorico(); };
             G<RadioButton>("MenuRelatorios").Checked += (s, e) => { Pagina("PagRelatorios", "Relatórios"); CarregarRelatorios(); };
             G<RadioButton>("MenuConfig").Checked += (s, e) => { Pagina("PagConfig", "Configurações"); CarregarConfigTela(); };
@@ -351,9 +354,9 @@ namespace DuplicidadeNfce
 
         void Pagina(string nome, string titulo)
         {
-            foreach (var p in new[] { "PagDuplicidades", "PagFaltantes", "PagHistorico", "PagRelatorios", "PagConfig" })
+            foreach (var p in new[] { "PagDuplicidades", "PagFaltantes", "PagContingencia2", "PagHistorico", "PagRelatorios", "PagConfig" })
                 G<FrameworkElement>(p).Visibility = p == nome ? Visibility.Visible : Visibility.Collapsed;
-            ((System.Windows.Documents.Run)W.FindName("TxtBreadA")).Text = nome == "PagFaltantes" ? "Notas Faltantes" : "Duplicidade";
+            ((System.Windows.Documents.Run)W.FindName("TxtBreadA")).Text = nome == "PagFaltantes" ? "Notas Faltantes" : nome == "PagContingencia2" ? "Contingência 2" : "Duplicidade";
             ((System.Windows.Documents.Run)W.FindName("TxtBreadB")).Text = titulo;
             G<FrameworkElement>("PainelPilulas").Visibility = nome == "PagDuplicidades" ? Visibility.Visible : Visibility.Collapsed;
         }
@@ -363,7 +366,7 @@ namespace DuplicidadeNfce
             recolhido = !recolhido;
             G<Border>("Lateral").Width = recolhido ? 76 : 248;
             var vis = recolhido ? Visibility.Collapsed : Visibility.Visible;
-            foreach (var n in new[] { "LogoTextos", "Rot1", "Rot2", "Rot3", "Rot4", "Rot5", "CaixaPesquisaGrid", "TxtVersao" })
+            foreach (var n in new[] { "LogoTextos", "Rot1", "Rot2", "Rot3", "Rot4", "Rot5", "Rot6", "CaixaPesquisaGrid", "TxtVersao" })
                 G<FrameworkElement>(n).Visibility = vis;
             ((ScaleTransform)W.FindName("EscalaRecolher")).ScaleX = recolhido ? -1 : 1;
             G<Button>("BtnRecolher").ToolTip = recolhido ? "Expandir menu" : "Recolher menu";

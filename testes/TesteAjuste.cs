@@ -97,6 +97,14 @@ namespace DuplicidadeNfce
             Verdade(m.Cfg.OrigemConexaoBanco != null && m.Cfg.DbPorta.ToString() == Environment.GetEnvironmentVariable("TESTE_PORTA"), "host/porta lidos do Conexao.ini (" + m.Cfg.DbHost + ":" + m.Cfg.DbPorta + ")");
             var linhas = Processar(m);
             Func<string, LinhaRelatorio> nota = n => linhas.First(l => l.Numero == n);
+
+            // ---------- Contingência 2 (só consulta) ----------
+            Verdade(!linhas.Any(l => l.Numero == "1990" || l.Numero == "1991") && !Banco.LerBanco(m.Cfg, m.Log).Any(c => c.Id == "600" || c.Id == "601"),
+                "Contingência 2: 'Em Contigência 2' e 'Em Contigência2' ficam fora da contingência processada");
+            var cont2 = Banco.LerContingencia2(m.Cfg);
+            Verdade(string.Join(",", cont2.Select(c => c.Id)) == "600,601" && cont2[0].Situacao == "Em Contigência 2" && cont2[1].Situacao == "Em Contigência2" &&
+                cont2[0].Valor == 11.00m && cont2[1].DtContingencia.HasValue,
+                "Contingência 2: lista só as duas linhas escondidas, com situação, valor e data (" + string.Join("; ", cont2.Select(c => c.Id + "=" + c.Situacao)) + ")");
             var A = linhas.First(l => l.ChaveSistema == chaveA);
             Verdade(A.Status == Status.Pendente && A.Ajuste != null && A.Ajuste.PodeConferirPortal, "A sem XML da chave autorizada: PENDENTE com conferência no portal (" + A.Motivo + ")");
             Verdade(A.ValorSefaz == null && AjusteChave.Trava(A) != null, "A: sem valor da SEFAZ e ajuste travado");

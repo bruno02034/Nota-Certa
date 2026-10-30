@@ -57,6 +57,12 @@ assim), por uma sessão **somente leitura** (só `SELECT`), usando a `libmariadb
 pela interface e confira com `.\NotaCerta.exe --testar-banco`. Linhas cuja chave já está autorizada
 (criadas ao importar um NFCE) aparecem como JÁ AUTORIZADA e não são tocadas.
 
+**Contingência 2:** contingências antigas ou com problema são passadas no Metre para `Em Contigência 2` ou
+`Em Contigência2`, para sumir da aba Contingência; elas **não devem ser transmitidas**. O NotaCerta não as processa,
+copia nem ajusta: a página *Contingência 2* do menu só as lista (somente leitura, ao clicar em "Listar Contingência 2"),
+com nota, pedido, datas, valor, situação, chave e motivo, para localizar uma nota específica. A pesquisa do menu
+lateral filtra essa lista.
+
 **Senha do banco:** não é digitada no ini. Ao abrir, a interface pede a senha (campo mascarado), testa a conexão e a
 grava em `DbSenhaProtegida`, criptografada pelo Windows (DPAPI da máquina): ilegível no ini e só abre naquele
 computador. Para trocar: *Configurações > Senha do banco*. Uma senha antiga deixada em `DbSenha=` é criptografada e

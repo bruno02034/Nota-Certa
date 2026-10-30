@@ -11,7 +11,7 @@ namespace DuplicidadeNfce
     // Uma linha da aba Contingência do Metre (chef.nota_saida com situacao = 'Em contigencia').
     class LinhaContingencia
     {
-        public string Id, Numero, Serie, Pedido, Chave, Motivo;
+        public string Id, Numero, Serie, Pedido, Chave, Motivo, Situacao;
         public decimal? Valor;
         public DateTime? DtEmissao, DtContingencia, DtTentativa;
     }
@@ -278,6 +278,23 @@ namespace DuplicidadeNfce
         {
             return "SELECT " + string.Join(", ", Colunas) + " FROM " + cfg.DbBanco + ".nota_saida WHERE situacao = '" +
                 cfg.DbSituacao.Replace("\\", "\\\\").Replace("'", "''") + "' ORDER BY data_contigencia";
+        }
+
+        // "Contingência 2": no cliente, contingências antigas ou com problema são passadas para "Em Contigência 2" ou
+        // "Em Contigência2" para sumir da aba Contingência do Metre; não devem ser transmitidas. Só aparecem na tela
+        // Contingência 2, para consulta: nada é processado. A comparação do MariaDB ignora acento e maiúscula.
+        static readonly string[] SituacoesContingencia2 = { "Em contigencia 2", "Em contigencia2" };
+
+        public static List<LinhaContingencia> LerContingencia2(Config cfg)
+        {
+            string sql = "SELECT " + string.Join(", ", Colunas) + ", situacao FROM " + cfg.DbBanco + ".nota_saida WHERE situacao IN (" +
+                string.Join(", ", SituacoesContingencia2.Select(s => "'" + s + "'")) + ") ORDER BY serie, numero";
+            return Consultar(cfg, new[] { sql }, null).Select(v =>
+            {
+                var c = Montar(v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7], v[8], v[9]);
+                c.Situacao = v[10];
+                return c;
+            }).ToList();
         }
 
         public static List<LinhaContingencia> LerBanco(Config cfg, Log log)
