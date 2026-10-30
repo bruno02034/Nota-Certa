@@ -551,6 +551,9 @@ namespace DuplicidadeNfce
             return false;
         }
 
+        public const string TransmitaPrimeiro = "Transmita a nota no Metre primeiro; o retorno de duplicidade (539) traz a chave autorizada. " +
+            "Depois clique em Listar contingência de novo.";
+
         // Sem retorno ou com outro erro: nada a consultar nem copiar.
         bool ForaDoFluxo(Tentativa t, LinhaRelatorio l)
         {
@@ -561,10 +564,11 @@ namespace DuplicidadeNfce
                     "Não transmitir nem importar de novo: tratar no Metre";
                 return true;
             }
+            // Sem 539 não há chave autorizada: quem grava o REJEICAO com ela é o Metre, ao transmitir a nota.
             if (t.Classe == Classe.SemRetorno && t.Candidatas.Count == 0)
             {
                 l.Status = Status.EmContingencia;
-                l.Motivo = "número ainda sem autorização nos arquivos; aguardando transmissão da contingência";
+                l.Motivo = TransmitaPrimeiro;
                 return true;
             }
             if (t.Classe == Classe.OutroErro)
@@ -895,8 +899,8 @@ namespace DuplicidadeNfce
             if (avisos.Count > 0) { Pendente(l, "verificar manualmente", avisos); return; }
             if (a.ValorConferido != t.Valor)
             {
-                Pendente(l, "valor autorizado " + Moeda(a.ValorConferido) + " ≠ sistema " + Moeda(t.Valor) + " (" + a.OrigemValor + "): seria o fluxo de " +
-                    "importação, mas não há XML da chave autorizada para copiar", avisos);
+                Pendente(l, "valor diferente: falta o ASSINADA para importar (valor autorizado " + Moeda(a.ValorConferido) + " ≠ sistema " +
+                    Moeda(t.Valor) + "; " + a.OrigemValor + ")", avisos);
                 return;
             }
             l.Status = Status.AjusteChave;

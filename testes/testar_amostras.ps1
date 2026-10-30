@@ -108,8 +108,8 @@ try {
     # 89098: o ASSINADA da autorizada (15:57) e igual ao autorizado, mas so se copia o NFCE autorizado
     Confere $r $K89098b 'PENDENTE' '' '' 'sem retorno 539'
     Confere $r $K89090b 'PENDENTE' '' '' 'sem retorno 539'
-    # 89257: numero nunca autorizado -> em contingencia sem retorno, nada a copiar
-    Confere $r $K89257b 'EM CONTINGÊNCIA' '' '' 'sem autorização'
+    # 89257: numero nunca autorizado -> em contingencia sem retorno, nada a copiar; pede para transmitir no Metre
+    Confere $r $K89257b 'EM CONTINGÊNCIA' '' '' 'Transmita a nota no Metre primeiro'
     Verdade (@($r | Where-Object { $_.Numero -eq '89257' -and $_.Status -eq 'EM CONTINGÊNCIA' }).Count -eq 3) '89257: as 3 tentativas ficam em contingencia'
     # 84643: numero usado 14 vezes em 05/10, ja resolvido no Metre (nao tem ONTIGENCIA_ENVIA)
     $l = @($r | Where-Object { $_.Numero -eq '84643' })

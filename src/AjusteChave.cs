@@ -72,7 +72,7 @@ namespace DuplicidadeNfce
             if (l.Status != Status.AjusteChave) return "status não é " + Status.AjusteChave;
             var s = l.Sel != null ? l.Sel.Sefaz : null;
             if (s == null || !s.Autorizada || s.Prot == null || s.Prot.ChNFe != a.ChaveNova)
-                return "a SEFAZ não confirmou a chave autorizada (cStat 100 ou 150)";
+                return "a SEFAZ não confirmou a chave autorizada (cStat 100 ou 150; no protocolo, 100, 150 ou 120)";
             if (a.ChaveAtual == null || a.ChaveAtual.Length != 44 || !a.ChaveAtual.All(char.IsDigit)) return "chave do sistema inválida";
             if (!DvValido(a.ChaveNova)) return "chave autorizada sem 44 dígitos ou com DV inválido";
             if (!MesmaNumeracao(a.ChaveAtual, a.ChaveNova)) return "as chaves não têm os mesmos UF, AAMM, CNPJ, modelo, série e número";

@@ -27,10 +27,16 @@ namespace DuplicidadeNfce
         {
             get
             {
-                return Ok && (CStat == "100" || CStat == "150") && Prot != null
-                    && (Prot.CStat == "100" || Prot.CStat == "150");
+                // Topo (retConsSitNFe) 100/150 = autorizada; 110/301/302 = denegada; 101/151 = cancelada.
+                // No protNFe, além de 100/150, a SEFAZ-MG devolve 120 "Autorizado o uso da NF-e, com alerta"
+                // (visto no cliente em 29/10, cMsg 172). A identidade da chave (Prot.ChNFe = a chave consultada)
+                // é conferida por quem usa isto (AjusteChave.Trava e Analisador).
+                return Ok && (CStat == "100" || CStat == "150")
+                    && Prot != null && ProtAutorizado(Prot.CStat) && !string.IsNullOrEmpty(Prot.NProt);
             }
         }
+
+        public static bool ProtAutorizado(string cStat) { return cStat == "100" || cStat == "150" || cStat == "120"; }
 
         public string Situacao
         {

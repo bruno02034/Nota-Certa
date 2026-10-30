@@ -58,6 +58,8 @@ namespace DuplicidadeNfce
             raiz.DbUsuario = "root";
             raiz.DbSenha = senhaRoot;
             string idA = Sql("SELECT id_nota_saida FROM chef.nota_saida WHERE chave_acesso = '" + chaveA + "'")[0][0];
+            Func<string> xmlsBanco = () => string.Join("|", Sql("SELECT COUNT(*), SUM(CRC32(XML)), SUM(IFNULL(id_nota_saida, 0)), SUM(IFNULL(id_pedido, 0)) FROM chefxml.xml")[0]);
+            string xmlsAntes = xmlsBanco();
 
             // ---------- Regras da chave ----------
             Verdade(AjusteChave.DvValido(autA) && AjusteChave.DvValido(chaveA), "DV (módulo 11) das duas chaves do caso A válido");
@@ -118,6 +120,60 @@ namespace DuplicidadeNfce
                 "I: só o Temp confere, sem ASSINADA, valor DIFERENTE -> PENDENTE com o Valor SEFAZ na tela (" + I.Motivo + ")");
             Verdade(linhas.Where(l => l.Status == Status.AjusteChave).All(l => AjusteChave.Trava(l) == null), "linhas AJUSTE DE CHAVE sem travas");
 
+            // ---------- XML autorizado só no chefxml, pelo pedido (REJEICAO no servidor, sem ASSINADA) ----------
+            var J = nota("2010"); var K = nota("2011"); var L = nota("2012"); var M = nota("2013"); var N = nota("2014");
+            var O = nota("2015"); var P = nota("2016"); var Q = nota("2017"); var R = nota("2018"); var T = nota("2019");
+            Verdade(J.Status == Status.AjusteChave && !J.Ajuste.PodeConferirPortal && J.Ajuste.OrigemValor.Contains("id_xml 700007 (mesmo pedido 5010)") &&
+                J.Fonte == null && AjusteChave.Trava(J) == null,
+                "(a) XML autorizado só no chefxml, id_nota_saida NULL e mesmo pedido, valor igual -> AJUSTE DE CHAVE sem portal (" + J.Motivo + ")");
+            Verdade(K.Status == Status.Pendente && K.ValorSefaz == 27.50m && K.Motivo.StartsWith("valor diferente: falta o ASSINADA para importar") &&
+                K.Fonte == null && K.CaminhoDestino == null && AjusteChave.Trava(K) != null,
+                "(b) idem com valor diferente -> PENDENTE com Valor SEFAZ e falta do ASSINADA (" + K.Motivo + ")");
+            Verdade(L.Status == Status.AjusteChave && L.Ajuste.OrigemValor.Contains("id_xml 700073"), "(c) XML do pedido depois do ponteiro também vale (" + L.Ajuste.OrigemValor + ")");
+            Verdade(M.Status == Status.Pendente && M.Ajuste != null && M.Ajuste.PodeConferirPortal &&
+                System.Text.Encoding.UTF8.GetString(NotaXml.LerSomenteLeitura(m.ArqLog)).Contains("id_xml 700100 sem id_pedido"),
+                "(d) ponteiro sem id_pedido -> janela do pedido não é usada, conferir no portal (" + M.Motivo + ")");
+            Verdade(N.Status == Status.AjusteChave && N.ValorSefaz == 19.00m && N.Sel.Candidatos.Count(c => c.Aceito) == 1 &&
+                N.Sel.Candidatos.Any(c => !c.Aceito && c.Caminho.Contains("id_xml 700126") && c.Motivo.Contains("≠ digVal")),
+                "(e) dois XMLs da chave no pedido: só o de DigestValue = digVal vale (" + N.Ajuste.OrigemValor + ")");
+            Verdade(m.DiasTentativa.Contains(new DateTime(2026, 10, 28)) && !m.DiasTentativa.Contains(new DateTime(2026, 10, 27)) &&
+                O.Status == Status.AjusteChave && O.Classificacao.Contains("539"),
+                "(f) REJEICAO na pasta do dia da tentativa (fora do período de emissão) é achado -> AJUSTE DE CHAVE (" + O.Classificacao + ")");
+            Verdade(P.ChaveAutorizada == null && P.Status == Status.EmContingencia, "(f) REJEICAO num dia fora do período e sem tentativa nesse dia não é lido (só as pastas dos dias)");
+            var U = nota("2020"); var V = nota("2021");
+            Verdade(m.DiasTentativa.Contains(new DateTime(2026, 10, 21)) && U.Status == Status.AjusteChave && U.Classificacao.Contains("539"),
+                "(f) REJEICAO num dia de tentativa dentro dos dias extras de candidatos também vale (" + U.Motivo + ")");
+            Verdade(V.ChaveAutorizada == null && V.Status == Status.EmContingencia, "(f) REJEICAO num dia extra sem tentativa continua só candidato, como antes");
+            Verdade(Q.Status == Status.EmContingencia && Q.Motivo == Analisador.TransmitaPrimeiro && P.Motivo == Analisador.TransmitaPrimeiro,
+                "(g) nota sem REJEICAO -> \"" + Q.Motivo + "\"");
+            Verdade(J.Sel.Sefaz.Prot.CStat == "120" && J.Sel.Sefaz.Autorizada, "(h) protocolo cStat 120 (autorizado com alerta) aceito");
+            Verdade(R.Status == Status.Pendente && R.Motivo.Contains("não é autorizada") && !R.Sel.Sefaz.Autorizada,
+                "(h) protocolo com cStat inválido (999) e topo 100 recusado (" + R.Motivo + ")");
+            Verdade(T.Status == Status.Pendente && T.Ajuste != null && T.Ajuste.PodeConferirPortal,
+                "XML da chave perto do ponteiro, mas de outro pedido -> não usado, conferir no portal");
+
+            // (h) Resposta real da SEFAZ-MG de 29/10 (topo 100, protNFe 120 com alerta), com chave/protocolo/digVal fictícios.
+            {
+                var interpretar = typeof(ClienteSefaz).GetMethod("Interpretar", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+                Func<string, string, string, bool> autorizada = (topo, prot, nProt) =>
+                {
+                    var r0 = new RespostaSefaz { XmlBruto = "<?xml version='1.0' encoding='UTF-8'?><S:Envelope xmlns:S=\"http://www.w3.org/2003/05/soap-envelope\"><S:Body>" +
+                        "<nfeResultMsg xmlns=\"http://www.portalfiscal.inf.br/nfe/wsdl/NFeConsultaProtocolo4\"><retConsSitNFe xmlns=\"http://www.portalfiscal.inf.br/nfe\" versao=\"4.00\">" +
+                        "<tpAmb>1</tpAmb><verAplic>W-1.6.27</verAplic><cStat>" + topo + "</cStat><xMotivo>Autorizado o uso da NF-e</xMotivo><cUF>31</cUF>" +
+                        "<dhRecbto>2026-10-29T16:20:13-03:00</dhRecbto><chNFe>" + autA + "</chNFe><protNFe versao=\"4.00\"><infProt Id=\"ID131260000009999\"><tpAmb>1</tpAmb>" +
+                        "<verAplic>W-1.6.27</verAplic><chNFe>" + autA + "</chNFe><dhRecbto>2026-10-28T17:07:52-03:00</dhRecbto>" + (nProt == null ? "" : "<nProt>" + nProt + "</nProt>") +
+                        "<digVal>AAAAAAAAAAAAAAAAAAAAAAAAAAA=</digVal><cStat>" + prot + "</cStat><xMotivo>Autorizado o uso da NF-e, com alerta</xMotivo><cMsg>172</cMsg>" +
+                        "<xMsg>Alerta: Situacao do CNPJ destinatario inabilitado no momento da autorizacao</xMsg></infProt></protNFe></retConsSitNFe></nfeResultMsg></S:Body></S:Envelope>" };
+                    interpretar.Invoke(null, new object[] { r0, autA });
+                    return r0.Autorizada;
+                };
+                Verdade(autorizada("100", "120", "131260000009999") && autorizada("100", "100", "131260000009999") && autorizada("150", "150", "131260000009999"),
+                    "(h) resposta no formato real: topo 100/150 com protocolo 100, 150 ou 120 -> autorizada");
+                Verdade(!autorizada("100", "999", "131260000009999") && !autorizada("100", "110", "131260000009999") && !autorizada("100", "539", "131260000009999") &&
+                    !autorizada("101", "120", "131260000009999") && !autorizada("110", "100", "131260000009999") && !autorizada("100", "120", null),
+                    "(h) protocolo 999/110/539, topo 101/110 ou sem nProt -> não autorizada");
+            }
+
             // ---------- Conferência manual ----------
             AjusteChave.RegistrarConferencia(A, false, m.Historico, m.Log);
             m.Analisador.ReavaliarAjuste(A, m.Historico);
@@ -163,7 +219,7 @@ namespace DuplicidadeNfce
             Verdade(ChaveNoBanco(idA) == autA, "ajuste gravado: chave_acesso = chave autorizada");
             Verdade(depois == antes.Replace(chaveA, autA), "na linha só mudou chave_acesso (demais " + (antes.Split('|').Length - 1) + " colunas iguais)");
             Verdade(Tabela() == tabelaAntes.Replace(chaveA, autA), "nenhuma outra linha mudou");
-            Verdade(Sql("SELECT COUNT(*) FROM chefxml.xml")[0][0] == "4", "chefxml.xml intocado");
+            Verdade(xmlsBanco() == xmlsAntes, "chefxml.xml intocado");
             string bak = File.ReadAllText(r.CaminhoDestino);
             Verdade(File.Exists(r.CaminhoDestino) && Path.GetDirectoryName(r.CaminhoDestino) == m.PastaBackups && bak.Contains("chave_antiga=" + chaveA) &&
                 bak.Contains("chave_acesso=" + chaveA) && bak.Contains("observacao=0x"), "backup com a linha inteira (texto com quebra de linha em hex) em backups\\");

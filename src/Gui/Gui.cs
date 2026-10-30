@@ -836,9 +836,7 @@ namespace DuplicidadeNfce
                 Par("INIs do emissor lidos", MetreIni.Lidos.Count > 0 ? string.Join("; ", MetreIni.Lidos) : "nenhum encontrado em " + cfg.IniMetre),
                 Par("Banco do Metre", UsaBanco ? cfg.DbUsuario + " em " + (string.IsNullOrEmpty(cfg.DbHost) ? "(do Conexao.ini)" : cfg.DbHost + ":" + cfg.DbPorta) : "não usado"),
                 Par("Senha do banco", EstadoSenhaBanco()),
-                Par("Fontes de senha encontradas",MetreIni.Senhas.Count > 0 ? string.Join("; ", MetreIni.Senhas.Select(s => s.Origem)) : "nenhuma"),
-                Par("Dias extras p/ candidatos", cfg.DiasExtrasCandidatos.ToString()),
-                Par("Modo", op.SemSefaz ? "TESTE (--sem-sefaz): SEFAZ simulada, nada é copiado" : "normal")
+                Par("Fontes de senha encontradas",MetreIni.Senhas.Count > 0 ? string.Join("; ", MetreIni.Senhas.Select(s => s.Origem)) : "nenhuma")
             };
             G<ItemsControl>("ListaConfig").ItemsSource = itens;
         }

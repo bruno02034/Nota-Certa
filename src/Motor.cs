@@ -60,11 +60,16 @@ namespace DuplicidadeNfce
             {
                 return Cfg.TodasDatas ? "todas as datas" :
                     Cfg.DataInicial.Value.ToString("dd/MM/yyyy") + " a " + Cfg.DataFinal.Value.ToString("dd/MM/yyyy") +
-                    " (+" + Cfg.DiasExtrasCandidatos + " dia(s) para candidatos)";
+                    " (+" + Cfg.DiasExtrasCandidatos + " dia(s) para candidatos" +
+                    (DiasTentativa.Count > 0 ? "; + dia(s) da tentativa de transmissão: " + string.Join(", ", DiasTentativa.Select(d => d.ToString("dd/MM/yyyy"))) : "") + ")";
             }
         }
 
         public List<LinhaContingencia> Contingencia;
+        // Dias de dt_tentativa_emissao fora do período principal: o REJEICAO (539) é gravado quando a nota é transmitida,
+        // que pode ser dias depois da emissão. Entram como período principal (os dias extras de candidatos não valem
+        // para REJEICAO); só as pastas desses dias, nunca o C:\Chef\NFCe inteiro.
+        public List<DateTime> DiasTentativa = new List<DateTime>();
 
         public void Varrer()
         {
@@ -80,6 +85,8 @@ namespace DuplicidadeNfce
                 {
                     Cfg.DataInicial = datas.Min();
                     Cfg.DataFinal = datas.Max();
+                    DiasTentativa = Contingencia.Where(c => c.DtTentativa.HasValue).Select(c => c.DtTentativa.Value.Date)
+                        .Where(d => d < Cfg.DataInicial.Value || d > Cfg.DataFinal.Value).Distinct().OrderBy(d => d).ToList();
                     Log.Tela("Período ajustado pela contingência do Metre: " + DescricaoPeriodo);
                 }
             }
@@ -100,16 +107,21 @@ namespace DuplicidadeNfce
                         Log.Info("Arquivo solto na raiz sem data de emissão legível (ignorado): " + f + (n.Erro != null ? " - " + n.Erro : ""));
                         continue;
                     }
-                    if (dia < Cfg.DataInicial.Value || dia > fimCand) { foraDoPeriodo++; continue; }
+                    bool diaTentativa = DiasTentativa.Contains(dia.Value);
+                    if ((dia < Cfg.DataInicial.Value || dia > fimCand) && !diaTentativa) { foraDoPeriodo++; continue; }
                     n.DataPasta = dia;
-                    n.NaFaixaPrincipal = dia <= Cfg.DataFinal.Value;
+                    n.NaFaixaPrincipal = dia <= Cfg.DataFinal.Value || diaTentativa;
                     Notas.Add(n);
                     soltos++;
                 }
                 if (soltos + foraDoPeriodo > 0)
                     Log.Tela((soltos + foraDoPeriodo) + " XML(s) solto(s) na raiz " + Raiz + ": " + soltos + " no período (pela data de emissão), " + foraDoPeriodo + " fora");
 
-                for (var d = Cfg.DataInicial.Value; d <= fimCand; d = d.AddDays(1))
+                var dias = new List<DateTime>();
+                for (var d = Cfg.DataInicial.Value; d <= fimCand; d = d.AddDays(1)) dias.Add(d);
+                // Dias da tentativa entram como o período principal: é onde pode estar o REJEICAO com a 539.
+                dias.AddRange(DiasTentativa.Where(d => !dias.Contains(d)));
+                foreach (var d in dias)
                 {
                     string dir = Path.Combine(Raiz, d.ToString("MM_yyyy"), d.ToString("dd"));
                     if (!Directory.Exists(dir)) { Log.Info("Pasta inexistente (ignorada): " + dir); continue; }
@@ -117,7 +129,7 @@ namespace DuplicidadeNfce
                     {
                         var n = NotaXml.Ler(f);
                         n.DataPasta = d;
-                        n.NaFaixaPrincipal = d <= Cfg.DataFinal.Value;
+                        n.NaFaixaPrincipal = d <= Cfg.DataFinal.Value || DiasTentativa.Contains(d);
                         Notas.Add(n);
                     }
                 }
@@ -132,8 +144,8 @@ namespace DuplicidadeNfce
         }
 
         // ---------- Ajuste de chave: o XML da chave autorizada guardado pelo Metre no banco ----------
-        // Só o chefxml.xml da linha da contingência (consulta pela chave primária, rápida). As pastas continuam
-        // sendo só as do período: varrer C:\Chef\NFCe inteiro deixava o processamento parado por minutos.
+        // Só o chefxml.xml da linha da contingência e os do mesmo pedido em volta dela (consultas por índice, rápidas).
+        // As pastas continuam sendo só as do período: varrer C:\Chef\NFCe inteiro deixava o processamento parado por minutos.
         List<NotaXml> BuscarXmlsChave(Tentativa t, string chave)
         {
             var lista = new List<NotaXml>();

@@ -17,6 +17,10 @@ também em `C:\Chef\Empresa\*\Certificado`, valendo o do CNPJ emitente. A senha 
 
 ## Uso
 
+**Antes, transmita a nota no Metre.** É ao transmitir que o Metre do servidor grava o `REJEICAO_NOTA` com o
+retorno de duplicidade (539), que traz a chave autorizada. Sem essa transmissão a nota fica EM CONTINGÊNCIA com o
+aviso "Transmita a nota no Metre primeiro…" (é o esperado); transmita e liste de novo.
+
 **Interface:** dê dois cliques em `NotaCerta.exe` → escolha as datas → *Listar notas com 539* →
 marque as notas → *Processar marcadas* (consulta a SEFAZ, escolhe o arquivo e copia).
 
@@ -34,7 +38,7 @@ marque as notas → *Processar marcadas* (consulta a SEFAZ, escolhe o arquivo e 
 | Status | Significado |
 |---|---|
 | A PROCESSAR | duplicidade listada, aguardando consulta à SEFAZ |
-| EM CONTINGÊNCIA | tentativa em contingência cujo número ainda não tem autorização; nada a fazer |
+| EM CONTINGÊNCIA | tentativa em contingência sem retorno 539: transmita a nota no Metre e liste de novo |
 | OUTRO ERRO | rejeição com outro código (ex.: 537) |
 | JÁ AUTORIZADA | a nota pedida já está autorizada e não tem tentativa pendente |
 | A COPIAR | arquivo autorizado encontrado (linha de comando sem `--copiar`) |
@@ -64,7 +68,8 @@ erro de banco também vai para o log.
 
 ## Ajustar chave no banco
 
-Duplicidade (539) com a chave autorizada confirmada na SEFAZ (cStat 100 ou 150) tem dois caminhos, pelo valor:
+Duplicidade (539) com a chave autorizada confirmada na SEFAZ (situação 100 ou 150; no protocolo, 100, 150 ou 120
+"autorizado com alerta") tem dois caminhos, pelo valor:
 
 | Valor do sistema x SEFAZ | O que acontece |
 |---|---|
@@ -76,12 +81,17 @@ Com a lista vinda de CSV ou dos arquivos (sem o banco), valor igual continua ind
 1. O valor autorizado vem do XML da chave nas pastas do período (DigestValue = `digVal`; vale qualquer XML que confira,
    inclusive só o `Temp_ANTES_ENVIO` sem ASSINADA: com valor igual vira ajuste; com valor diferente fica PENDENTE,
    porque sem ASSINADA não há o que importar) ou, sem arquivo, do banco
-   `chefxml.xml` (só leitura, pela chave primária). O `C:\Chef\NFCe` inteiro não é varrido: deixava o processamento
-   lento demais.
+   `chefxml.xml` (só leitura, sempre por índice). No banco valem o XML apontado pela linha (`nota_saida.XML`), os da
+   linha (`id_nota_saida`) e os **do mesmo pedido**: o Metre grava as tentativas de emissão, inclusive a que a SEFAZ
+   autorizou, com `id_nota_saida` vazio e o mesmo `id_pedido`, a poucos registros do XML da linha. Por isso são lidos
+   os `id_xml` até 20 antes e 20 depois dele com o mesmo `id_pedido` (sem `id_pedido`, essa busca não é feita).
+   Achado o XML com DigestValue = `digVal`: valor igual vira AJUSTE DE CHAVE sem passar pelo portal; valor diferente
+   fica PENDENTE "valor diferente: falta o ASSINADA para importar", com o Valor SEFAZ na tela (o arquivo de importação
+   não é gerado a partir do banco). O `C:\Chef\NFCe` inteiro não é varrido: deixava o processamento lento demais.
 2. Sem XML nenhum (a consulta da SEFAZ não traz o valor), o painel de detalhes mostra **Conferir na SEFAZ** (copia a chave e abre o portal) e, depois dele,
    **Valor confere** / **Valor diferente**. A conferência fica no `historico.csv` como MANUAL, com data, hora e usuário.
 3. Com valor igual ao do sistema, a linha vira AJUSTE DE CHAVE e o botão **Ajustar chave no banco** é liberado se:
-   SEFAZ 100/150 para a chave autorizada; as duas chaves com os mesmos UF, AAMM, CNPJ, modelo, série e número;
+   SEFAZ autorizada para a chave autorizada (100/150; protocolo 100/150/120); as duas chaves com os mesmos UF, AAMM, CNPJ, modelo, série e número;
    chave autorizada com 44 dígitos e DV válido; valor do sistema = valor autorizado; chave autorizada em nenhuma
    outra linha de `nota_saida`.
 
@@ -105,7 +115,11 @@ por linha). Importe no Metre `importar-1`, depois `importar-2` e assim por diant
 Toda tentativa em contingência (`tpEmis=9`) ainda não autorizada é listada. Só as que têm **retorno 539**
 registrado (`REJEICAO_NOTA`) são processadas e copiadas. Se o número já tem autorização com outra chave mas o
 Metre ainda não registrou a 539, a linha fica PENDENTE "sem retorno 539" (informativa). Sem autorização para o
-número, fica EM CONTINGÊNCIA.
+número, fica EM CONTINGÊNCIA, pedindo para transmitir a nota no Metre.
+
+O `REJEICAO_NOTA` é gravado quando a nota é transmitida, que pode ser dias depois da emissão. Com a lista do banco,
+além das pastas do período de emissão (+ `DiasExtrasCandidatos`, que só servem para achar o XML autorizado), são lidas
+as pastas dos dias de `dt_tentativa_emissao` das notas da contingência, e os REJEICAO desses dias valem.
 
 ## Regras de segurança
 

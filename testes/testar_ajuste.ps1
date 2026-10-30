@@ -53,18 +53,21 @@ function Gravar($caminho, $texto) {
     [IO.File]::WriteAllText($caminho, '<?xml version="1.0" encoding="UTF-8"?>' + $texto, $utf8)
 }
 
-# Tentativa do sistema rejeitada com 539 apontando a chave autorizada.
-function Rejeicao539($numero, $chave, $autorizada, $vNF) {
+# Tentativa do sistema rejeitada com 539 apontando a chave autorizada (gravada na pasta do dia $dia de 10/2026).
+function Rejeicao539($numero, $chave, $autorizada, $vNF, $dia = '19') {
     $n = NFe $chave $numero $vNF
     $p = "<protNFe versao=`"4.00`"><infProt><tpAmb>1</tpAmb><verAplic>TESTE</verAplic><chNFe>$chave</chNFe><dhRecbto>2026-10-21T17:40:00-03:00</dhRecbto><cStat>539</cStat><xMotivo>Rejeicao: Duplicidade de NF-e com diferenca na Chave de Acesso [chNFe:$autorizada][nRec:$NRec]</xMotivo></infProt></protNFe>"
-    Gravar (Join-Path $xmls "10_2026\19\NOTA_${numero}_SERIE_${Serie}_REJEICAO_NOTA.xml") "<nfeProc versao=`"4.00`" xmlns=`"$Ns`">$($n.Xml)$p</nfeProc>"
+    Gravar (Join-Path $xmls "10_2026\$dia\NOTA_${numero}_SERIE_${Serie}_REJEICAO_NOTA.xml") "<nfeProc versao=`"4.00`" xmlns=`"$Ns`">$($n.Xml)$p</nfeProc>"
 }
 
-function Resposta($chave, $digVal, $nProt, $cStatProt) {
+# $extra vai depois do xMotivo do protocolo (ex.: cMsg/xMsg do "autorizado com alerta").
+function Resposta($chave, $digVal, $nProt, $cStatProt, $xMotivoProt = 'Autorizado o uso da NF-e', $extra = '') {
     $x = "<cStat>100</cStat><xMotivo>Autorizado o uso da NF-e</xMotivo><cUF>31</cUF><dhRecbto>2026-10-26T15:34:30-03:00</dhRecbto><chNFe>$chave</chNFe>" +
-        "<protNFe versao=`"4.00`"><infProt Id=`"ID$nProt`"><tpAmb>1</tpAmb><verAplic>TESTE</verAplic><chNFe>$chave</chNFe><dhRecbto>2026-10-21T17:42:05-03:00</dhRecbto><nProt>$nProt</nProt><digVal>$digVal</digVal><cStat>$cStatProt</cStat><xMotivo>Autorizado o uso da NF-e</xMotivo></infProt></protNFe>"
+        "<protNFe versao=`"4.00`"><infProt Id=`"ID$nProt`"><tpAmb>1</tpAmb><verAplic>TESTE</verAplic><chNFe>$chave</chNFe><dhRecbto>2026-10-21T17:42:05-03:00</dhRecbto><nProt>$nProt</nProt><digVal>$digVal</digVal><cStat>$cStatProt</cStat><xMotivo>$xMotivoProt</xMotivo>$extra</infProt></protNFe>"
     [IO.File]::WriteAllText((Join-Path $respostas "$chave.xml"), $x, $utf8)
 }
+
+function SqlN($v) { if ($null -eq $v) { 'NULL' } else { "$v" } }
 
 function Hex($s) { -join ($utf8.GetBytes($s) | ForEach-Object { $_.ToString('X2') }) }
 
@@ -138,6 +141,58 @@ try {
     }
     $aTentativa = NFe $aSis $Numero $Valor
 
+    # ---------- XML autorizado só no chefxml, pelo pedido (como no cliente) ----------
+    # O REJEICAO com a 539 está no servidor, sem ASSINADA da chave autorizada. A linha aponta (XML) para a tentativa
+    # (PtrId); o XML autorizado (AutId) tem id_nota_saida NULL e, se PedAut = PedPtr, o mesmo id_pedido.
+    $porPedido = @(
+        @{ N = 2010; S = '30000017'; A = '30000018'; V = '61.00'; VAut = '61.00'; PtrId = 700010; AutId = 700007; PedPtr = 5010; PedAut = 5010; CStat = '120' },  # J: (a) valor igual; protocolo 120
+        @{ N = 2011; S = '30000019'; A = '30000020'; V = '22.00'; VAut = '27.50'; PtrId = 700040; AutId = 700038; PedPtr = 5011; PedAut = 5011 },   # K: (b) valor diferente
+        @{ N = 2012; S = '30000021'; A = '30000022'; V = '14.00'; VAut = '14.00'; PtrId = 700070; AutId = 700073; PedPtr = 5012; PedAut = 5012 },   # L: (c) depois do ponteiro
+        @{ N = 2013; S = '30000023'; A = '30000024'; V = '16.00'; VAut = '16.00'; PtrId = 700100; AutId = 700098; PedPtr = $null; PedAut = $null }, # M: (d) sem id_pedido
+        @{ N = 2014; S = '30000025'; A = '30000026'; V = '19.00'; VAut = '19.00'; PtrId = 700130; AutId = 700128; PedPtr = 5014; PedAut = 5014; FalsoId = 700126 }, # N: (e) dois da chave
+        @{ N = 2015; S = '30000027'; A = '30000028'; V = '11.00'; VAut = '11.00'; PtrId = 700160; AutId = 700157; PedPtr = 5015; PedAut = 5015; DiaRej = '28'; Tent = "'2026-10-28 15:00:00'" }, # O: (f)
+        @{ N = 2019; S = '30000035'; A = '30000036'; V = '23.00'; VAut = '23.00'; PtrId = 700190; AutId = 700188; PedPtr = 5019; PedAut = 7777 },   # T: outro pedido
+        # U: (f) REJEICAO num dia de tentativa dentro dos dias extras de candidatos (caso visto no cliente)
+        @{ N = 2020; S = '30000037'; A = '30000038'; V = '29.00'; VAut = '29.00'; PtrId = 700220; AutId = 700217; PedPtr = 5020; PedAut = 5020; DiaRej = '21'; Tent = "'2026-10-21 09:00:00'" }
+    )
+    $sqlNotas = @(); $sqlXmls = @(); $idNovo = $IdMetre + 100
+    foreach ($x in $porPedido) {
+        $x.Id = $idNovo++; $x.Sis = Chave $x.N $x.S; $x.ChAut = Chave $x.N $x.A
+        $dia = if ($x.DiaRej) { $x.DiaRej } else { '19' }
+        Rejeicao539 $x.N $x.Sis $x.ChAut $x.V $dia
+        $tent = NFe $x.Sis $x.N $x.V; $aut = NFe $x.ChAut $x.N $x.VAut
+        $cs = if ($x.CStat) { $x.CStat } else { '100' }
+        if ($cs -eq '120') {
+            Resposta $x.ChAut $aut.Digest ('13126000000' + $x.N) $cs 'Autorizado o uso da NF-e, com alerta' `
+                '<cMsg>172</cMsg><xMsg>Alerta: Situacao do CNPJ destinatario inabilitado no momento da autorizacao</xMsg>'
+        }
+        else { Resposta $x.ChAut $aut.Digest ('13126000000' + $x.N) $cs }
+        $sqlNotas += "($($x.Id), $($x.PtrId), $($x.N), $Serie, '$($x.Sis)', '2026-10-19', $(if ($x.PedPtr) { $x.PedPtr } else { 0 }), $($x.V), '2026-10-19 14:00:00', $(if ($x.Tent) { $x.Tent } else { 'NULL' }), 'Lote processado', 'Em contigencia', NULL)"
+        $sqlXmls += "($($x.PtrId), CONVERT(UNHEX('$(Hex $tent.Xml)') USING utf8), $($x.Id), $(SqlN $x.PedPtr))"
+        # Como o Metre grava as tentativas no chefxml: lote de envio, sem protocolo.
+        $lote = '<enviNFe versao="4.00" xmlns="' + $Ns + '"><idLote>1</idLote><indSinc>1</indSinc>' + $aut.Xml + '</enviNFe>'
+        $sqlXmls += "($($x.AutId), CONVERT(UNHEX('$(Hex $lote)') USING utf8), NULL, $(SqlN $x.PedAut))"
+        if ($x.FalsoId) {
+            # Mesma chave e mesmo pedido, outro conteúdo (valor 91,00): o DigestValue não é o digVal da SEFAZ.
+            $falso = NFe $x.ChAut $x.N '91.00'
+            $sqlXmls += "($($x.FalsoId), CONVERT(UNHEX('$(Hex $falso.Xml)') USING utf8), NULL, $(SqlN $x.PedAut))"
+        }
+    }
+    # P: REJEICAO num dia fora do período e sem tentativa nesse dia (não é lido); Q: sem REJEICAO (não transmitida);
+    # R: SEFAZ com o cStat do protocolo inválido (999) apesar do topo 100.
+    $P = @{ N = 2016; Sis = (Chave 2016 '30000029'); ChAut = (Chave 2016 '30000030'); V = '9.00'; Id = $idNovo++ }
+    $Q = @{ N = 2017; Sis = (Chave 2017 '30000031'); V = '8.00'; Id = $idNovo++ }
+    $R = @{ N = 2018; Sis = (Chave 2018 '30000033'); ChAut = (Chave 2018 '30000034'); V = '7.00'; Id = $idNovo++ }
+    # V: REJEICAO num dia extra de candidatos (22) sem tentativa nesse dia: continua só candidato, como antes.
+    $V = @{ N = 2021; Sis = (Chave 2021 '30000039'); ChAut = (Chave 2021 '30000040'); V = '6.00'; Id = $idNovo++ }
+    Rejeicao539 $P.N $P.Sis $P.ChAut $P.V '27'
+    Rejeicao539 $V.N $V.Sis $V.ChAut $V.V '22'
+    Rejeicao539 $R.N $R.Sis $R.ChAut $R.V
+    $rXml = NFe $R.ChAut $R.N $R.V; Resposta $R.ChAut $rXml.Digest '131260000002018' '999' 'Situacao invalida'
+    foreach ($x in $P, $Q, $R, $V) {
+        $sqlNotas += "($($x.Id), NULL, $($x.N), $Serie, '$($x.Sis)', '2026-10-19', 0, $($x.V), '2026-10-19 15:00:00', NULL, 'Lote processado', 'Em contigencia', NULL)"
+    }
+
     $sql = @"
 CREATE DATABASE chef; CREATE DATABASE chefxml;
 CREATE TABLE chef.nota_saida (
@@ -158,12 +213,14 @@ INSERT INTO chef.nota_saida (id_nota_saida, XML, numero, serie, chave_acesso, dt
   ($($H.Id), NULL, $($H.N), $Serie, '$($H.Sis)', '2026-10-19', 7, $($H.V), '2026-10-19 13:20:00', NULL, 'Lote processado', 'Em contigencia', NULL),
   ($($I.Id), NULL, $($I.N), $Serie, '$($I.Sis)', '2026-10-19', 8, $($I.V), '2026-10-19 13:30:00', NULL, 'Lote processado', 'Em contigencia', NULL),
   (500, NULL, $($D.N), $Serie, '$($D.Aut)', '2026-10-19', 3, $($D.V), NULL, NULL, NULL, 'Autorizada', NULL),
-  (501, NULL, 1999, $Serie, '$(Chave 1999 '40000001')', '2026-10-19', 9, 10.00, NULL, NULL, NULL, 'Autorizada', NULL);
+  (501, NULL, 1999, $Serie, '$(Chave 1999 '40000001')', '2026-10-19', 9, 10.00, NULL, NULL, NULL, 'Autorizada', NULL),
+  $($sqlNotas -join ",`n  ");
 INSERT INTO chefxml.xml (id_xml, XML, id_nota_saida, id_pedido) VALUES
   ($IdXml, CONVERT(UNHEX('$(Hex $aTentativa.Xml)') USING utf8), $IdMetre, $Pedido),
   (400001, CONVERT(UNHEX('$(Hex $bXml.Xml)') USING utf8), $($B.Id), 1),
   (400002, 'H4sIAAAAAAAAA+3BMQEAAADCoPVPbQwfoAAAAAAAAAAAAAAAAAAAAIC3AYbSVKsAQAAA', $($C.Id), 2),
-  (400003, CONVERT(UNHEX('$(Hex $eXml.Xml)') USING utf8), $($E.Id), 4);
+  (400003, CONVERT(UNHEX('$(Hex $eXml.Xml)') USING utf8), $($E.Id), 4),
+  $($sqlXmls -join ",`n  ");
 CREATE USER 'metre'@'%' IDENTIFIED BY '$senhaMetre'; GRANT SELECT, UPDATE ON chef.* TO 'metre'@'%'; GRANT SELECT ON chefxml.* TO 'metre'@'%';
 CREATE USER 'leitor'@'%' IDENTIFIED BY '$senhaMetre'; GRANT SELECT ON chef.* TO 'leitor'@'%'; GRANT SELECT ON chefxml.* TO 'leitor'@'%';
 FLUSH PRIVILEGES;
