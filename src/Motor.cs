@@ -139,8 +139,9 @@ namespace DuplicidadeNfce
             foreach (var n in Notas.Where(n => n.Erro != null)) Log.Info("Erro de leitura: " + n.Caminho + " - " + n.Erro);
             bool comBanco = (Cfg.FonteContingencia ?? "").Trim().Equals("banco", StringComparison.OrdinalIgnoreCase);
             Analisador = new Analisador(Notas, consultar, Log, Contingencia, comBanco
-                ? new FontesAjuste { BuscarXmls = BuscarXmlsChave, LinhasComChave = LinhasComChave, XmlsDoDiaDaAutorizacao = XmlsDoDiaDaAutorizacao }
+                ? new FontesAjuste { BuscarXmls = BuscarXmlsChave, LinhasComChave = LinhasComChave }
                 : null);
+            Analisador.XmlsDoDia = XmlsDoDiaDaAutorizacao;
         }
 
         // ---------- Ajuste de chave: o XML da chave autorizada guardado pelo Metre no banco ----------
@@ -163,26 +164,52 @@ namespace DuplicidadeNfce
 
         // Número reaproveitado (o XML autorizado é de um dia fora do período da contingência): a data de autorização da
         // SEFAZ diz a pasta. Só os arquivos desse número, nesse dia e no anterior (virada da meia-noite), sem varrer C:\Chef\NFCe.
+        // Vale também nas PastasXmlExtras (caixa, pen drive), onde a pasta pode ter os arquivos soltos.
         List<NotaXml> XmlsDoDiaDaAutorizacao(string chave, string dhRecbto)
         {
             var lista = new List<NotaXml>();
             DateTime? dia = DiaEmissao(dhRecbto);
-            if (dia == null) return lista;
-            string numero = long.Parse(chave.Substring(25, 9)).ToString();
-            foreach (var d in new[] { dia.Value, dia.Value.AddDays(-1) })
+            string mascara = "NOTA_" + long.Parse(chave.Substring(25, 9)) + "_*";
+            Action<string, SearchOption> ler = (dir, modo) =>
             {
-                string dir = Path.Combine(Raiz, d.ToString("MM_yyyy"), d.ToString("dd"));
-                if (!Directory.Exists(dir)) continue;
-                foreach (var f in Directory.EnumerateFiles(dir, "NOTA_" + numero + "_*", SearchOption.AllDirectories).Where(ExtensaoValida)
-                    .Where(f => !excluidas.Any(x => Dentro(f, x))))
+                if (!Directory.Exists(dir)) return;
+                foreach (var f in Directory.EnumerateFiles(dir, mascara, modo).Where(ExtensaoValida).Where(f => !excluidas.Any(x => Dentro(f, x))))
                 {
                     var n = NotaXml.Ler(f);
-                    if (n.Chave != chave) continue;
-                    n.DataPasta = d;
-                    lista.Add(n);
+                    if (n.Chave == chave) lista.Add(n);
                 }
+            };
+            Action<string> lerDias = raiz =>
+            {
+                if (dia == null) return;
+                foreach (var d in new[] { dia.Value, dia.Value.AddDays(-1) })
+                    ler(Path.Combine(raiz, d.ToString("MM_yyyy"), d.ToString("dd")), SearchOption.AllDirectories);
+            };
+            lerDias(Raiz);
+            foreach (string extra in ExtrasAcessiveis())
+            {
+                try
+                {
+                    ler(extra, SearchOption.TopDirectoryOnly);
+                    lerDias(extra);
+                }
+                catch (Exception ex) { Log.Info("  pasta extra " + extra + ": " + ex.Message); }
             }
             return lista;
+        }
+
+        // Caixa desligado faz cada acesso à rede demorar: cada pasta extra é testada uma vez só, no primeiro uso.
+        List<string> extrasAcessiveis;
+        List<string> ExtrasAcessiveis()
+        {
+            if (extrasAcessiveis != null) return extrasAcessiveis;
+            extrasAcessiveis = new List<string>();
+            foreach (string p in (Cfg.PastasXmlExtras ?? "").Split(';').Select(x => x.Trim()).Where(x => x != ""))
+            {
+                if (Directory.Exists(p)) extrasAcessiveis.Add(p);
+                else Log.Tela("Pasta extra de XMLs inacessível (ignorada): " + p);
+            }
+            return extrasAcessiveis;
         }
 
         List<string> LinhasComChave(string chave)

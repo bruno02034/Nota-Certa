@@ -121,7 +121,7 @@ namespace DuplicidadeNfce
                 Fim(l, Status.Pendente, "já existe no destino", log);
                 return;
             }
-            byte[] dados = NotaXml.LerSomenteLeitura(fonte.Caminho);
+            byte[] dados = fonte.Conteudo ?? NotaXml.LerSomenteLeitura(fonte.Caminho);
             if (NotaXml.HashSha256(dados) != fonte.Sha256)
             {
                 Fim(l, Status.Pendente, "arquivo de origem mudou desde a análise; rode de novo", log);

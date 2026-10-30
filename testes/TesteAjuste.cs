@@ -114,7 +114,8 @@ namespace DuplicidadeNfce
             Verdade(B.Status == Status.AjusteChave && B.Ajuste.OrigemValor.Contains("chefxml.xml"), "B: XML autorizado no banco chefxml confere com digVal -> AJUSTE DE CHAVE (" + B.Motivo + ")");
             Verdade(C.Status == Status.Pendente && C.Ajuste.PodeConferirPortal, "C: XML autorizado só fora das pastas do período não é procurado (rápido) -> conferir no portal");
             Verdade(D.Status == Status.Pendente && D.Motivo.Contains("já está em outra linha"), "D: chave autorizada já em outra linha -> bloqueado (" + D.Motivo + ")");
-            Verdade(E.Status == Status.Pendente && E.Motivo.Contains("≠ sistema"), "E: valor autorizado diferente do sistema -> não ajusta (" + E.Motivo + ")");
+            Verdade(E.Status == Status.ACopiar && E.Ajuste == null && E.Fonte.Conteudo != null && E.Motivo.Contains("≠ SEFAZ"),
+                "E: XML no banco com valor diferente do sistema -> não ajusta, grava para importar (" + E.Motivo + ")");
             var F = nota("2006"); var G = nota("2007");
             Verdade(F.Status == Status.AjusteChave && F.Fonte == null && F.CaminhoDestino == null && AjusteChave.Trava(F) == null,
                 "F: ASSINADA autorizado na pasta e MESMO valor -> AJUSTE DE CHAVE, nada para importar (" + F.Motivo + ")");
@@ -151,9 +152,49 @@ namespace DuplicidadeNfce
             Verdade(J.Status == Status.AjusteChave && !J.Ajuste.PodeConferirPortal && J.Ajuste.OrigemValor.Contains("id_xml 700007 (mesmo pedido 5010)") &&
                 J.Fonte == null && AjusteChave.Trava(J) == null,
                 "(a) XML autorizado só no chefxml, id_nota_saida NULL e mesmo pedido, valor igual -> AJUSTE DE CHAVE sem portal (" + J.Motivo + ")");
-            Verdade(K.Status == Status.Pendente && K.ValorSefaz == 27.50m && K.Motivo.StartsWith("valor diferente: falta o ASSINADA para importar") &&
-                K.Fonte == null && K.CaminhoDestino == null && AjusteChave.Trava(K) != null,
-                "(b) idem com valor diferente -> PENDENTE com Valor SEFAZ e falta do ASSINADA (" + K.Motivo + ")");
+            Verdade(K.Status == Status.ACopiar && K.ValorSefaz == 27.50m && K.Ajuste == null && K.Fonte.Conteudo != null && K.CaminhoOrigem.Contains("id_xml 700038") &&
+                K.CaminhoDestino.Contains("importar-1") && K.ArquivoEscolhido.Contains("_CHAVE_" + K.ChaveAutorizada + "_Temp_ANTES_ENVIO_19_10_2026_13_47_50.xml"),
+                "(b) idem com valor diferente -> gravado do banco para importar (" + K.Motivo + ")");
+            byte[] conteudoK = K.Fonte.Conteudo;
+            Copiador.Executar(new List<LinhaRelatorio> { K }, m.Historico, m.Log);
+            var copiaK = K.Status == Status.Copiado ? NotaXml.Ler(K.CaminhoDestino) : null;
+            Verdade(copiaK != null && File.ReadAllBytes(K.CaminhoDestino).SequenceEqual(conteudoK) && copiaK.Chave == K.ChaveAutorizada &&
+                copiaK.DigestCalculado == K.DigValSefaz && copiaK.VNF == 27.50m && copiaK.Tipo == TipoArquivo.Temp,
+                "(b) arquivo gravado é o XML do banco, com DigestValue = digVal (" + K.Status + ": " + K.Motivo + ")");
+
+            // ---------- Nota emitida em outro computador: pastas extras (caixa, pen drive) ----------
+            var Caixa = nota("2026"); var Pen = nota("2027"); var SoNfce = nota("2028"); var NfceBanco = nota("2029");
+            Verdade(Caixa.Status == Status.ACopiar && Caixa.ValorSefaz == 55.00m && Caixa.CaminhoOrigem.Contains(@"\caixa\10_2026\12\"),
+                "Pasta extra: acha o Temp no dia da autorização dentro da pasta do caixa (" + Caixa.CaminhoOrigem + ")");
+            Verdade(Pen.Status == Status.ACopiar && Pen.ValorSefaz == 66.00m && Pen.CaminhoOrigem.Contains(@"\pendrive\NOTA_2027"),
+                "Pasta extra: acha o Temp solto na pasta do pen drive (" + Pen.CaminhoOrigem + ")");
+            Verdade(SoNfce.Status == Status.ACopiar && SoNfce.CaminhoOrigem.Contains(@"\caixa\") && SoNfce.ArquivoEscolhido.Contains("Temp_ANTES_ENVIO"),
+                "Só o _NFCE nas pastas lidas: busca o Temp no caixa, o _NFCE não é copiado (" + SoNfce.ArquivoEscolhido + ")");
+            Verdade(NfceBanco.Status == Status.ACopiar && NfceBanco.Fonte.Conteudo != null && NfceBanco.CaminhoOrigem.Contains("id_xml 700300"),
+                "Só o _NFCE nas pastas lidas e XML no chefxml: gravado do banco para importar (" + NfceBanco.CaminhoOrigem + ")");
+            string logExtras = System.Text.Encoding.UTF8.GetString(NotaXml.LerSomenteLeitura(m.ArqLog));
+            Verdade(logExtras.Split(new[] { "caixa_desligado" }, StringSplitOptions.None).Length == 2,
+                "Pasta extra inacessível: avisa uma vez só e segue");
+
+            // ---------- Sem conexão com o banco (FonteContingencia=arquivos) ----------
+            {
+                string iniArq = Path.Combine(trabalho, "sem_banco.ini");
+                File.WriteAllText(iniArq, File.ReadAllText(ini).Replace("FonteContingencia=banco", "FonteContingencia=arquivos")
+                    .Replace("PastaDestino=" + trabalho + @"\dup", "PastaDestino=" + trabalho + @"\dup_sem_banco"));
+                var cfgArq = Config.Carregar(iniArq);
+                cfgArq.DataInicial = new DateTime(2026, 10, 19);
+                cfgArq.DataFinal = new DateTime(2026, 10, 19);
+                var mArq = new Motor(cfgArq, trabalho, false);
+                mArq.Log.AoMostrar = s => { };
+                mArq.Varrer();
+                var semBanco = Processar(mArq);
+                var R22 = semBanco.First(l => l.Numero == "2022"); var R26 = semBanco.First(l => l.Numero == "2026");
+                Verdade(mArq.Contingencia == null && R22.Status == Status.ACopiar && R22.ValorSefaz == 77.00m && R22.CaminhoOrigem.Contains(@"\10_2026\12\"),
+                    "Sem banco: acha o XML pelo dia da autorização (" + R22.Motivo + ")");
+                Verdade(R26.Status == Status.ACopiar && R26.CaminhoOrigem.Contains(@"\caixa\"), "Sem banco: acha o XML na pasta do caixa");
+                Verdade(semBanco.All(l => l.Status != Status.AjusteChave), "Sem banco: nenhuma linha oferece ajuste de chave");
+                mArq.Dispose();
+            }
             Verdade(L.Status == Status.AjusteChave && L.Ajuste.OrigemValor.Contains("id_xml 700073"), "(c) XML do pedido depois do ponteiro também vale (" + L.Ajuste.OrigemValor + ")");
             Verdade(M.Status == Status.Pendente && M.Ajuste != null && M.Ajuste.PodeConferirPortal &&
                 System.Text.Encoding.UTF8.GetString(NotaXml.LerSomenteLeitura(m.ArqLog)).Contains("id_xml 700100 sem id_pedido"),

@@ -24,6 +24,7 @@ namespace DuplicidadeNfce
         const string NsDsig = "http://www.w3.org/2000/09/xmldsig#";
 
         public string Caminho, Nome;
+        public byte[] Conteudo;     // só o XML que veio do banco (não há arquivo de onde copiar)
         public DateTime? DataPasta;
         public bool NaFaixaPrincipal = true;
         public TipoArquivo Tipo;
@@ -98,7 +99,7 @@ namespace DuplicidadeNfce
         // XML que não está em arquivo (ex.: guardado pelo Metre no banco chefxml). 'origem' faz o papel do caminho.
         public static NotaXml LerConteudo(string origem, byte[] bytes)
         {
-            var nota = new NotaXml { Caminho = origem, Nome = origem, Tipo = TipoArquivo.Outro };
+            var nota = new NotaXml { Caminho = origem, Nome = origem, Tipo = TipoArquivo.Outro, Conteudo = bytes };
             try
             {
                 nota.Tamanho = bytes.LongLength;

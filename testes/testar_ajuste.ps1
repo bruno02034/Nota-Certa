@@ -213,6 +213,30 @@ try {
         $sqlNotas += "($($x.Id), NULL, $($x.N), $Serie, '$($x.Sis)', '2026-10-19', $($x.Ped), $($x.V), '2026-10-19 12:09:00', NULL, 'Lote processado', 'Em contigencia', NULL)"
     }
 
+    # Nota emitida no caixa: 2026 só na pasta do caixa (estrutura de dias); 2027 solto na pasta do pen drive;
+    # 2028 só o _NFCE aqui e o Temp no caixa; 2029 só o _NFCE aqui e o XML no chefxml.
+    $caixa = Join-Path $tmp 'caixa'; $pendrive = Join-Path $tmp 'pendrive'
+    $fora = @(
+        @{ N = 2026; S = '30000049'; A = '30000050'; V = '50.00'; VAut = '55.00'; Onde = "$caixa\10_2026\12" },
+        @{ N = 2027; S = '30000051'; A = '30000052'; V = '60.00'; VAut = '66.00'; Onde = $pendrive },
+        @{ N = 2028; S = '30000053'; A = '30000054'; V = '70.00'; VAut = '77.00'; Onde = "$caixa\10_2026\12"; NfceLocal = $true },
+        @{ N = 2029; S = '30000055'; A = '30000056'; V = '80.00'; VAut = '88.00'; NfceLocal = $true; XmlId = 700300 }
+    )
+    foreach ($x in $fora) {
+        $x.Id = $idNovo++; $x.Sis = Chave $x.N $x.S; $x.ChAut = Chave $x.N $x.A
+        Rejeicao539 $x.N $x.Sis $x.ChAut $x.V
+        $aut = NFe $x.ChAut $x.N $x.VAut
+        Resposta $x.ChAut $aut.Digest ('13126000000' + $x.N) '100' 'Autorizado o uso da NF-e' '' '2026-10-12T14:53:45-03:00'
+        $lote = "<enviNFe versao=`"4.00`" xmlns=`"$Ns`"><idLote>1</idLote><indSinc>1</indSinc>$($aut.Xml)</enviNFe>"
+        if ($x.Onde) { Gravar (Join-Path $x.Onde "NOTA_$($x.N)_MODELO_65_SERIE_${Serie}_CHAVE_$($x.ChAut)_Temp_ANTES_ENVIO_12_10_2026_14_53_43.xml") $lote }
+        if ($x.NfceLocal) {
+            $p = "<protNFe versao=`"4.00`"><infProt><tpAmb>1</tpAmb><chNFe>$($x.ChAut)</chNFe><dhRecbto>2026-10-12T14:53:45-03:00</dhRecbto><nProt>$('13126000000' + $x.N)</nProt><digVal>$($aut.Digest)</digVal><cStat>100</cStat><xMotivo>Autorizado</xMotivo></infProt></protNFe>"
+            Gravar (Join-Path $xmls "10_2026\19\Autorizadas\NOTA_$($x.N)_MODELO_65_SERIE_${Serie}_NFCE.xml") "<nfeProc versao=`"4.00`" xmlns=`"$Ns`">$($aut.Xml)$p</nfeProc>"
+        }
+        if ($x.XmlId) { $sqlXmls += "($($x.XmlId), CONVERT(UNHEX('$(Hex $lote)') USING utf8), $($x.Id), NULL)" }
+        $sqlNotas += "($($x.Id), NULL, $($x.N), $Serie, '$($x.Sis)', '2026-10-19', 0, $($x.V), '2026-10-19 12:09:00', NULL, 'Lote processado', 'Em contigencia', NULL)"
+    }
+
     $sql = @"
 CREATE DATABASE chef; CREATE DATABASE chefxml;
 CREATE TABLE chef.nota_saida (
@@ -283,6 +307,7 @@ DbSenha=$senhaMetre
 DbBanco=chef
 DbBancoXml=chefxml
 MariaDbDll=$PastaMariaDb\lib\libmariadb.dll
+PastasXmlExtras=$caixa;$pendrive;$tmp\caixa_desligado
 "@ | Set-Content -Path $ini -Encoding UTF8
 
     # ---------- Programa de teste (mesmas classes do NotaCerta) ----------

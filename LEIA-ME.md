@@ -91,15 +91,25 @@ outro pedido e outro dia de emissão, a linha avisa NÚMERO REAPROVEITADO com os
 importação mesmo com valor igual, porque o ajuste ligaria a chave à venda errada. Importar troca a venda do sistema pela
 autorizada.
 
-1. O valor autorizado vem do XML da chave nas pastas do período ou do dia da autorização (DigestValue = `digVal`; vale
-   qualquer XML que confira, inclusive só o `Temp_ANTES_ENVIO` sem ASSINADA) ou, sem arquivo, do banco
+**Nota emitida em outro computador (caixa):** nesta ordem, sempre exigindo DigestValue = `digVal`:
+- `PastasXmlExtras` no `duplicidade.ini` (separadas por `;`): pasta compartilhada do caixa (`\\CAIXA1\Chef\NFCe`) ou uma
+  pasta local com os XMLs trazidos num pen drive. Procura as subpastas `MM_AAAA\DD` do dia da autorização e os arquivos
+  soltos na própria pasta. Pasta inacessível é avisada uma vez e ignorada.
+- Banco `chefxml`: o XML autorizado guardado pelo Metre é gravado em `importar-N` com o nome de `Temp_ANTES_ENVIO`, e
+  a origem aparece na linha e no `historico.csv`.
+
+**Sem conexão com o banco:** com `FonteContingencia=arquivos` e as pastas apontando para `\\SERVIDOR\Chef`, a busca pelo
+dia da autorização e as pastas extras funcionam. A lista vem dos XMLs (pode diferir da aba Contingência do Metre), o
+período é o informado na tela e não há ajuste de chave: valor igual também vai para a cópia.
+
+1. O valor autorizado vem do XML da chave nas pastas do período, do dia da autorização ou extras (DigestValue = `digVal`;
+   vale qualquer XML que confira, inclusive só o `Temp_ANTES_ENVIO` sem ASSINADA) ou, sem arquivo, do banco
    `chefxml.xml` (só leitura, sempre por índice). No banco valem o XML apontado pela linha (`nota_saida.XML`), os da
    linha (`id_nota_saida`) e os **do mesmo pedido**: o Metre grava as tentativas de emissão, inclusive a que a SEFAZ
    autorizou, com `id_nota_saida` vazio e o mesmo `id_pedido`, a poucos registros do XML da linha. Por isso são lidos
    os `id_xml` até 20 antes e 20 depois dele com o mesmo `id_pedido` (sem `id_pedido`, essa busca não é feita).
    Achado o XML com DigestValue = `digVal`: valor igual vira AJUSTE DE CHAVE sem passar pelo portal; valor diferente
-   fica PENDENTE "valor diferente: falta o ASSINADA para importar", com o Valor SEFAZ na tela (o arquivo de importação
-   não é gerado a partir do banco). O `C:\Chef\NFCe` inteiro não é varrido: deixava o processamento lento demais.
+   é gravado em `importar-N` para importar. O `C:\Chef\NFCe` inteiro não é varrido: deixava o processamento lento demais.
 2. Sem XML nenhum (a consulta da SEFAZ não traz o valor), o painel de detalhes mostra **Conferir na SEFAZ** (copia a chave e abre o portal) e, depois dele,
    **Valor confere** / **Valor diferente**. A conferência fica no `historico.csv` como MANUAL, com data, hora e usuário.
 3. Com valor igual ao do sistema, a linha vira AJUSTE DE CHAVE e o botão **Ajustar chave no banco** é liberado se:

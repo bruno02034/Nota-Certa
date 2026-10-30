@@ -65,7 +65,6 @@ namespace DuplicidadeNfce
     {
         public Func<Tentativa, string, List<NotaXml>> BuscarXmls;   // qualquer pasta/nome e chefxml.xml
         public Func<string, List<string>> LinhasComChave;           // ids de nota_saida que já têm a chave
-        public Func<string, string, List<NotaXml>> XmlsDoDiaDaAutorizacao;  // chave + dhRecbto da SEFAZ: arquivos fora do período
     }
 
     class Selecao
@@ -110,6 +109,10 @@ namespace DuplicidadeNfce
         readonly List<LinhaContingencia> contingencia;   // lista do Metre (banco/CSV); null = deduzir dos XMLs
         readonly FontesAjuste fontes;
         Historico historicoAtual;
+        string pastaCopiaAtual;
+        Dictionary<string, int> rodadas = new Dictionary<string, int>();
+        // Chave + dhRecbto da SEFAZ: arquivos fora do período lido (pasta do dia da autorização e pastas extras). Não depende do banco.
+        public Func<string, string, List<NotaXml>> XmlsDoDia;
 
         public Analisador(List<NotaXml> notas, Func<string, List<NotaXml>, RespostaSefaz> consultar, Log log,
             List<LinhaContingencia> contingencia = null, FontesAjuste fontes = null)
@@ -383,15 +386,20 @@ namespace DuplicidadeNfce
             if (!sel.Sefaz.Autorizada) { sel.MotivoPendente = "situação na SEFAZ não é autorizada: " + sel.Sefaz.Situacao; return sel; }
             if (sel.Sefaz.Prot.ChNFe != k) { sel.MotivoPendente = "SEFAZ devolveu protocolo de outra chave: " + sel.Sefaz.Prot.ChNFe; return sel; }
 
-            if (arqs.Count == 0 && fontes != null && fontes.XmlsDoDiaDaAutorizacao != null)
+            // Sem arquivo que o Metre importe nas pastas lidas: procura no dia da autorização e nas pastas extras.
+            if (XmlsDoDia != null && !arqs.Any(Importavel))
             {
-                try { arqs = fontes.XmlsDoDiaDaAutorizacao(k, sel.Sefaz.Prot.DhRecbto); }
+                var achados = new List<NotaXml>();
+                try { achados = XmlsDoDia(k, sel.Sefaz.Prot.DhRecbto); }
                 catch (Exception ex) { log.Info("  busca na pasta do dia da autorização falhou: " + ex.Message); }
-                if (arqs.Count > 0)
+                var novos = achados.Where(n => !arqs.Any(a => a.Caminho.Equals(n.Caminho, StringComparison.OrdinalIgnoreCase))).ToList();
+                if (novos.Count > 0)
                 {
+                    arqs = arqs.Concat(novos).ToList();
                     porChave[k] = arqs;
                     sel.SemArquivo = false;
-                    log.Info("  " + arqs.Count + " arquivo(s) da chave na pasta do dia da autorização (" + sel.Sefaz.Prot.DhRecbto + ")");
+                    log.Info("  " + novos.Count + " arquivo(s) da chave fora das pastas lidas (autorização em " + sel.Sefaz.Prot.DhRecbto + "): " +
+                        string.Join(" | ", novos.Select(n => n.Caminho)));
                 }
             }
             var escolhido = Escolher(arqs, sel.Sefaz.Prot, "SEFAZ", sel, out motivo, out copias);
@@ -408,6 +416,11 @@ namespace DuplicidadeNfce
                 (copias > 1 ? "; " + copias + " cópias idênticas" : "");
             log.Info("  Escolhido: " + escolhido.Caminho);
             return sel;
+        }
+
+        static bool Importavel(NotaXml a)
+        {
+            return a.Tipo == TipoArquivo.Assinada || (a.Tipo == TipoArquivo.Temp && a.Nome.ToUpperInvariant().Contains("TEMP_ANTES_ENVIO"));
         }
 
         // Único arquivo cujo conteúdo é o autorizado no protocolo 'prot'; null com o motivo em caso de dúvida.
@@ -482,8 +495,7 @@ namespace DuplicidadeNfce
             var preferidos = assinadas.Where(a => a.VNF == valorAut).ToList();
             // Sem ASSINADA da chave, o Temp_ANTES_ENVIO que confere com o digVal é o que o Metre importa (testado em 30/10).
             if (assinadas.Count == 0)
-                preferidos = validos.Where(a => a.Tipo == TipoArquivo.Temp && a.Chave == chaveAut && a.VNF == valorAut &&
-                    a.Nome.ToUpperInvariant().Contains("TEMP_ANTES_ENVIO")).ToList();
+                preferidos = validos.Where(a => Importavel(a) && a.Chave == chaveAut && a.VNF == valorAut).ToList();
             foreach (var c in sel.Candidatos.Where(c => assinadas.Any(a => a.Caminho == c.Caminho)))
             {
                 var a = assinadas.First(x => x.Caminho == c.Caminho);
@@ -678,7 +690,8 @@ namespace DuplicidadeNfce
             }
 
             var escolhidas = Tentativas.Where(incluir).ToList();
-            var rodadas = new Dictionary<string, int>();
+            rodadas = new Dictionary<string, int>();
+            pastaCopiaAtual = pastaCopia;
             int feitas = 0;
             foreach (var t in escolhidas)
             {
@@ -740,6 +753,17 @@ namespace DuplicidadeNfce
                     log.Info("  Ajuste de chave: " + l.Status + " - " + l.Motivo);
                     continue;
                 }
+                // Valor conhecido, mas sem arquivo para importar (ex.: só o _NFCE): o XML pode estar no chefxml.
+                if (sel.MotivoPendente != null && sel.ValorConferido.HasValue && (t.Valor != sel.ValorConferido || outraVenda != null) &&
+                    fontes != null && t.IdMetre != null && sel.Sefaz != null && sel.Sefaz.Autorizada && sel.Sefaz.Prot.ChNFe == t.ChaveAutorizada)
+                {
+                    var candidatos = new List<Candidato>(sel.Candidatos);
+                    AvaliarAjuste(t, l, avisos);
+                    if (l.Status == Status.ACopiar) continue;
+                    sel.Candidatos = candidatos;
+                    l.Ajuste = null;
+                    l.ValorSefaz = sel.ValorConferido;
+                }
                 if (sel.MotivoPendente != null)
                 {
                     if (sel.Indicado != null)
@@ -772,10 +796,7 @@ namespace DuplicidadeNfce
                 }
                 // Uma cópia por linha da contingência: a 2ª tentativa do mesmo número se resolve importando
                 // de novo o mesmo ASSINADA, então cada rodada vai numa pasta (importar-1, importar-2...).
-                int rodada;
-                rodadas.TryGetValue(t.ChaveAutorizada, out rodada);
-                rodadas[t.ChaveAutorizada] = ++rodada;
-                l.CaminhoDestino = Path.Combine(pastaCopia, "importar-" + rodada, sel.Escolhido.Nome);
+                l.CaminhoDestino = DestinoImportacao(t.ChaveAutorizada, sel.Escolhido.Nome);
                 if (File.Exists(l.CaminhoDestino))
                 {
                     bool igual = NotaXml.HashSha256(NotaXml.LerSomenteLeitura(l.CaminhoDestino)) == sel.Escolhido.Sha256;
@@ -792,6 +813,36 @@ namespace DuplicidadeNfce
             return linhas.OrderBy(x => int.Parse(x.Serie)).ThenBy(x => long.Parse(x.Numero)).ThenBy(x => x.DhEmiSistema).ToList();
         }
 
+        string DestinoImportacao(string chave, string nome)
+        {
+            int rodada;
+            rodadas.TryGetValue(chave, out rodada);
+            rodadas[chave] = ++rodada;
+            return Path.Combine(pastaCopiaAtual, "importar-" + rodada, nome);
+        }
+
+        // O XML da chave autorizada está só no banco chefxml (a nota foi emitida em outro computador): com DigestValue = digVal
+        // é o conteúdo autorizado, então vai para importar-N gravado como o Temp_ANTES_ENVIO, o arquivo que o Metre importa.
+        void CopiarDoBanco(Tentativa t, LinhaRelatorio l, NotaXml x, string outraVenda, List<string> avisos)
+        {
+            l.Ajuste = null;
+            l.ValorSefaz = x.VNF;
+            if (avisos.Count > 0) { Pendente(l, "verificar manualmente", avisos); return; }
+            if (x.TemSobra) { Pendente(l, "XML do banco com conteúdo residual após o documento: " + x.Caminho, avisos); return; }
+            string k = t.ChaveAutorizada;
+            string quando = x.DhEmi != null && x.DhEmi.Length >= 19
+                ? x.DhEmi.Substring(8, 2) + "_" + x.DhEmi.Substring(5, 2) + "_" + x.DhEmi.Substring(0, 4) + "_" + x.DhEmi.Substring(11, 8).Replace(":", "_")
+                : "banco";
+            l.ArquivoEscolhido = "NOTA_" + t.Numero + "_MODELO_" + k.Substring(20, 2) + "_SERIE_" + t.Serie + "_CHAVE_" + k + "_Temp_ANTES_ENVIO_" + quando + ".xml";
+            l.CaminhoOrigem = x.Caminho;
+            l.CaminhoDestino = DestinoImportacao(k, l.ArquivoEscolhido);
+            l.Fonte = x;
+            l.Status = Status.ACopiar;
+            l.Motivo = (outraVenda != null ? outraVenda + "; " : "") +
+                "sistema " + Moeda(t.Valor) + (t.Valor == x.VNF ? " = SEFAZ (mesmo valor); " : " ≠ SEFAZ " + Moeda(x.VNF) + "; ") +
+                "XML da chave autorizada só no banco (" + x.Caminho + ", DigestValue = digVal da SEFAZ), gravado para importar";
+        }
+
         // O número foi usado por outra venda quando o XML autorizado tem outro pedido e outro dia de emissão que a linha
         // do sistema (visto em 30/10: número de 12/10 reaproveitado em 18/10). Importar troca a venda do sistema pela autorizada.
         string OutraVenda(Tentativa t, Selecao sel)
@@ -800,6 +851,11 @@ namespace DuplicidadeNfce
             List<NotaXml> arqs;
             if (aut == null && sel.Sefaz != null && sel.Sefaz.Prot != null && porChave.TryGetValue(t.ChaveAutorizada, out arqs))
                 aut = arqs.FirstOrDefault(a => a.Erro == null && a.DigestCalculado == sel.Sefaz.Prot.DigVal);
+            return OutraVendaDe(t, aut);
+        }
+
+        static string OutraVendaDe(Tentativa t, NotaXml aut)
+        {
             if (aut == null || string.IsNullOrEmpty(aut.Pedido) || string.IsNullOrEmpty(t.Pedido) || aut.Pedido == t.Pedido) return null;
             if (aut.DhEmi == null || t.DhEmi == null || aut.DhEmi.Length < 10 || t.DhEmi.Length < 10 || aut.DhEmi.Substring(0, 10) == t.DhEmi.Substring(0, 10)) return null;
             return "NÚMERO REAPROVEITADO: a autorizada é outra venda (emitida em " + aut.DhEmi.Substring(0, 10) + ", pedido " + aut.Pedido + ", " + Moeda(aut.VNF) +
@@ -901,6 +957,12 @@ namespace DuplicidadeNfce
             {
                 a.ValorConferido = valores[0];
                 a.OrigemValor = "valor autorizado pelo XML " + conferem[0].Nome + " (DigestValue = digVal da SEFAZ)";
+                string outraVenda = OutraVendaDe(t, conferem[0]);
+                if ((valores[0] != t.Valor || outraVenda != null) && pastaCopiaAtual != null)
+                {
+                    CopiarDoBanco(t, l, conferem[0], outraVenda, avisos);
+                    return;
+                }
             }
             else
             {

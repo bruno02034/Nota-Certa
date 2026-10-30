@@ -44,6 +44,8 @@ namespace DuplicidadeNfce
         public string DbSituacao = "Em contigencia";
         public string MariaDbDll = "";
         public string PastaBancoMetre = @"C:\Chef\Banco de Dados";
+        // Outros lugares com XMLs (caixa em \\CAIXA1\Chef\NFCe, pasta trazida num pen drive), separados por ';'.
+        public string PastasXmlExtras = "";
         public bool ValidarCertificadoServidor = true;
         public int TimeoutSegundos = 30;
 
@@ -104,6 +106,7 @@ namespace DuplicidadeNfce
                 case "dbsituacao": DbSituacao = valor; break;
                 case "mariadbdll": MariaDbDll = valor; break;
                 case "pastabancometre": PastaBancoMetre = valor; break;
+                case "pastasxmlextras": PastasXmlExtras = valor; break;
                 case "validarcertificadoservidor": ValidarCertificadoServidor = Sim(valor); break;
                 case "timeoutsegundos": TimeoutSegundos = int.Parse(valor); break;
                 case "pastanotasfaltantes": PastaNotasFaltantes = valor; break;
