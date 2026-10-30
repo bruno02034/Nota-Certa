@@ -11,7 +11,8 @@ descreve as regras de negócio em detalhe; leia-o antes de mudar comportamento. 
 
 - `build.cmd` compila com o `csc.exe` do .NET Framework 4 (`%WINDIR%\Microsoft.NET\Framework\v4.0.30319`), sem SDK nem
   projeto .csproj: todos os `src\*.cs` e `src\Gui\*.cs`, com `src\Gui\Principal.xaml` embutido como recurso
-  `NotaCerta.Principal.xaml`. Gera `dist\NotaCerta.exe` e copia `duplicidade.ini` (modelo) para `dist\`.
+  `NotaCerta.Principal.xaml`. Gera `dist\NotaCerta.exe` e copia `duplicidade.ini` (modelo) para `dist\` só se lá
+  ainda não houver um (o do `dist\` guarda a senha do banco criptografada; opção nova no modelo precisa ir à mão).
   **O csc é C# 5**: nada de `?.`, `$"..."`, `nameof`, expressões `=>` em membros, etc.
 - Testes são scripts PowerShell que rodam o exe (ou compilam um harness com as mesmas fontes); não há framework de teste
   nem como rodar um caso isolado, cada script roda tudo e imprime `OK`/`FALHA` por verificação:

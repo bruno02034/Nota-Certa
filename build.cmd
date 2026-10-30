@@ -13,6 +13,7 @@ if not exist "%~dp0dist" mkdir "%~dp0dist"
   /resource:"%~dp0src\Gui\Principal.xaml",NotaCerta.Principal.xaml ^
   "%~dp0src\*.cs" "%~dp0src\Gui\*.cs"
 if errorlevel 1 exit /b 1
-copy /y "%~dp0duplicidade.ini" "%~dp0dist\duplicidade.ini" >nul
+rem O ini do dist guarda a senha do banco criptografada: so e copiado do modelo quando ainda nao existe.
+if not exist "%~dp0dist\duplicidade.ini" copy "%~dp0duplicidade.ini" "%~dp0dist\duplicidade.ini" >nul
 if exist "%~dp0dist\DuplicidadeNfce.exe" del "%~dp0dist\DuplicidadeNfce.exe"
 echo OK: %~dp0dist\NotaCerta.exe
