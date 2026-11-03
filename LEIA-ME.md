@@ -128,7 +128,10 @@ período é o informado na tela e não há ajuste de chave: valor igual também 
    autorizada no dia da venda, com emissão normal. Nesse caso a linha vai para importação, com o XML autorizado do
    `chefxml` ou de uma pasta; sem XML autorizado, fica PENDENTE com o motivo. Linha sem XML apontado segue como antes.
 
-O ajuste é linha a linha, com confirmação. Antes, a linha inteira (`SELECT *`) vai para `backups\` ao lado do exe.
+O ajuste é linha a linha, com confirmação. **Ajustar chaves (N)**, ao lado de "Processar marcadas", faz o mesmo em
+todas as linhas em AJUSTE DE CHAVE liberadas, com uma confirmação só: cada nota passa pelas mesmas travas, com backup e
+transação próprios, e a que falhar fica com o erro na linha sem desfazer nem parar as outras. No fim aparece o resumo.
+O desfazer continua nota a nota. Antes, a linha inteira (`SELECT *`) vai para `backups\` ao lado do exe.
 Numa transação, tudo é conferido de novo (linha travada com `FOR UPDATE`) e só então roda
 `UPDATE chef.nota_saida SET chave_acesso = '<autorizada>' WHERE id_nota_saida = <id> AND numero = <n> AND serie = <s>
 AND chave_acesso = '<atual>'`. Se não afetar exatamente 1 linha, ou a releitura não mostrar a chave nova, é feito

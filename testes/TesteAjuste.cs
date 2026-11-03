@@ -185,6 +185,25 @@ namespace DuplicidadeNfce
                 "Linha aponta para o XML autorizado (o Metre já transmitiu) -> AJUSTE DE CHAVE (" + Ptr1.Motivo + ")");
             Verdade(Ptr2.Status == Status.AjusteChave && AjusteChave.Trava(Ptr2) == null,
                 "Linha aponta para a tentativa com o protocolo da autorizada -> AJUSTE DE CHAVE (" + Ptr2.Motivo + ")");
+
+            // ---------- Ajuste em massa: a falha de uma linha não afeta as outras ----------
+            {
+                // O Metre transmitiu a 2033 depois da análise e gerou outra chave: essa linha tem de falhar sem mexer em nada.
+                string outraChave = Ptr2.ChaveSistema.Substring(0, 35) + "77777777" + Ptr2.ChaveSistema[43];
+                Exec("UPDATE chef.nota_saida SET chave_acesso = '" + outraChave + "' WHERE id_nota_saida = " + Ptr2.Ajuste.IdMetre);
+                var passos = new List<string>();
+                var lote = AjusteChave.AjustarLote(m.Cfg, new List<LinhaRelatorio> { Ptr1, Ptr2 }, m.PastaBackups, m.Historico, m.Log,
+                    (i, n) => passos.Add((i + 1) + "/" + n));
+                Verdade(lote.Count == 2 && lote[0].Item2 == null && ChaveNoBanco(Ptr1.Ajuste.IdMetre) == Ptr1.ChaveAutorizada &&
+                    File.Exists(lote[0].Item1.CaminhoDestino) && m.Historico.BuscarAjuste(Ptr1.ChaveAutorizada) != null,
+                    "Ajuste em massa: a primeira nota é ajustada, com backup e histórico próprios");
+                Verdade(lote[1].Item1 == null && lote[1].Item2.Contains("rollback") && ChaveNoBanco(Ptr2.Ajuste.IdMetre) == outraChave,
+                    "Ajuste em massa: a nota com a chave mudada falha sozinha, sem alterar nada (" + lote[1].Item2 + ")");
+                Verdade(string.Join(",", passos) == "1/2,2/2", "Ajuste em massa: progresso nota a nota (" + string.Join(",", passos) + ")");
+                AjusteChave.Desfazer(m.Cfg, lote[0].Item1.CaminhoDestino, m.PastaBackups, m.Historico, m.Log);
+                Verdade(ChaveNoBanco(Ptr1.Ajuste.IdMetre) == Ptr1.ChaveSistema, "Ajuste em massa: o desfazer continua nota a nota, pelo backup de cada uma");
+                Exec("UPDATE chef.nota_saida SET chave_acesso = '" + Ptr2.ChaveSistema + "' WHERE id_nota_saida = " + Ptr2.Ajuste.IdMetre);
+            }
             Verdade(K.Status == Status.ACopiar && K.ValorSefaz == 27.50m && K.Ajuste == null && K.Fonte.Conteudo != null && K.CaminhoOrigem.Contains("id_xml 700038") &&
                 K.CaminhoDestino.Contains("importar-1") && K.ArquivoEscolhido.Contains("_CHAVE_" + K.ChaveAutorizada + "_Temp_ANTES_ENVIO_19_10_2026_13_47_50.xml"),
                 "(b) idem com valor diferente -> gravado do banco para importar (" + K.Motivo + ")");

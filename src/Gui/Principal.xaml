@@ -461,6 +461,8 @@
                 <DatePicker x:Name="DataAte" Width="130" VerticalContentAlignment="Center" Height="34"/>
                 <Button x:Name="BtnListar" Style="{StaticResource BtnAzul}" Content="Listar contingência" Margin="14,0,0,0"/>
                 <Button x:Name="BtnProcessar" Style="{StaticResource BtnPrimario}" Content="Processar marcadas" Margin="10,0,0,0"/>
+                <Button x:Name="BtnAjustarLote" Style="{StaticResource BtnSecundario}" Content="Ajustar chaves" Margin="10,0,0,0" IsEnabled="False"
+                        ToolTip="Ajusta a chave de todas as linhas em AJUSTE DE CHAVE liberadas, cada uma com backup e transação próprios"/>
               </StackPanel>
               <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,0,6">
                 <Button x:Name="BtnAbrirPasta" Style="{StaticResource BtnSecundario}" Content="Abrir pasta Duplicidade"/>

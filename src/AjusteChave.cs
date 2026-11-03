@@ -97,6 +97,24 @@ namespace DuplicidadeNfce
             return r;
         }
 
+        // Ajuste em massa: cada linha passa pelo Ajustar de sempre (travas, backup e transação próprios); a falha de uma
+        // não desfaz nem interrompe as outras. Resultado na ordem das linhas: (registro, null) ajustada ou (null, erro).
+        public static List<Tuple<RegistroHistorico, string>> AjustarLote(Config cfg, IList<LinhaRelatorio> linhas, string pastaBackups,
+            Historico historico, Log log, Action<int, int> progresso)
+        {
+            var res = new List<Tuple<RegistroHistorico, string>>();
+            log.Info("");
+            log.Info("Ajuste de chave em massa: " + linhas.Count + " nota(s)");
+            for (int i = 0; i < linhas.Count; i++)
+            {
+                if (progresso != null) progresso(i, linhas.Count);
+                try { res.Add(Tuple.Create(Ajustar(cfg, linhas[i], pastaBackups, historico, log), (string)null)); }
+                catch (Exception ex) { res.Add(Tuple.Create((RegistroHistorico)null, ex.Message)); }
+            }
+            log.Info("Ajuste em massa: " + res.Count(r => r.Item2 == null) + " ajustada(s), " + res.Count(r => r.Item2 != null) + " com erro");
+            return res;
+        }
+
         // Volta a chave antiga gravada no backup do ajuste, com as mesmas travas.
         public static RegistroHistorico Desfazer(Config cfg, string arqBackup, string pastaBackups, Historico historico, Log log)
         {

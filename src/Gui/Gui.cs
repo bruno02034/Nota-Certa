@@ -198,6 +198,7 @@ namespace DuplicidadeNfce
             G<Button>("BtnValorConfere").Click += (s, e) => RegistrarConferencia(true);
             G<Button>("BtnValorDiferente").Click += (s, e) => RegistrarConferencia(false);
             G<Button>("BtnAjustarChave").Click += (s, e) => AjustarChave();
+            G<Button>("BtnAjustarLote").Click += (s, e) => AjustarLote();
             G<Button>("BtnDesfazerAjuste").Click += (s, e) => DesfazerAjuste();
             // Telas pequenas (servidor via AnyDesk): recolhe o menu e estreita os detalhes para a grade caber.
             W.SizeChanged += (s, e) =>
@@ -464,6 +465,7 @@ namespace DuplicidadeNfce
                 }
                 G<TextBlock>("GradeVazia").Visibility = linhas.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
                 AtualizarContagens();
+                AtualizarBotoes();
                 ultimoResumo = linhas.Count + " tentativa(s) em contingência não autorizadas em " + linhas.Select(x => x.Nota).Distinct().Count() + " nota(s) · " + motor.DescricaoPeriodo;
                 MostrarStatus(ultimoResumo + (op.SemSefaz ? " · MODO TESTE: SEFAZ simulada, nada é copiado" : ""));
                 G<ProgressBar>("Progresso").Value = 0;
@@ -507,6 +509,7 @@ namespace DuplicidadeNfce
                 barra.Value = 100;
                 visao.Refresh();
                 AtualizarContagens();
+                AtualizarBotoes();
                 MostrarDetalhes(G<DataGrid>("Grade").SelectedItem as LinhaGrid);
                 var res = t.Result.Item1;
                 MostrarStatus("Processadas " + res.Count + ": " +
@@ -519,7 +522,7 @@ namespace DuplicidadeNfce
         void Ocupado(bool sim, string msg)
         {
             ocupado = sim;
-            foreach (var b in new[] { "BtnListar", "BtnProcessar", "BtnRecarregar" })
+            foreach (var b in new[] { "BtnListar", "BtnProcessar", "BtnRecarregar", "BtnAjustarLote" })
                 G<Button>(b).IsEnabled = !sim;
             G<DatePicker>("DataDe").IsEnabled = G<DatePicker>("DataAte").IsEnabled = !sim && !cfg.TodasDatas;
             W.Cursor = sim ? System.Windows.Input.Cursors.Wait : null;
@@ -533,6 +536,15 @@ namespace DuplicidadeNfce
             var b = G<Button>("BtnProcessar");
             b.Content = n > 0 ? "Processar marcadas (" + n + ")" : "Processar marcadas";
             if (!ocupado) b.IsEnabled = n > 0;
+            int aptas = AptasAjuste().Count;
+            var lote = G<Button>("BtnAjustarLote");
+            lote.Content = aptas > 0 ? "Ajustar chaves (" + aptas + ")" : "Ajustar chaves";
+            if (!ocupado) lote.IsEnabled = aptas > 0 && motor != null;
+        }
+
+        List<LinhaRelatorio> AptasAjuste()
+        {
+            return linhas.Select(g => g.Linha).Where(l => l.Status == Status.AjusteChave && AjusteChave.Trava(l) == null).ToList();
         }
 
         void MostrarStatus(string msg)
@@ -725,6 +737,58 @@ namespace DuplicidadeNfce
                 }, TaskScheduler.FromCurrentSynchronizationContext());
         }
 
+        void AjustarLote()
+        {
+            if (motor == null || ocupado) return;
+            var aptas = AptasAjuste();
+            if (aptas.Count == 0) { Aviso("Nenhuma linha em AJUSTE DE CHAVE liberada para ajustar."); return; }
+            string lista = string.Join("\n", aptas.Take(20).Select(l => l.Serie + "/" + l.Numero + " · R$ " + Analisador.Moeda(l.Ajuste.ValorSistema))) +
+                (aptas.Count > 20 ? "\n... e mais " + (aptas.Count - 20) : "");
+            if (MessageBox.Show(W, "Ajustar a chave de " + aptas.Count + " nota(s) no banco do Metre?\n\n" + lista + "\n\n" +
+                "Em cada nota só o campo chave_acesso muda, com backup da linha em " + motor.PastaBackups + " e transação própria. " +
+                "Se uma falhar, as já ajustadas ficam e as outras continuam.",
+                Program.NomeSistema, MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
+            var m = motor;
+            Ocupado(true, "Ajustando 1 de " + aptas.Count + "...");
+            Action<int, int> progresso = (i, n) => W.Dispatcher.BeginInvoke(new Action(() =>
+            {
+                G<TextBlock>("TxtStatus").Text = "Ajustando " + (i + 1) + " de " + n + "...";
+                G<ProgressBar>("Progresso").Value = 100.0 * (i + 1) / n;
+            }));
+            Task.Factory.StartNew(() => AjusteChave.AjustarLote(m.Cfg, aptas, m.PastaBackups, m.Historico, m.Log, progresso))
+                .ContinueWith(t =>
+                {
+                    Ocupado(false, null);
+                    if (t.IsFaulted) { Erro("Ajuste em massa interrompido: " + t.Exception.InnerException.Message); return; }
+                    var falhas = new List<string>();
+                    for (int i = 0; i < aptas.Count; i++)
+                    {
+                        var l = aptas[i];
+                        var a = l.Ajuste;
+                        var r = t.Result[i];
+                        if (r.Item2 == null)
+                        {
+                            l.Status = Status.ChaveAjustada;
+                            l.Motivo = "chave_acesso ajustada em " + r.Item1.DataHora + ": " + a.ChaveAtual + " → " + a.ChaveNova + " (backup " + r.Item1.CaminhoDestino + ")";
+                            a.ChaveAntiga = a.ChaveAtual;
+                            a.Backup = r.Item1.CaminhoDestino;
+                        }
+                        else
+                        {
+                            l.Status = Status.ErroAjuste;
+                            l.Motivo = "ajuste NÃO feito: " + r.Item2;
+                            falhas.Add(l.Serie + "/" + l.Numero + ": " + r.Item2);
+                        }
+                        AtualizarLinha(l);
+                    }
+                    G<ProgressBar>("Progresso").Value = 0;
+                    string resumo = (aptas.Count - falhas.Count) + " de " + aptas.Count + " chave(s) ajustada(s)." +
+                        (falhas.Count > 0 ? "\n\nNão ajustadas (nada mudou nelas):\n" + string.Join("\n", falhas) : "");
+                    MostrarStatus(resumo.Replace("\n", " "));
+                    Aviso(resumo + "\n\n" + AjusteChave.AvisoMetre);
+                }, TaskScheduler.FromCurrentSynchronizationContext());
+        }
+
         void DesfazerAjuste()
         {
             var l = Selecionada();
@@ -754,6 +818,7 @@ namespace DuplicidadeNfce
             if (g != null) { g.Atualizar(l); g.Marcada = false; }
             visao.Refresh();
             AtualizarContagens();
+            AtualizarBotoes();
             MostrarDetalhes(G<DataGrid>("Grade").SelectedItem as LinhaGrid);
         }
 
