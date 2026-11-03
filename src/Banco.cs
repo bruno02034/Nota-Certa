@@ -358,6 +358,23 @@ namespace DuplicidadeNfce
 
         static bool? indiceXmlPorNota, colunaPedido;
 
+        // O XML para o qual a linha aponta (nota_saida.XML = chefxml.xml.id_xml): é ele que o Metre transmite. Key null = sem ponteiro.
+        public static KeyValuePair<string, byte[]> XmlDaLinha(Config cfg, string idNotaSaida, Log log)
+        {
+            long id = long.Parse(idNotaSaida);
+            using (var s = Sessao.Abrir(cfg, x => log.Info("Banco: " + x), true))
+            {
+                var xml = s.Consultar("SELECT XML FROM " + cfg.DbBanco + ".nota_saida WHERE id_nota_saida = " + id);
+                long ptr;
+                if (xml.Count != 1 || !long.TryParse(xml[0][0], out ptr)) return new KeyValuePair<string, byte[]>(null, null);
+                string origem = cfg.DbBancoXml + ".xml id_xml " + ptr + " (XML da linha)";
+                string[] nomes;
+                foreach (var v in Executar(s.Ptr, "SELECT x.XML FROM " + cfg.DbBancoXml + ".xml x WHERE x.id_xml = " + ptr, true, out nomes))
+                    if (v[0] != null) return new KeyValuePair<string, byte[]>(origem, v[0]);
+                return new KeyValuePair<string, byte[]>(origem, new byte[0]);
+            }
+        }
+
         // Linhas de nota_saida que já têm esta chave (a chave autorizada não pode ir para uma segunda linha).
         public static List<string> IdsComChave(Sessao s, Config cfg, string chave)
         {

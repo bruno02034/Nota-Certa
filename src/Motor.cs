@@ -139,7 +139,7 @@ namespace DuplicidadeNfce
             foreach (var n in Notas.Where(n => n.Erro != null)) Log.Info("Erro de leitura: " + n.Caminho + " - " + n.Erro);
             bool comBanco = (Cfg.FonteContingencia ?? "").Trim().Equals("banco", StringComparison.OrdinalIgnoreCase);
             Analisador = new Analisador(Notas, consultar, Log, Contingencia, comBanco
-                ? new FontesAjuste { BuscarXmls = BuscarXmlsChave, LinhasComChave = LinhasComChave }
+                ? new FontesAjuste { BuscarXmls = BuscarXmlsChave, LinhasComChave = LinhasComChave, XmlDaLinha = XmlDaLinha }
                 : null);
             Analisador.XmlsDoDia = XmlsDoDiaDaAutorizacao;
         }
@@ -210,6 +210,13 @@ namespace DuplicidadeNfce
                 else Log.Tela("Pasta extra de XMLs inacessível (ignorada): " + p);
             }
             return extrasAcessiveis;
+        }
+
+        NotaXml XmlDaLinha(Tentativa t)
+        {
+            if (t.IdMetre == null) return null;
+            var x = Banco.XmlDaLinha(Cfg, t.IdMetre, Log);
+            return x.Key == null ? null : NotaXml.LerConteudo(x.Key, x.Value);
         }
 
         List<string> LinhasComChave(string chave)

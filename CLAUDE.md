@@ -54,7 +54,9 @@ Fluxo da duplicidade (mesmo caminho para interface e linha de comando):
      da SEFAZ indica a pasta do dia (só os arquivos daquele número). Vai para importação mesmo com valor igual.
    - **valor igual** → AJUSTE DE CHAVE (`AjusteChave.cs`): troca só `chef.nota_saida.chave_acesso` daquela linha,
      botão linha a linha, com backup da linha em `backups\`, transação com `FOR UPDATE` e `UPDATE ... WHERE id AND
-     numero AND serie AND chave_acesso=<atual>` exigindo 1 linha afetada; "Desfazer" volta pelo backup.
+     numero AND serie AND chave_acesso=<atual>` exigindo 1 linha afetada; "Desfazer" volta pelo backup. Só com a nota
+     em contingência, e só se o XML da linha (`nota_saida.XML`, que o Metre transmite) tiver a chave autorizada ou o
+     protocolo dela; senão vai para importação (`LinhaApontaOutroXml` em `Analisador.cs`).
    - O valor autorizado vale quando algum XML da chave tem DigestValue = `digVal` da SEFAZ (inclusive só o
      `Temp_ANTES_ENVIO`); sem arquivo, busca o XML no banco `chefxml.xml` pela PK; sem nada, conferência manual no
      portal (registrada no histórico).

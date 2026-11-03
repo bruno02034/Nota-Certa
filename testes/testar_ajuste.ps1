@@ -213,6 +213,32 @@ try {
         $sqlNotas += "($($x.Id), NULL, $($x.N), $Serie, '$($x.Sis)', '2026-10-19', $($x.Ped), $($x.V), '2026-10-19 12:09:00', NULL, 'Lote processado', 'Em contigencia', NULL)"
     }
 
+    # XML para o qual a linha aponta (o que o Metre transmite), com valor igual: 2032 aponta para o XML autorizado (o Metre
+    # já transmitiu e autorizou); 2033 aponta para a tentativa, mas ela traz o protocolo da autorizada. Os dois podem ser ajustados.
+    # (J, L, N, O e U apontam para a tentativa sem protocolo, como as 6 notas de 03/11: vão para importação.)
+    foreach ($x in @(@{ N = 2032; S = '30000061'; A = '30000062'; V = '41.00'; Ptr = 700400; Modo = 'autorizado' },
+                     @{ N = 2033; S = '30000063'; A = '30000064'; V = '42.00'; Ptr = 700410; Aut = 700408; Modo = 'protocolo' })) {
+        $x.Id = $idNovo++; $x.Sis = Chave $x.N $x.S; $x.ChAut = Chave $x.N $x.A
+        Rejeicao539 $x.N $x.Sis $x.ChAut $x.V
+        $aut = NFe $x.ChAut $x.N $x.V
+        Resposta $x.ChAut $aut.Digest ('13126000000' + $x.N) '100'
+        $prot = "<protNFe versao=`"4.00`"><infProt><tpAmb>1</tpAmb><chNFe>$($x.ChAut)</chNFe><dhRecbto>2026-10-19T14:00:00-03:00</dhRecbto><nProt>$('13126000000' + $x.N)</nProt><digVal>$($aut.Digest)</digVal><cStat>100</cStat><xMotivo>Autorizado</xMotivo></infProt></protNFe>"
+        $ped = 6000 + $x.N
+        $abre = '<nfeProc versao="4.00" xmlns="' + $Ns + '">'
+        if ($x.Modo -eq 'autorizado') {
+            $proc = $abre + $aut.Xml + $prot + '</nfeProc>'
+            $sqlXmls += "($($x.Ptr), CONVERT(UNHEX('$(Hex $proc)') USING utf8), $($x.Id), $ped)"
+        }
+        else {
+            $tent = NFe $x.Sis $x.N $x.V
+            $proc = $abre + $tent.Xml + $prot + '</nfeProc>'
+            $lote = '<enviNFe versao="4.00" xmlns="' + $Ns + '"><idLote>1</idLote><indSinc>1</indSinc>' + $aut.Xml + '</enviNFe>'
+            $sqlXmls += "($($x.Ptr), CONVERT(UNHEX('$(Hex $proc)') USING utf8), $($x.Id), $ped)"
+            $sqlXmls += "($($x.Aut), CONVERT(UNHEX('$(Hex $lote)') USING utf8), NULL, $ped)"
+        }
+        $sqlNotas += "($($x.Id), $($x.Ptr), $($x.N), $Serie, '$($x.Sis)', '2026-10-19', $ped, $($x.V), '2026-10-19 12:09:00', NULL, 'Lote processado', 'Em contigencia', NULL)"
+    }
+
     # Nota emitida no caixa: 2026 só na pasta do caixa (estrutura de dias); 2027 solto na pasta do pen drive;
     # 2028 só o _NFCE aqui e o Temp no caixa; 2029 só o _NFCE aqui e o XML no chefxml.
     $caixa = Join-Path $tmp 'caixa'; $pendrive = Join-Path $tmp 'pendrive'
@@ -247,7 +273,7 @@ CREATE TABLE chef.nota_saida (
   KEY IX_DT_EMISSAO (dt_emissao), KEY IX_SITUACAO (situacao)) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 CREATE TABLE chefxml.xml (id_xml INT NOT NULL AUTO_INCREMENT PRIMARY KEY, XML LONGTEXT, id_nota_saida INT, id_pedido INT, KEY Index_2 (id_nota_saida)) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 INSERT INTO chef.nota_saida (id_nota_saida, XML, numero, serie, chave_acesso, dt_emissao, num_pedido, valor_total_nota, data_contigencia, dt_tentativa_emissao, motivo_nao_transmissao, situacao, observacao) VALUES
-  ($IdMetre, $IdXml, $Numero, $Serie, '$aSis', '2026-10-19', $Pedido, $Valor, '2026-10-19 13:47:52', '2026-10-21 17:40:00', 'Lote processado', 'Em contigencia', CONCAT('linha 1', CHAR(13), CHAR(10), 'linha 2')),
+  ($IdMetre, NULL, $Numero, $Serie, '$aSis', '2026-10-19', $Pedido, $Valor, '2026-10-19 13:47:52', '2026-10-21 17:40:00', 'Lote processado', 'Em contigencia', CONCAT('linha 1', CHAR(13), CHAR(10), 'linha 2')),
   ($($B.Id), NULL, $($B.N), $Serie, '$($B.Sis)', '2026-10-19', 1, $($B.V), '2026-10-19 10:00:00', NULL, 'Lote processado', 'Em contigencia', NULL),
   ($($C.Id), NULL, $($C.N), $Serie, '$($C.Sis)', '2026-10-19', 2, $($C.V), '2026-10-19 11:00:00', NULL, 'Lote processado', 'Em contigencia', NULL),
   ($($D.Id), NULL, $($D.N), $Serie, '$($D.Sis)', '2026-10-19', 3, $($D.V), '2026-10-19 12:00:00', NULL, 'Lote processado', 'Em contigencia', NULL),

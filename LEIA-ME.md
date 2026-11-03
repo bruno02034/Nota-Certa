@@ -121,13 +121,21 @@ período é o informado na tela e não há ajuste de chave: valor igual também 
    SEFAZ autorizada para a chave autorizada (100/150; protocolo 100/150/120); as duas chaves com os mesmos UF, AAMM, CNPJ, modelo, série e número;
    chave autorizada com 44 dígitos e DV válido; valor do sistema = valor autorizado; chave autorizada em nenhuma
    outra linha de `nota_saida`.
+4. **O XML da linha precisa ser o autorizado.** O Metre transmite o XML para o qual a linha aponta (`nota_saida.XML`,
+   em `chefxml.xml`). O ajuste só é oferecido quando esse XML tem a chave autorizada, ou traz o protocolo dela. Se ele
+   for a tentativa de contingência, com outra chave e sem protocolo, trocar só a `chave_acesso` não resolve: o Metre
+   reenvia a tentativa e recebe a 539 de novo. Visto em 03/11: 6 dos 45 ajustes ficaram assim, todos com a nota
+   autorizada no dia da venda, com emissão normal. Nesse caso a linha vai para importação, com o XML autorizado do
+   `chefxml` ou de uma pasta; sem XML autorizado, fica PENDENTE com o motivo. Linha sem XML apontado segue como antes.
 
 O ajuste é linha a linha, com confirmação. Antes, a linha inteira (`SELECT *`) vai para `backups\` ao lado do exe.
 Numa transação, tudo é conferido de novo (linha travada com `FOR UPDATE`) e só então roda
 `UPDATE chef.nota_saida SET chave_acesso = '<autorizada>' WHERE id_nota_saida = <id> AND numero = <n> AND serie = <s>
 AND chave_acesso = '<atual>'`. Se não afetar exatamente 1 linha, ou a releitura não mostrar a chave nova, é feito
 rollback. **Só o campo `chave_acesso` daquela linha muda.** Depois do ajuste, feche e abra o Metre.
-**Desfazer ajuste** volta a chave antiga pelo backup, com as mesmas travas. O usuário do banco precisa de
+**Desfazer ajuste** volta a chave antiga pelo backup, com as mesmas travas. Ajuste e desfazer só valem com a nota
+ainda em contingência: desfazer depois que o Metre autorizou deixaria a nota autorizada com a chave errada, e é
+recusado. O usuário do banco precisa de
 `UPDATE` em `chef.nota_saida` (é permissão do usuário no MariaDB, não da senha): `.\NotaCerta.exe --testar-banco`
 mostra as permissões e avisa se falta o UPDATE.
 

@@ -65,6 +65,7 @@ namespace DuplicidadeNfce
     {
         public Func<Tentativa, string, List<NotaXml>> BuscarXmls;   // qualquer pasta/nome e chefxml.xml
         public Func<string, List<string>> LinhasComChave;           // ids de nota_saida que já têm a chave
+        public Func<Tentativa, NotaXml> XmlDaLinha;                 // o XML que a linha aponta (o que o Metre transmite); null = sem ponteiro
     }
 
     class Selecao
@@ -790,7 +791,7 @@ namespace DuplicidadeNfce
                     l.CaminhoOrigem = null;
                     AvaliarAjuste(t, l, avisos, sel.ValorSefaz, sel.ValorNaoConferido
                         ? "valor do ASSINADA único da chave autorizada (nenhum XML confere com o digVal, como no fluxo de cópia)"
-                        : "valor autorizado conferido pelo XML da chave (DigestValue = digVal da SEFAZ)");
+                        : "valor autorizado conferido pelo XML da chave (DigestValue = digVal da SEFAZ)", sel.Escolhido);
                     log.Info("  Ajuste de chave: " + l.Status + " - " + l.Motivo);
                     continue;
                 }
@@ -821,26 +822,30 @@ namespace DuplicidadeNfce
             return Path.Combine(pastaCopiaAtual, "importar-" + rodada, nome);
         }
 
-        // O XML da chave autorizada está só no banco chefxml (a nota foi emitida em outro computador): com DigestValue = digVal
-        // é o conteúdo autorizado, então vai para importar-N gravado como o Temp_ANTES_ENVIO, o arquivo que o Metre importa.
-        void CopiarDoBanco(Tentativa t, LinhaRelatorio l, NotaXml x, string outraVenda, List<string> avisos)
+        // Importação do XML da chave autorizada: um arquivo (ASSINADA/Temp_ANTES_ENVIO) vai como está; o que veio do banco
+        // chefxml (nota emitida em outro computador) é gravado com o nome do Temp_ANTES_ENVIO, o arquivo que o Metre importa.
+        // aviso: por que vai para importação (número reaproveitado, linha apontando para outro XML).
+        void CopiarDoBanco(Tentativa t, LinhaRelatorio l, NotaXml x, string aviso, List<string> avisos)
         {
             l.Ajuste = null;
             l.ValorSefaz = x.VNF;
             if (avisos.Count > 0) { Pendente(l, "verificar manualmente", avisos); return; }
-            if (x.TemSobra) { Pendente(l, "XML do banco com conteúdo residual após o documento: " + x.Caminho, avisos); return; }
+            if (x.TemSobra) { Pendente(l, "XML com conteúdo residual após o documento: " + x.Caminho, avisos); return; }
             string k = t.ChaveAutorizada;
             string quando = x.DhEmi != null && x.DhEmi.Length >= 19
                 ? x.DhEmi.Substring(8, 2) + "_" + x.DhEmi.Substring(5, 2) + "_" + x.DhEmi.Substring(0, 4) + "_" + x.DhEmi.Substring(11, 8).Replace(":", "_")
                 : "banco";
-            l.ArquivoEscolhido = "NOTA_" + t.Numero + "_MODELO_" + k.Substring(20, 2) + "_SERIE_" + t.Serie + "_CHAVE_" + k + "_Temp_ANTES_ENVIO_" + quando + ".xml";
+            l.ArquivoEscolhido = x.Conteudo == null ? x.Nome
+                : "NOTA_" + t.Numero + "_MODELO_" + k.Substring(20, 2) + "_SERIE_" + t.Serie + "_CHAVE_" + k + "_Temp_ANTES_ENVIO_" + quando + ".xml";
             l.CaminhoOrigem = x.Caminho;
             l.CaminhoDestino = DestinoImportacao(k, l.ArquivoEscolhido);
             l.Fonte = x;
             l.Status = Status.ACopiar;
-            l.Motivo = (outraVenda != null ? outraVenda + "; " : "") +
+            l.Motivo = (aviso != null ? aviso + "; " : "") +
                 "sistema " + Moeda(t.Valor) + (t.Valor == x.VNF ? " = SEFAZ (mesmo valor); " : " ≠ SEFAZ " + Moeda(x.VNF) + "; ") +
-                "XML da chave autorizada só no banco (" + x.Caminho + ", DigestValue = digVal da SEFAZ), gravado para importar";
+                (x.Conteudo != null
+                    ? "XML da chave autorizada só no banco (" + x.Caminho + ", DigestValue = digVal da SEFAZ), gravado para importar"
+                    : "arquivo da chave autorizada " + x.Nome + " copiado para importar");
         }
 
         // O número foi usado por outra venda quando o XML autorizado tem outro pedido e outro dia de emissão que a linha
@@ -884,7 +889,9 @@ namespace DuplicidadeNfce
         // XML da chave achado em outro lugar (DigestValue = digVal) ou da conferência manual no portal; com valor
         // igual ao do sistema e todas as travas, a linha vira AJUSTE DE CHAVE (troca da chave_acesso no banco).
         // valorAutorizado: já conferido pelos arquivos da chave (DigestValue = digVal); null = procurar no banco/portal.
-        void AvaliarAjuste(Tentativa t, LinhaRelatorio l, List<string> avisos, decimal? valorAutorizado = null, string origemValor = null)
+        // autorizado: arquivo da chave autorizada para importar, se o ajuste não resolver no Metre (ver LinhaApontaOutroXml).
+        void AvaliarAjuste(Tentativa t, LinhaRelatorio l, List<string> avisos, decimal? valorAutorizado = null, string origemValor = null,
+            NotaXml autorizado = null)
         {
             var sel = l.Sel;
             string k = t.ChaveAutorizada, digVal = sel.Sefaz.Prot.DigVal;
@@ -917,7 +924,7 @@ namespace DuplicidadeNfce
             {
                 a.ValorConferido = valorAutorizado;
                 a.OrigemValor = origemValor;
-                ConcluirAjuste(t, l, avisos);
+                ConcluirAjuste(t, l, avisos, autorizado ?? ArquivoAutorizado(k, digVal));
                 return;
             }
             List<NotaXml> extras;
@@ -987,10 +994,32 @@ namespace DuplicidadeNfce
                     return;
                 }
             }
-            ConcluirAjuste(t, l, avisos);
+            ConcluirAjuste(t, l, avisos, conferem.Count > 0 ? conferem[0] : null);
         }
 
-        void ConcluirAjuste(Tentativa t, LinhaRelatorio l, List<string> avisos)
+        // Arquivo da chave autorizada que o Metre importa (ASSINADA ou Temp_ANTES_ENVIO) com o conteúdo autorizado.
+        NotaXml ArquivoAutorizado(string k, string digVal)
+        {
+            List<NotaXml> arqs;
+            if (!porChave.TryGetValue(k, out arqs)) return null;
+            return arqs.Where(a => a.Erro == null && Importavel(a) && a.Chave == k && a.DigestCalculado == digVal && a.DigestDeclarado == digVal && !a.TemSobra)
+                .OrderBy(a => a.Caminho).FirstOrDefault();
+        }
+
+        // O Metre transmite o XML para o qual a linha aponta (nota_saida.XML). Com outra chave e sem o protocolo da autorizada,
+        // ele recebe a 539 de novo mesmo com a chave_acesso trocada (03/11: os 6 de 45 ajustes que não saíram da contingência).
+        // null = o ajuste resolve (ou a linha não aponta para XML nenhum, como antes).
+        string LinhaApontaOutroXml(Tentativa t, string k)
+        {
+            if (fontes == null || fontes.XmlDaLinha == null) return null;
+            var x = fontes.XmlDaLinha(t);
+            if (x == null || (x.Erro == null && x.Chave == k)) return null;
+            if (x.Erro == null && x.Prot != null && x.Prot.ChNFe == k && (x.Prot.CStat == "100" || x.Prot.CStat == "150" || x.Prot.CStat == "120")) return null;
+            return "a linha aponta para o XML " + x.Caminho + (x.Erro != null ? " (ilegível: " + x.Erro + ")" : " da chave " + x.Chave + ", sem o protocolo da autorizada") +
+                ": o Metre reenvia esse XML e recebe a 539 de novo, o ajuste de chave não resolve";
+        }
+
+        void ConcluirAjuste(Tentativa t, LinhaRelatorio l, List<string> avisos, NotaXml autorizado)
         {
             var a = l.Ajuste;
             var p = l.Sel.Sefaz.Prot;
@@ -1002,11 +1031,31 @@ namespace DuplicidadeNfce
                     Moeda(t.Valor) + "; " + a.OrigemValor + ")", avisos);
                 return;
             }
+            string linhaErrada;
+            try { linhaErrada = LinhaApontaOutroXml(t, a.ChaveNova); }
+            catch (Exception ex) { Pendente(l, "não foi possível ler no banco o XML para o qual a linha aponta: " + ex.Message, avisos); return; }
+            if (linhaErrada != null)
+            {
+                log.Info("  " + linhaErrada);
+                if (autorizado == null) autorizado = XmlAutorizadoNoBanco(t, a.ChaveNova, p.DigVal);
+                if (autorizado != null && pastaCopiaAtual != null) { CopiarDoBanco(t, l, autorizado, linhaErrada, avisos); return; }
+                Pendente(l, linhaErrada + "; não há XML da chave autorizada para importar", avisos);
+                return;
+            }
             l.Status = Status.AjusteChave;
             string trava = AjusteChave.Trava(l);
             if (trava != null) { Pendente(l, "ajuste de chave bloqueado: " + trava, avisos); return; }
             l.Motivo = "sistema " + Moeda(t.Valor) + " = SEFAZ (mesmo valor; " + a.OrigemValor + "): nada a importar, só ajustar a chave_acesso no banco: " +
                 t.Chave + " → " + a.ChaveNova + " (SEFAZ cStat " + p.CStat + ", nProt " + p.NProt + ")";
+        }
+
+        NotaXml XmlAutorizadoNoBanco(Tentativa t, string k, string digVal)
+        {
+            try
+            {
+                return fontes.BuscarXmls(t, k).FirstOrDefault(x => x.Erro == null && x.Chave == k && x.DigestCalculado == digVal && x.DigestDeclarado == digVal && x.VNF.HasValue);
+            }
+            catch (Exception ex) { log.Info("  busca do XML da chave autorizada falhou: " + ex.Message); return null; }
         }
 
         // Depois de uma conferência manual no portal: refaz a avaliação do ajuste da linha.

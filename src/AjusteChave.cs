@@ -143,6 +143,10 @@ namespace DuplicidadeNfce
                         throw new Exception("a linha id_nota_saida " + id + " é da nota " + col("serie") + "/" + col("numero") + ", não " + serie + "/" + numero);
                     if (col("chave_acesso") != atual)
                         throw new Exception("a chave_acesso no banco mudou: está " + (col("chave_acesso") ?? "NULL") + ", esperada " + atual);
+                    // Em 03/11 um desfazer depois que o Metre autorizou deixou a nota autorizada com a chave errada.
+                    if (SemAcento(col("situacao")) != SemAcento(cfg.DbSituacao))
+                        throw new Exception("a nota não está mais em contingência (situação: " + (col("situacao") ?? "NULL") + "); trocar a chave agora " +
+                            (operacao == "desfazer" ? "deixaria a nota autorizada com a chave errada" : "não é necessário"));
                     if (valorEsperado.HasValue)
                     {
                         decimal? v = Decimal(col("valor_total_nota"));
@@ -178,6 +182,14 @@ namespace DuplicidadeNfce
                     Tamanho = valorEsperado.HasValue ? valorEsperado.Value.ToString("0.00", CultureInfo.InvariantCulture) : "", Sha256 = ""
                 };
             }
+        }
+
+        // "Em Contigência" (banco) = "Em contigencia" (ini): o MariaDB compara sem acento e sem maiúsculas.
+        static string SemAcento(string s)
+        {
+            if (s == null) return "";
+            var d = s.Trim().ToLowerInvariant().Normalize(NormalizationForm.FormD);
+            return new string(d.Where(c => CharUnicodeInfo.GetUnicodeCategory(c) != UnicodeCategory.NonSpacingMark).ToArray());
         }
 
         static decimal? Decimal(string s)

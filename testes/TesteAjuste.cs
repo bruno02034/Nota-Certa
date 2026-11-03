@@ -177,9 +177,14 @@ namespace DuplicidadeNfce
             // ---------- XML autorizado só no chefxml, pelo pedido (REJEICAO no servidor, sem ASSINADA) ----------
             var J = nota("2010"); var K = nota("2011"); var L = nota("2012"); var M = nota("2013"); var N = nota("2014");
             var O = nota("2015"); var P = nota("2016"); var Q = nota("2017"); var R = nota("2018"); var T = nota("2019");
-            Verdade(J.Status == Status.AjusteChave && !J.Ajuste.PodeConferirPortal && J.Ajuste.OrigemValor.Contains("id_xml 700007 (mesmo pedido 5010)") &&
-                J.Fonte == null && AjusteChave.Trava(J) == null,
-                "(a) XML autorizado só no chefxml, id_nota_saida NULL e mesmo pedido, valor igual -> AJUSTE DE CHAVE sem portal (" + J.Motivo + ")");
+            Verdade(J.Status == Status.ACopiar && J.Ajuste == null && J.Fonte.Conteudo != null && J.CaminhoOrigem.Contains("id_xml 700007 (mesmo pedido 5010)") &&
+                J.Motivo.Contains("a linha aponta para o XML") && J.Motivo.Contains("id_xml 700010") && J.Motivo.Contains("= SEFAZ (mesmo valor)"),
+                "(a) XML autorizado só no chefxml e valor igual, mas a linha aponta para a tentativa sem protocolo -> importação, não ajuste (" + J.Motivo + ")");
+            var Ptr1 = nota("2032"); var Ptr2 = nota("2033");
+            Verdade(Ptr1.Status == Status.AjusteChave && AjusteChave.Trava(Ptr1) == null,
+                "Linha aponta para o XML autorizado (o Metre já transmitiu) -> AJUSTE DE CHAVE (" + Ptr1.Motivo + ")");
+            Verdade(Ptr2.Status == Status.AjusteChave && AjusteChave.Trava(Ptr2) == null,
+                "Linha aponta para a tentativa com o protocolo da autorizada -> AJUSTE DE CHAVE (" + Ptr2.Motivo + ")");
             Verdade(K.Status == Status.ACopiar && K.ValorSefaz == 27.50m && K.Ajuste == null && K.Fonte.Conteudo != null && K.CaminhoOrigem.Contains("id_xml 700038") &&
                 K.CaminhoDestino.Contains("importar-1") && K.ArquivoEscolhido.Contains("_CHAVE_" + K.ChaveAutorizada + "_Temp_ANTES_ENVIO_19_10_2026_13_47_50.xml"),
                 "(b) idem com valor diferente -> gravado do banco para importar (" + K.Motivo + ")");
@@ -223,19 +228,19 @@ namespace DuplicidadeNfce
                 Verdade(semBanco.All(l => l.Status != Status.AjusteChave), "Sem banco: nenhuma linha oferece ajuste de chave");
                 mArq.Dispose();
             }
-            Verdade(L.Status == Status.AjusteChave && L.Ajuste.OrigemValor.Contains("id_xml 700073"), "(c) XML do pedido depois do ponteiro também vale (" + L.Ajuste.OrigemValor + ")");
+            Verdade(L.Status == Status.ACopiar && L.CaminhoOrigem.Contains("id_xml 700073"), "(c) XML do pedido depois do ponteiro também vale (" + L.CaminhoOrigem + ")");
             Verdade(M.Status == Status.Pendente && M.Ajuste != null && M.Ajuste.PodeConferirPortal &&
                 System.Text.Encoding.UTF8.GetString(NotaXml.LerSomenteLeitura(m.ArqLog)).Contains("id_xml 700100 sem id_pedido"),
                 "(d) ponteiro sem id_pedido -> janela do pedido não é usada, conferir no portal (" + M.Motivo + ")");
-            Verdade(N.Status == Status.AjusteChave && N.ValorSefaz == 19.00m && N.Sel.Candidatos.Count(c => c.Aceito) == 1 &&
+            Verdade(N.Status == Status.ACopiar && N.ValorSefaz == 19.00m && N.CaminhoOrigem.Contains("id_xml 700128") && N.Sel.Candidatos.Count(c => c.Aceito) == 1 &&
                 N.Sel.Candidatos.Any(c => !c.Aceito && c.Caminho.Contains("id_xml 700126") && c.Motivo.Contains("≠ digVal")),
-                "(e) dois XMLs da chave no pedido: só o de DigestValue = digVal vale (" + N.Ajuste.OrigemValor + ")");
+                "(e) dois XMLs da chave no pedido: só o de DigestValue = digVal vale (" + N.CaminhoOrigem + ")");
             Verdade(m.DiasTentativa.Contains(new DateTime(2026, 10, 28)) && !m.DiasTentativa.Contains(new DateTime(2026, 10, 27)) &&
-                O.Status == Status.AjusteChave && O.Classificacao.Contains("539"),
-                "(f) REJEICAO na pasta do dia da tentativa (fora do período de emissão) é achado -> AJUSTE DE CHAVE (" + O.Classificacao + ")");
+                O.Status == Status.ACopiar && O.Classificacao.Contains("539"),
+                "(f) REJEICAO na pasta do dia da tentativa (fora do período de emissão) é achado (" + O.Classificacao + ")");
             Verdade(P.ChaveAutorizada == null && P.Status == Status.EmContingencia, "(f) REJEICAO num dia fora do período e sem tentativa nesse dia não é lido (só as pastas dos dias)");
             var U = nota("2020"); var V = nota("2021");
-            Verdade(m.DiasTentativa.Contains(new DateTime(2026, 10, 21)) && U.Status == Status.AjusteChave && U.Classificacao.Contains("539"),
+            Verdade(m.DiasTentativa.Contains(new DateTime(2026, 10, 21)) && U.Status == Status.ACopiar && U.Classificacao.Contains("539"),
                 "(f) REJEICAO num dia de tentativa dentro dos dias extras de candidatos também vale (" + U.Motivo + ")");
             Verdade(V.ChaveAutorizada == null && V.Status == Status.EmContingencia, "(f) REJEICAO num dia extra sem tentativa continua só candidato, como antes");
             Verdade(Q.Status == Status.EmContingencia && Q.Motivo == Analisador.TransmitaPrimeiro && P.Motivo == Analisador.TransmitaPrimeiro,
@@ -367,8 +372,20 @@ namespace DuplicidadeNfce
             Verdade(recusado(original.Replace("id_nota_saida=" + idA, "id_nota_saida=500"), "id"), "backup com id_nota_saida trocado -> desfazer recusado, banco intocado");
             Verdade(recusado(original.Substring(0, original.LastIndexOf("assinatura=")), "semassinatura"), "backup sem assinatura -> desfazer recusado");
             Verdade(recusado(original.Replace("chave_nova=", "chave_nova= "), "espaco"), "backup com um espaço a mais -> desfazer recusado");
+            {
+                // O Metre autorizou a nota depois do ajuste: desfazer deixaria a nota autorizada com a chave errada.
+                Exec("UPDATE chef.nota_saida SET situacao = 'Autorizado o uso da NF-e' WHERE id_nota_saida = " + idA);
+                string erro = null;
+                try { AjusteChave.Desfazer(m.Cfg, r2.CaminhoDestino, m.PastaBackups, m.Historico, m.Log); } catch (Exception ex) { erro = ex.Message; }
+                Verdade(erro != null && erro.Contains("não está mais em contingência") && ChaveNoBanco(idA) == autA,
+                    "nota já autorizada pelo Metre: desfazer recusado, chave autorizada mantida (" + erro + ")");
+                Exec("UPDATE chef.nota_saida SET situacao = CONVERT(UNHEX('" + BitConverter.ToString(System.Text.Encoding.UTF8.GetBytes("Em Contigência")).Replace("-", "") +
+                    "') USING utf8) WHERE id_nota_saida = " + idA);
+            }
             AjusteChave.Desfazer(m.Cfg, r2.CaminhoDestino, m.PastaBackups, m.Historico, m.Log);
-            Verdade(ChaveNoBanco(idA) == chaveA && Tabela() == tabelaAntes, "backup íntegro desfaz normalmente");
+            Verdade(ChaveNoBanco(idA) == chaveA, "backup íntegro desfaz normalmente (situação 'Em Contigência', com acento, como no Metre)");
+            Exec("UPDATE chef.nota_saida SET situacao = 'Em contigencia' WHERE id_nota_saida = " + idA);
+            Verdade(Tabela() == tabelaAntes, "tabela idêntica à original");
             m.Dispose();
 
             // ---------- CSV: texto com cara de fórmula não vira fórmula no Excel ----------
