@@ -465,6 +465,8 @@
                         ToolTip="Ajusta a chave de todas as linhas em AJUSTE DE CHAVE liberadas, cada uma com backup e transação próprios"/>
               </StackPanel>
               <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,0,6">
+                <Button x:Name="BtnMacroMetre" Style="{StaticResource BtnSecundario}" Content="Gerar rejeições no Metre" Margin="0,0,8,0"
+                        ToolTip="Duplo clique em cada nota da aba CONTIGÊNCIA da janela de NFC-e do Metre e &quot;Entendi !&quot; na rejeição (só nessa aba)"/>
                 <Button x:Name="BtnAbrirPasta" Style="{StaticResource BtnSecundario}" Content="Abrir pasta Duplicidade"/>
                 <Button x:Name="BtnExportar" Style="{StaticResource BtnSecundario}" Content="Exportar relatório (CSV)" Margin="8,0,0,0"/>
                 <Button x:Name="BtnVerLog" Style="{StaticResource BtnSecundario}" Content="Ver log" Margin="8,0,0,0"/>

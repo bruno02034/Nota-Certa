@@ -9,7 +9,7 @@ if not exist "%~dp0dist" mkdir "%~dp0dist"
   /out:"%~dp0dist\NotaCerta.exe" ^
   /lib:"%FW%\WPF" ^
   /r:System.Security.dll /r:System.Xml.dll /r:System.IO.Compression.dll /r:System.IO.Compression.FileSystem.dll /r:System.Core.dll /r:System.Xaml.dll ^
-  /r:PresentationFramework.dll /r:PresentationCore.dll /r:WindowsBase.dll ^
+  /r:PresentationFramework.dll /r:PresentationCore.dll /r:WindowsBase.dll /r:UIAutomationClient.dll /r:UIAutomationTypes.dll ^
   /resource:"%~dp0src\Gui\Principal.xaml",NotaCerta.Principal.xaml ^
   "%~dp0src\*.cs" "%~dp0src\Gui\*.cs"
 if errorlevel 1 exit /b 1

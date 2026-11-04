@@ -200,6 +200,7 @@ namespace DuplicidadeNfce
             G<Button>("BtnAjustarChave").Click += (s, e) => AjustarChave();
             G<Button>("BtnAjustarLote").Click += (s, e) => AjustarLote();
             G<Button>("BtnDesfazerAjuste").Click += (s, e) => DesfazerAjuste();
+            G<Button>("BtnMacroMetre").Click += (s, e) => GerarRejeicoesMetre();
             // Telas pequenas (servidor via AnyDesk): recolhe o menu e estreita os detalhes para a grade caber.
             W.SizeChanged += (s, e) =>
             {
@@ -522,7 +523,7 @@ namespace DuplicidadeNfce
         void Ocupado(bool sim, string msg)
         {
             ocupado = sim;
-            foreach (var b in new[] { "BtnListar", "BtnProcessar", "BtnRecarregar", "BtnAjustarLote" })
+            foreach (var b in new[] { "BtnListar", "BtnProcessar", "BtnRecarregar", "BtnAjustarLote", "BtnMacroMetre" })
                 G<Button>(b).IsEnabled = !sim;
             G<DatePicker>("DataDe").IsEnabled = G<DatePicker>("DataAte").IsEnabled = !sim && !cfg.TodasDatas;
             W.Cursor = sim ? System.Windows.Input.Cursors.Wait : null;
@@ -787,6 +788,42 @@ namespace DuplicidadeNfce
                     MostrarStatus(resumo.Replace("\n", " "));
                     Aviso(resumo + "\n\n" + AjusteChave.AvisoMetre);
                 }, TaskScheduler.FromCurrentSynchronizationContext());
+        }
+
+        // Macro na aba CONTIGÊNCIA do Metre (MacroMetre): o Metre grava o REJEICAO com a 539 que a busca usa.
+        void GerarRejeicoesMetre()
+        {
+            if (ocupado) return;
+            string motivo;
+            var previa = new MacroMetre(null, null).Previa(out motivo);
+            W.Activate();
+            if (previa == null) { Aviso("Macro do Metre: " + motivo + "."); return; }
+            if (previa.Count == 0) { Aviso("A aba CONTIGÊNCIA do Metre não tem nota em contingência na tela."); return; }
+            string lista = string.Join("\n", previa.Take(15).Select(l => l.ToString())) + (previa.Count > 15 ? "\n... e as que aparecerem rolando a lista" : "");
+            if (MessageBox.Show(W, "Dar duplo clique em cada nota da aba CONTIGÊNCIA do Metre?\n\n" + lista + "\n\n" +
+                "Cada duplo clique transmite a nota pelo Metre; na janela \"Rejeição de Nota\" o NotaCerta clica em \"Entendi !\".\n" +
+                "Antes de cada clique ele confere a aba e a nota, e para se algo mudar.\n\n" +
+                "Não use o mouse nem o teclado enquanto roda. Para parar: Esc ou mexa o mouse.",
+                Program.NomeSistema, MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
+            Directory.CreateDirectory(PastaRelatorios);
+            string arq = System.IO.Path.Combine(PastaRelatorios, "macro_metre_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".log");
+            var log = new Log(arq);
+            var macro = new MacroMetre(log, MostrarStatus);
+            Ocupado(true, "Macro do Metre: começando...");
+            W.WindowState = WindowState.Minimized;
+            Task.Factory.StartNew(() => macro.Executar()).ContinueWith(t =>
+            {
+                log.Dispose();
+                W.WindowState = WindowState.Normal;
+                W.Activate();
+                Ocupado(false, null);
+                if (t.IsFaulted) { Erro("Macro do Metre interrompido: " + t.Exception.InnerException.Message); return; }
+                var r = t.Result;
+                string resumo = r.Feitas.Count + " nota(s) passada(s) no Metre." + (r.Parada != null ? "\nParou: " + r.Parada : "\nFim da lista.");
+                MostrarStatus(resumo.Replace("\n", " "));
+                Aviso(resumo + (r.Feitas.Count > 0 ? "\n\n" + string.Join("\n", r.Feitas.Take(20)) + (r.Feitas.Count > 20 ? "\n..." : "") : "") +
+                    "\n\nLog: " + arq + "\n\nDepois clique em \"Listar contingência\".");
+            }, TaskScheduler.FromCurrentSynchronizationContext());
         }
 
         void DesfazerAjuste()
