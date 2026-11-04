@@ -30,8 +30,8 @@ $utf8 = New-Object Text.UTF8Encoding($false)
 $Ns = 'http://www.portalfiscal.inf.br/nfe'
 $bin = Join-Path $PastaMariaDb 'bin'
 
-function Chave($numero, $cnf) {
-    $b = '31' + $Aamm + $Cnpj + '65' + $Serie.ToString('000') + ([long]$numero).ToString('000000000') + '9' + $cnf
+function Chave($numero, $cnf, $tpEmis = '9') {
+    $b = '31' + $Aamm + $Cnpj + '65' + $Serie.ToString('000') + ([long]$numero).ToString('000000000') + $tpEmis + $cnf
     $peso = 2; $soma = 0
     for ($i = $b.Length - 1; $i -ge 0; $i--) { $soma += [int][string]$b[$i] * $peso; $peso = if ($peso -eq 9) { 2 } else { $peso + 1 } }
     $dv = 11 - ($soma % 11); if ($dv -ge 10) { $dv = 0 }
@@ -158,7 +158,8 @@ try {
     )
     $sqlNotas = @(); $sqlXmls = @(); $idNovo = $IdMetre + 100
     foreach ($x in $porPedido) {
-        $x.Id = $idNovo++; $x.Sis = Chave $x.N $x.S; $x.ChAut = Chave $x.N $x.A
+        # A autorizada é a primeira emissão normal (tpEmis 1), como nas 6 notas de 03/11 em que o ajuste não resolveu.
+        $x.Id = $idNovo++; $x.Sis = Chave $x.N $x.S; $x.ChAut = Chave $x.N $x.A '1'
         $dia = if ($x.DiaRej) { $x.DiaRej } else { '19' }
         Rejeicao539 $x.N $x.Sis $x.ChAut $x.V $dia
         $tent = NFe $x.Sis $x.N $x.V; $aut = NFe $x.ChAut $x.N $x.VAut
@@ -216,8 +217,10 @@ try {
     # XML para o qual a linha aponta (o que o Metre transmite), com valor igual: 2032 aponta para o XML autorizado (o Metre
     # já transmitiu e autorizou); 2033 aponta para a tentativa, mas ela traz o protocolo da autorizada. Os dois podem ser ajustados.
     # (J, L, N, O e U apontam para a tentativa sem protocolo, como as 6 notas de 03/11: vão para importação.)
+    # 2034 aponta para a tentativa sem protocolo, mas a autorizada é tpEmis 9 (como a 2/93054 de 03/11): pode ser ajustada.
     foreach ($x in @(@{ N = 2032; S = '30000061'; A = '30000062'; V = '41.00'; Ptr = 700400; Modo = 'autorizado' },
-                     @{ N = 2033; S = '30000063'; A = '30000064'; V = '42.00'; Ptr = 700410; Aut = 700408; Modo = 'protocolo' })) {
+                     @{ N = 2033; S = '30000063'; A = '30000064'; V = '42.00'; Ptr = 700410; Aut = 700408; Modo = 'protocolo' },
+                     @{ N = 2034; S = '30000065'; A = '30000066'; V = '43.00'; Ptr = 700420; Aut = 700418; Modo = 'semprot' })) {
         $x.Id = $idNovo++; $x.Sis = Chave $x.N $x.S; $x.ChAut = Chave $x.N $x.A
         Rejeicao539 $x.N $x.Sis $x.ChAut $x.V
         $aut = NFe $x.ChAut $x.N $x.V
@@ -231,7 +234,7 @@ try {
         }
         else {
             $tent = NFe $x.Sis $x.N $x.V
-            $proc = $abre + $tent.Xml + $prot + '</nfeProc>'
+            $proc = if ($x.Modo -eq 'semprot') { $abre + $tent.Xml + '</nfeProc>' } else { $abre + $tent.Xml + $prot + '</nfeProc>' }
             $lote = '<enviNFe versao="4.00" xmlns="' + $Ns + '"><idLote>1</idLote><indSinc>1</indSinc>' + $aut.Xml + '</enviNFe>'
             $sqlXmls += "($($x.Ptr), CONVERT(UNHEX('$(Hex $proc)') USING utf8), $($x.Id), $ped)"
             $sqlXmls += "($($x.Aut), CONVERT(UNHEX('$(Hex $lote)') USING utf8), NULL, $ped)"
@@ -342,7 +345,7 @@ PastasXmlExtras=$caixa;$pendrive;$tmp\caixa_desligado
     $fontes = @(Get-ChildItem "$raiz\src\*.cs", "$raiz\src\Gui\*.cs" | ForEach-Object { $_.FullName }) + "$PSScriptRoot\TesteAjuste.cs"
     & "$fw\csc.exe" /nologo /codepage:65001 /target:exe /platform:anycpu /main:DuplicidadeNfce.TesteAjuste "/out:$exe" "/lib:$fw\WPF" `
         /r:System.Security.dll /r:System.Xml.dll /r:System.IO.Compression.dll /r:System.IO.Compression.FileSystem.dll /r:System.Core.dll /r:System.Xaml.dll `
-        /r:PresentationFramework.dll /r:PresentationCore.dll /r:WindowsBase.dll "/resource:$raiz\src\Gui\Principal.xaml,NotaCerta.Principal.xaml" @fontes
+        /r:PresentationFramework.dll /r:PresentationCore.dll /r:WindowsBase.dll /r:UIAutomationClient.dll /r:UIAutomationTypes.dll "/resource:$raiz\src\Gui\Principal.xaml,NotaCerta.Principal.xaml" @fontes
     if ($LASTEXITCODE -ne 0) { throw "falha ao compilar o teste" }
 
     Remove-Item Env:MYSQL_PWD

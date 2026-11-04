@@ -185,6 +185,9 @@ namespace DuplicidadeNfce
                 "Linha aponta para o XML autorizado (o Metre já transmitiu) -> AJUSTE DE CHAVE (" + Ptr1.Motivo + ")");
             Verdade(Ptr2.Status == Status.AjusteChave && AjusteChave.Trava(Ptr2) == null,
                 "Linha aponta para a tentativa com o protocolo da autorizada -> AJUSTE DE CHAVE (" + Ptr2.Motivo + ")");
+            var Ptr3 = nota("2034");
+            Verdade(Ptr3.Status == Status.AjusteChave && AjusteChave.Trava(Ptr3) == null,
+                "Linha aponta para a tentativa sem protocolo, mas a autorizada é tpEmis 9 -> AJUSTE DE CHAVE (" + Ptr3.Motivo + ")");
 
             // ---------- Ajuste em massa: a falha de uma linha não afeta as outras ----------
             {

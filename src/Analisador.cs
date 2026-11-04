@@ -1009,8 +1009,11 @@ namespace DuplicidadeNfce
         // O Metre transmite o XML para o qual a linha aponta (nota_saida.XML). Com outra chave e sem o protocolo da autorizada,
         // ele recebe a 539 de novo mesmo com a chave_acesso trocada (03/11: os 6 de 45 ajustes que não saíram da contingência).
         // null = o ajuste resolve (ou a linha não aponta para XML nenhum, como antes).
+        // Autorizada em contingência (tpEmis 9, posição 35 da chave): o ajuste resolveu mesmo com a linha apontando para outro
+        // XML (03/11, 2/93054); as 6 que falharam tinham a autorizada tpEmis 1.
         string LinhaApontaOutroXml(Tentativa t, string k)
         {
+            if (k != null && k.Length == 44 && k[34] == '9') return null;
             if (fontes == null || fontes.XmlDaLinha == null) return null;
             var x = fontes.XmlDaLinha(t);
             if (x == null || (x.Erro == null && x.Chave == k)) return null;

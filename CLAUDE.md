@@ -24,6 +24,8 @@ descreve as regras de negócio em detalhe; leia-o antes de mudar comportamento. 
   - `testes\testar_amostras.ps1`: fluxo de cópia para importação. Precisa de `amostras\` e `testes\casos.local.ps1`
     (dados reais do cliente, fora do git); sem eles sai com aviso.
   - `testes\testar_faltantes.ps1`: Notas Faltantes com XMLs sintéticos.
+  - `testes\testar_macro.ps1`: macro do Metre contra uma janela "Rejeição de Nota" simulada (`janela_rejeicao.ps1`);
+    o duplo clique na aba CONTIGÊNCIA só se testa com um Metre aberto (nunca o de um cliente).
   - Rode-os direto na sessão PowerShell (`& .\testes\testar_ajuste.ps1`); depois de mudar `src\`, rode `build.cmd`
     antes de `testar_amostras`/`testar_faltantes`, que usam `dist\NotaCerta.exe` (ou `$env:NOTACERTA_EXE`).
 - Nenhum teste chama a SEFAZ real: `sefaz_simulada.ps1`/`sefaz_respostas.ps1` servem respostas locais
@@ -56,12 +58,16 @@ Fluxo da duplicidade (mesmo caminho para interface e linha de comando):
      botão linha a linha, com backup da linha em `backups\`, transação com `FOR UPDATE` e `UPDATE ... WHERE id AND
      numero AND serie AND chave_acesso=<atual>` exigindo 1 linha afetada; "Desfazer" volta pelo backup. Só com a nota
      em contingência, e só se o XML da linha (`nota_saida.XML`, que o Metre transmite) tiver a chave autorizada ou o
-     protocolo dela; senão vai para importação (`LinhaApontaOutroXml` em `Analisador.cs`).
+     protocolo dela, ou se a chave autorizada for tpEmis 9; senão vai para importação (`LinhaApontaOutroXml` em
+     `Analisador.cs`).
    - O valor autorizado vale quando algum XML da chave tem DigestValue = `digVal` da SEFAZ (inclusive só o
      `Temp_ANTES_ENVIO`); sem arquivo, busca o XML no banco `chefxml.xml` pela PK; sem nada, conferência manual no
      portal (registrada no histórico).
    - Qualquer dúvida (SEFAZ sem resposta, mais de um candidato, etc.) → PENDENTE com o motivo; nada é escolhido pelo
      nome do arquivo.
+   - `MacroMetre.cs` (botão "Gerar rejeições no Metre"): UI Automation na janela JavaFX do Metre; duplo clique em cada
+     nota da aba CONTIGÊNCIA (achada pela coluna "CLIENTE CONTIGÊNCIA", as abas não aparecem na automação) para o Metre
+     gravar o REJEICAO, e "Entendi !" na janela de rejeição. Confere tudo de novo antes de cada clique e para na dúvida.
 4. `Gui\Gui.cs` (classe `Janela`) carrega `Principal.xaml` por `XamlReader` (sem code-behind; elementos achados por
    nome com `G<T>("Nome")`) e roda o `Motor` em `Task`s. `Gui\TelaFaltantes.cs` é a página de Notas Faltantes
    (lógica em `Faltantes.cs`); `Gui\TelaSenha.cs` é o diálogo da senha do banco, montado em código.

@@ -21,6 +21,19 @@ também em `C:\Chef\Empresa\*\Certificado`, valendo o do CNPJ emitente. A senha 
 retorno de duplicidade (539), que traz a chave autorizada. Sem essa transmissão a nota fica EM CONTINGÊNCIA com o
 aviso "Transmita a nota no Metre primeiro…" (é o esperado); transmita e liste de novo.
 
+**Gerar rejeições no Metre** (botão da tela de Duplicidade) faz essa transmissão nota a nota. Abra no Metre a
+janela de NFC-e na aba **CONTIGÊNCIA** e clique no botão. O NotaCerta mostra as notas da aba e pede confirmação.
+Depois dá duplo clique em cada uma e clica em "Entendi !" na janela "Rejeição de Nota" (ou "Ok"), gravando o texto
+dela em `relatorios\macro_metre_*.log`. Ele só atua na aba CONTIGÊNCIA, a única tabela com a coluna "CLIENTE
+CONTIGÊNCIA". Antes de cada clique, confere:
+- se o Metre está na frente;
+- se essa tabela está na tela;
+- se o ponto do clique é a linha da nota;
+- se o status dela é "Em Contigência".
+
+Se algo não bater, se aparecer outra janela (ou nenhuma em 90 s), ou se você apertar Esc ou mexer o mouse, ele para
+e mostra o motivo. Não use o computador enquanto roda. No fim, clique em *Listar contingência*.
+
 **Interface:** dê dois cliques em `NotaCerta.exe` → escolha as datas → *Listar notas com 539* →
 marque as notas → *Processar marcadas* (consulta a SEFAZ, escolhe o arquivo e copia).
 
@@ -127,6 +140,8 @@ período é o informado na tela e não há ajuste de chave: valor igual também 
    reenvia a tentativa e recebe a 539 de novo. Visto em 03/11: 6 dos 45 ajustes ficaram assim, todos com a nota
    autorizada no dia da venda, com emissão normal. Nesse caso a linha vai para importação, com o XML autorizado do
    `chefxml` ou de uma pasta; sem XML autorizado, fica PENDENTE com o motivo. Linha sem XML apontado segue como antes.
+   Exceção: se a chave autorizada é de contingência (tpEmis 9, o dígito depois do número na chave), o ajuste é
+   oferecido mesmo com a linha apontando para outro XML. Visto em 03/11 na 2/93054: o ajuste resolveu.
 
 O ajuste é linha a linha, com confirmação. **Ajustar chaves (N)**, ao lado de "Processar marcadas", faz o mesmo em
 todas as linhas em AJUSTE DE CHAVE liberadas, com uma confirmação só: cada nota passa pelas mesmas travas, com backup e
