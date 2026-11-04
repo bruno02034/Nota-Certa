@@ -12,6 +12,34 @@ namespace DuplicidadeNfce
         static int falhas;
         static void Verdade(bool c, string m) { Console.WriteLine((c ? "OK    " : "FALHA ") + m); if (!c) falhas++; }
 
+        // Pergunta "pedido cancelado" do Metre: o macro acha só o "Não" (nunca o "Sim") e só nessa pergunta.
+        static void Cancelado(string script, string texto, bool deveAchar)
+        {
+            var p = Process.Start(new ProcessStartInfo("powershell.exe", "-STA -NoProfile -ExecutionPolicy Bypass -File \"" + script + "\"" +
+                (texto != null ? " -Texto \"" + texto + "\"" : "")) { UseShellExecute = false, CreateNoWindow = true });
+            try
+            {
+                var lim = DateTime.Now.AddSeconds(30);
+                bool aberta = false;
+                while (!aberta && DateTime.Now < lim)
+                {
+                    Thread.Sleep(300);
+                    p.Refresh(); aberta = p.MainWindowHandle != IntPtr.Zero;
+                }
+                Thread.Sleep(500);
+                var nao = MacroMetre.BotoesNaoCancelado(p.Id);
+                Verdade(MacroMetre.BotoesConfirmar(p.Id).Count == 0, "pergunta com Sim/Não não tem \"Entendi\"/\"Ok\"" + (deveAchar ? "" : " (outra pergunta)"));
+                if (!deveAchar) { Verdade(nao.Count == 0, "\"Não\" de outra pergunta fica de fora: " + nao.Count); return; }
+                Verdade(nao.Count == 1 && nao[0].Current.Name == "Não", "acha só o \"Não\" do pedido cancelado: " + nao.Count + " botão(ões)");
+                if (nao.Count != 1) return;
+                Verdade(MacroMetre.TextoDaJanela(nao[0]).Contains("pedido foi cancelado"), "texto da pergunta vai para o log");
+                ((InvokePattern)nao[0].GetCurrentPattern(InvokePattern.Pattern)).Invoke();
+                p.WaitForExit(10000);
+                Verdade(p.HasExited && p.ExitCode == 0, "responde \"Não\" (não \"Sim\") e a janela fecha");
+            }
+            finally { if (!p.HasExited) p.Kill(); }
+        }
+
         [STAThread]
         static int Main(string[] a)
         {
@@ -43,6 +71,9 @@ namespace DuplicidadeNfce
                 Verdade(MacroMetre.Normalizar("CLIENTE\nCONTIGÊNCIA") == MacroMetre.ColunaContingencia, "cabeçalho da coluna em duas linhas casa com a da aba CONTIGÊNCIA");
             }
             finally { if (!p.HasExited) p.Kill(); }
+            string canc = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(a[0]), "janela_cancelado.ps1");
+            Cancelado(canc, null, true);
+            Cancelado(canc, "Deseja sair do sistema?", false);
             Console.WriteLine(falhas == 0 ? "TODOS OS TESTES PASSARAM" : falhas + " FALHA(S)");
             return falhas;
         }

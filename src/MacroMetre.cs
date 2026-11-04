@@ -39,6 +39,7 @@ namespace DuplicidadeNfce
         public class Resultado
         {
             public List<string> Feitas = new List<string>();
+            public List<string> Canceladas = new List<string>();   // pedido cancelado: Metre pediu para excluir; respondido Não
             public string Parada;           // null = terminou a lista
         }
 
@@ -130,8 +131,9 @@ namespace DuplicidadeNfce
                     string msg = UmaNota(p, tabela, prox, out motivo);
                     if (motivo != null) { res.Parada = "nota " + prox + ": " + motivo; break; }
                     res.Feitas.Add(prox + ": " + msg);
+                    if (msg.StartsWith(PrefixoCancelado)) res.Canceladas.Add(prox.ToString());
                     log.Info("  " + prox + ": " + msg);
-                    Thread.Sleep(800);
+                    Thread.Sleep(300);   // o Metre redesenha a tabela depois da janela
                 }
             }
             catch (Exception ex) { res.Parada = "erro: " + ex.Message; }
@@ -161,46 +163,68 @@ namespace DuplicidadeNfce
             var noPonto = AutomationElement.FromPoint(pt);
             if (!Ancestral(noPonto, l.Elemento) || !Ancestral(noPonto, tabela)) { motivo = "o ponto do clique não é a linha da nota na aba CONTIGÊNCIA"; return null; }
 
-            if (BotoesConfirmar(p.Id).Count > 0) { motivo = "já há uma janela do Metre esperando \"Entendi\"/\"Ok\"; feche-a antes"; return null; }
+            List<AutomationElement> nao;
+            if (Botoes(p.Id, out nao).Count > 0 || nao.Count > 0) { motivo = "já há uma janela do Metre esperando resposta; feche-a antes"; return null; }
             DuploClique((int)pt.X, (int)pt.Y);
 
             var limite = DateTime.Now.AddSeconds(SegundosJanela);
             while (DateTime.Now < limite)
             {
-                Thread.Sleep(300);
+                Thread.Sleep(150);
                 if (Cancelado()) { motivo = "cancelado (Esc) esperando a janela do Metre"; return null; }
-                var botoes = BotoesConfirmar(p.Id);
+                var botoes = Botoes(p.Id, out nao);
+                // "Este pedido foi cancelado, deseja excluir esta nota e inutilizar a numeração?": responde Não (Sim inutiliza na SEFAZ).
+                bool cancelado = botoes.Count == 0 && nao.Count > 0;
+                if (cancelado) botoes = nao;
                 if (botoes.Count == 0) continue;
-                if (botoes.Count > 1) { motivo = "o Metre mostrou mais de uma janela de confirmação; responda no Metre"; return null; }
+                if (botoes.Count > 1) { motivo = "o Metre mostrou mais de uma janela esperando resposta; responda no Metre"; return null; }
                 string texto = TextoDaJanela(botoes[0]);
                 Clicar(botoes[0]);
                 var fim = DateTime.Now.AddSeconds(10);
-                while (DateTime.Now < fim && BotoesConfirmar(p.Id).Count > 0) Thread.Sleep(200);
-                if (BotoesConfirmar(p.Id).Count > 0) { motivo = "a janela do Metre não fechou com \"" + Normalizar(botoes[0].Current.Name) + "\" (" + texto + ")"; return null; }
-                return texto;
+                while (DateTime.Now < fim && AindaAberta(p.Id, cancelado)) Thread.Sleep(100);
+                if (AindaAberta(p.Id, cancelado)) { motivo = "a janela do Metre não fechou com \"" + Normalizar(botoes[0].Current.Name) + "\" (" + texto + ")"; return null; }
+                return cancelado ? PrefixoCancelado + texto : texto;
             }
             motivo = "o Metre não mostrou janela com \"Entendi\"/\"Ok\" em " + SegundosJanela + " s depois do duplo clique";
             return null;
         }
 
-        // Botão da janela de resultado do Metre ("Rejeição de Nota" com "Entendi !", visto em 22/10; ou "Ok"), em qualquer
-        // janela do processo: pode ser janela própria ou sobreposta à de NFC-e.
+        static bool AindaAberta(int pid, bool cancelado)
+        {
+            List<AutomationElement> nao;
+            var c = Botoes(pid, out nao);
+            return (cancelado ? nao : c).Count > 0;
+        }
+
+        public const string PrefixoCancelado = "PEDIDO CANCELADO (respondido Não; excluir a nota): ";
+
+        // Botões que o macro responde, numa só varredura das janelas do processo (janela própria ou sobreposta à de NFC-e):
+        // "Entendi !"/"Ok" da janela de resultado ("Rejeição de Nota", vista em 22/10) e, em nao, o "Não" da pergunta de
+        // pedido cancelado (vista em 04/11), só se o texto da janela falar de pedido cancelado.
         static readonly Regex Confirmar = new Regex(@"^(entendi\b.*|ok)$", RegexOptions.IgnoreCase);
-        internal static List<AutomationElement> BotoesConfirmar(int pid)
+        internal static List<AutomationElement> Botoes(int pid, out List<AutomationElement> nao)
         {
             var l = new List<AutomationElement>();
+            nao = new List<AutomationElement>();
             foreach (var h in Janelas(pid))
             {
                 try
                 {
                     foreach (AutomationElement b in AutomationElement.FromHandle(h).FindAll(TreeScope.Descendants,
                         new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button)))
-                        if (Confirmar.IsMatch(Normalizar(b.Current.Name)) && !b.Current.IsOffscreen) l.Add(b);
+                    {
+                        string nome = Normalizar(b.Current.Name);
+                        if (Confirmar.IsMatch(nome)) { if (!b.Current.IsOffscreen) l.Add(b); }
+                        else if (SemAcento(nome).ToLowerInvariant() == "nao" && !b.Current.IsOffscreen &&
+                            Regex.IsMatch(SemAcento(TextoDaJanela(b)), @"pedido foi cancelad", RegexOptions.IgnoreCase)) nao.Add(b);
+                    }
                 }
                 catch (ElementNotAvailableException) { }
             }
             return l;
         }
+        internal static List<AutomationElement> BotoesConfirmar(int pid) { List<AutomationElement> n; return Botoes(pid, out n); }
+        internal static List<AutomationElement> BotoesNaoCancelado(int pid) { List<AutomationElement> n; Botoes(pid, out n); return n; }
 
         // Texto da janela do botão: sobe até o primeiro ancestral com texto além do botão (código, rejeição, chave).
         internal static string TextoDaJanela(AutomationElement botao)

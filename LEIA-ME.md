@@ -24,7 +24,9 @@ aviso "Transmita a nota no Metre primeiro…" (é o esperado); transmita e liste
 **Gerar rejeições no Metre** (botão da tela de Duplicidade) faz essa transmissão nota a nota. Abra no Metre a
 janela de NFC-e na aba **CONTIGÊNCIA** e clique no botão. O sistema mostra as notas da aba e pede confirmação.
 Depois dá duplo clique em cada uma e clica em "Entendi !" na janela "Rejeição de Nota" (ou "Ok"), gravando o texto
-dela em `relatorios\macro_metre_*.log`. Ele só atua na aba CONTIGÊNCIA, a única tabela com a coluna "CLIENTE
+dela em `relatorios\macro_metre_*.log`. Se o Metre perguntar "Este pedido foi cancelado, deseja excluir esta nota e
+inutilizar a numeração?", o macro responde **Não** (o Sim inutiliza o número na SEFAZ) e segue para a próxima. No fim, o
+resumo lista essas notas para você excluir no Metre, conferindo uma a uma. Ele só atua na aba CONTIGÊNCIA, a única tabela com a coluna "CLIENTE
 CONTIGÊNCIA". Antes de cada clique, confere:
 - se o Metre está na frente;
 - se essa tabela está na tela;

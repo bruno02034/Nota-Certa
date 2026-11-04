@@ -859,7 +859,8 @@ namespace DuplicidadeNfce
                 Ocupado(false, null);
                 if (t.IsFaulted) { Erro("Macro do Metre interrompido: " + t.Exception.InnerException.Message); return; }
                 var r = t.Result;
-                string resumo = r.Feitas.Count + " nota(s) passada(s) no Metre." + (r.Parada != null ? "\nParou: " + r.Parada : "\nFim da lista.");
+                string resumo = r.Feitas.Count + " nota(s) passada(s) no Metre." + (r.Parada != null ? "\nParou: " + r.Parada : "\nFim da lista.") +
+                    (r.Canceladas.Count > 0 ? "\n\nPedido cancelado (respondido Não; excluir no Metre): " + string.Join(", ", r.Canceladas) : "");
                 MostrarStatus(resumo.Replace("\n", " "));
                 Aviso(resumo + (r.Feitas.Count > 0 ? "\n\n" + string.Join("\n", r.Feitas.Take(20)) + (r.Feitas.Count > 20 ? "\n..." : "") : "") +
                     "\n\nLog: " + arq + "\n\nDepois clique em \"Listar contingência\".");
