@@ -114,6 +114,38 @@
       <Setter Property="BorderBrush" Value="#B9D4FF"/>
       <Setter Property="FontWeight" Value="SemiBold"/>
     </Style>
+    <!-- Ações auxiliares da barra: sem borda, só ícone e texto. -->
+    <Style x:Key="BtnFantasma" TargetType="Button">
+      <Setter Property="Foreground" Value="{StaticResource TextoSec}"/>
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="Padding" Value="10,7"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="b" Background="{TemplateBinding Background}" CornerRadius="8" Padding="{TemplateBinding Padding}">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="b" Property="Background" Value="#FFF1EA"/>
+                <Setter Property="Foreground" Value="{StaticResource LaranjaEscuro}"/>
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False"><Setter TargetName="b" Property="Opacity" Value="0.45"/></Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+    <!-- Número da etapa do fluxo (1 Metre, 2 Listar, 3 Processar). -->
+    <Style x:Key="Etapa" TargetType="Border">
+      <Setter Property="Width" Value="20"/>
+      <Setter Property="Height" Value="20"/>
+      <Setter Property="CornerRadius" Value="10"/>
+      <Setter Property="Background" Value="#FFE3D3"/>
+      <Setter Property="Margin" Value="0,0,6,0"/>
+      <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
     <Style x:Key="BtnLink" TargetType="Button">
       <Setter Property="Foreground" Value="{StaticResource Azul}"/>
       <Setter Property="Cursor" Value="Hand"/>
@@ -321,10 +353,7 @@
             </LinearGradientBrush>
           </Border.Background>
           <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-            <Grid Width="44" Height="44">
-              <Ellipse Fill="{StaticResource Laranja}"/>
-              <Path Style="{StaticResource Icone}" Stroke="White" Width="22" Height="22" Data="M7,3 H14 L18,7 V21 H7 Z M14,3 V7 H18 M10,14 L12,16 L16,11.5"/>
-            </Grid>
+            <Image x:Name="LogoImg" Width="48" Height="48" RenderOptions.BitmapScalingMode="HighQuality"/>
             <StackPanel x:Name="LogoTextos" Margin="12,0,0,0" VerticalAlignment="Center">
               <TextBlock Text="NotaCerta" FontSize="22" FontWeight="Bold" Foreground="#1F2937"/>
               <TextBlock Text="Conferência de NFC-e sem dor" FontSize="10.5" Foreground="{StaticResource TextoSec}"/>
@@ -453,25 +482,62 @@
               <RowDefinition Height="Auto"/>
               <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
-            <WrapPanel>
-              <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,24,6">
-                <TextBlock Text="De" VerticalAlignment="Center" Foreground="{StaticResource TextoSec}" Margin="0,0,8,0"/>
-                <DatePicker x:Name="DataDe" Width="130" VerticalContentAlignment="Center" Height="34"/>
-                <TextBlock Text="até" VerticalAlignment="Center" Foreground="{StaticResource TextoSec}" Margin="12,0,8,0"/>
-                <DatePicker x:Name="DataAte" Width="130" VerticalContentAlignment="Center" Height="34"/>
-                <Button x:Name="BtnListar" Style="{StaticResource BtnAzul}" Content="Listar contingência" Margin="14,0,0,0"/>
-                <Button x:Name="BtnProcessar" Style="{StaticResource BtnPrimario}" Content="Processar marcadas" Margin="10,0,0,0"/>
-                <Button x:Name="BtnAjustarLote" Style="{StaticResource BtnSecundario}" Content="Ajustar chaves" Margin="10,0,0,0" IsEnabled="False"
-                        ToolTip="Ajusta a chave de todas as linhas em AJUSTE DE CHAVE liberadas, cada uma com backup e transação próprios"/>
-              </StackPanel>
-              <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,0,6">
-                <Button x:Name="BtnMacroMetre" Style="{StaticResource BtnSecundario}" Content="Gerar rejeições no Metre" Margin="0,0,8,0"
-                        ToolTip="Duplo clique em cada nota da aba CONTIGÊNCIA da janela de NFC-e do Metre e &quot;Entendi !&quot; na rejeição (só nessa aba)"/>
-                <Button x:Name="BtnAbrirPasta" Style="{StaticResource BtnSecundario}" Content="Abrir pasta Duplicidade"/>
-                <Button x:Name="BtnExportar" Style="{StaticResource BtnSecundario}" Content="Exportar relatório (CSV)" Margin="8,0,0,0"/>
-                <Button x:Name="BtnVerLog" Style="{StaticResource BtnSecundario}" Content="Ver log" Margin="8,0,0,0"/>
-              </StackPanel>
-            </WrapPanel>
+              <!-- Em tela estreita os grupos descem um para baixo do outro. -->
+              <WrapPanel>
+                <!-- Período -->
+                <Border Background="#F8FAFC" BorderBrush="{StaticResource Borda}" BorderThickness="1" CornerRadius="10" Padding="12,4" Margin="0,0,16,8" VerticalAlignment="Center">
+                  <StackPanel Orientation="Horizontal">
+                    <Path Style="{StaticResource Icone}" Stroke="{StaticResource TextoSec}" Width="15" Height="15" Margin="0,0,10,0" VerticalAlignment="Center"
+                          Data="M4,6 H20 V20 H4 Z M4,10 H20 M8,3 V7 M16,3 V7"/>
+                    <TextBlock Text="De" VerticalAlignment="Center" Foreground="{StaticResource TextoSec}" Margin="0,0,8,0"/>
+                    <DatePicker x:Name="DataDe" Width="124" VerticalContentAlignment="Center" Height="32"/>
+                    <TextBlock Text="até" VerticalAlignment="Center" Foreground="{StaticResource TextoSec}" Margin="10,0,8,0"/>
+                    <DatePicker x:Name="DataAte" Width="124" VerticalContentAlignment="Center" Height="32"/>
+                  </StackPanel>
+                </Border>
+                <!-- Etapas na ordem do trabalho -->
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,16,8">
+                  <Button x:Name="BtnMacroMetre" Style="{StaticResource BtnSecundario}"
+                          ToolTip="Duplo clique em cada nota da aba CONTIGÊNCIA da janela de NFC-e do Metre e &quot;Entendi !&quot; na rejeição (só nessa aba)">
+                    <StackPanel Orientation="Horizontal">
+                      <Border Style="{StaticResource Etapa}"><TextBlock Text="1" FontSize="11" FontWeight="Bold" Foreground="{StaticResource LaranjaEscuro}" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+                      <TextBlock Text="Gerar rejeições no Metre" VerticalAlignment="Center"/>
+                    </StackPanel>
+                  </Button>
+                  <Path Style="{StaticResource Icone}" Stroke="#CBD5E1" Width="10" Height="10" Margin="8,0" VerticalAlignment="Center" Data="M9,5 L16,12 L9,19"/>
+                  <Button x:Name="BtnListar" Style="{StaticResource BtnAzul}">
+                    <StackPanel Orientation="Horizontal">
+                      <Border Style="{StaticResource Etapa}" Background="#DCEAFF"><TextBlock Text="2" FontSize="11" FontWeight="Bold" Foreground="{StaticResource Azul}" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+                      <TextBlock Text="Listar contingência" VerticalAlignment="Center"/>
+                    </StackPanel>
+                  </Button>
+                  <Path Style="{StaticResource Icone}" Stroke="#CBD5E1" Width="10" Height="10" Margin="8,0" VerticalAlignment="Center" Data="M9,5 L16,12 L9,19"/>
+                  <Button x:Name="BtnProcessar" Style="{StaticResource BtnPrimario}" Content="Processar marcadas"/>
+                  <Button x:Name="BtnAjustarLote" Style="{StaticResource BtnSecundario}" Content="Ajustar chaves" Margin="8,0,0,0" IsEnabled="False"
+                          ToolTip="Ajusta a chave de todas as linhas em AJUSTE DE CHAVE liberadas, cada uma com backup e transação próprios"/>
+                </StackPanel>
+                <!-- Auxiliares -->
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,0,8">
+                  <Button x:Name="BtnAbrirPasta" Style="{StaticResource BtnFantasma}" ToolTip="Abrir a pasta Duplicidade (cópias para importar)">
+                    <StackPanel Orientation="Horizontal">
+                      <Path Style="{StaticResource Icone}" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" Width="15" Height="15" Margin="0,0,6,0" Data="M3,6 H9 L11,8 H21 V19 H3 Z"/>
+                      <TextBlock Text="Pasta" VerticalAlignment="Center"/>
+                    </StackPanel>
+                  </Button>
+                  <Button x:Name="BtnExportar" Style="{StaticResource BtnFantasma}" ToolTip="Exportar o relatório da grade (CSV)">
+                    <StackPanel Orientation="Horizontal">
+                      <Path Style="{StaticResource Icone}" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" Width="15" Height="15" Margin="0,0,6,0" Data="M12,4 V15 M7,10 L12,15 L17,10 M5,19 H19"/>
+                      <TextBlock Text="Exportar CSV" VerticalAlignment="Center"/>
+                    </StackPanel>
+                  </Button>
+                  <Button x:Name="BtnVerLog" Style="{StaticResource BtnFantasma}" ToolTip="Abrir o log da última busca">
+                    <StackPanel Orientation="Horizontal">
+                      <Path Style="{StaticResource Icone}" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" Width="15" Height="15" Margin="0,0,6,0" Data="M6,3 H15 L19,7 V21 H6 Z M9,11 H16 M9,15 H16"/>
+                      <TextBlock Text="Log" VerticalAlignment="Center"/>
+                    </StackPanel>
+                  </Button>
+                </StackPanel>
+              </WrapPanel>
             <Grid Grid.Row="1" Margin="0,12,0,0">
               <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="260"/>

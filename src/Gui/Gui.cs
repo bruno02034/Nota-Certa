@@ -163,6 +163,14 @@ namespace DuplicidadeNfce
             this.op = op;
             using (var s = Assembly.GetExecutingAssembly().GetManifestResourceStream("NotaCerta.Principal.xaml"))
                 W = (Window)XamlReader.Load(s);
+            using (var s = Assembly.GetExecutingAssembly().GetManifestResourceStream("NotaCerta.logo.png"))
+                if (s != null)
+                {
+                    var logo = System.Windows.Media.Imaging.BitmapFrame.Create(s, System.Windows.Media.Imaging.BitmapCreateOptions.None,
+                        System.Windows.Media.Imaging.BitmapCacheOption.OnLoad);
+                    G<System.Windows.Controls.Image>("LogoImg").Source = logo;
+                    W.Icon = logo;
+                }
             EspacarTitulos(W);
             cfg = op.CarregarConfig();
 
