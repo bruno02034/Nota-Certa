@@ -389,6 +389,22 @@ namespace DuplicidadeNfce
                 .Select(v => v[0]).ToList();
         }
 
+        // Configurações → conexão remota (experimental): só conecta, em sessão somente leitura, e resume o que achou.
+        public static string TestarConexao(Config cfg)
+        {
+            using (var s = Sessao.Abrir(cfg, null, true))
+            {
+                string r = "MariaDB " + s.Consultar("SELECT VERSION()")[0][0];
+                try
+                {
+                    r += "; " + s.Consultar("SELECT COUNT(*) FROM " + cfg.DbBanco + ".nota_saida WHERE situacao = '" +
+                        cfg.DbSituacao.Replace("\\", "\\\\").Replace("'", "''") + "'")[0][0] + " nota(s) em contingência em " + cfg.DbBanco + ".nota_saida";
+                }
+                catch (Exception ex) { r += "; conectou, mas não leu " + cfg.DbBanco + ".nota_saida: " + ex.Message; }
+                return r;
+            }
+        }
+
         // --testar-banco: mostra cada passo e um resumo por situação (sem dados de clientes).
         public static void Testar(Config cfg, Action<string> mostrar)
         {

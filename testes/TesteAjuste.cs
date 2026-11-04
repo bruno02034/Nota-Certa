@@ -471,6 +471,23 @@ namespace DuplicidadeNfce
                 Verdade(NotaXml.LerConteudo("teste 539", Encoding.UTF8.GetBytes(xml.Replace(" [nItem: 1]", ""))).ItemRejeitado == null, "rejeição sem nItem: nada a mostrar");
             }
 
+            // ---------- Conexão remota (experimental): testa numa cópia, a configuração em uso não muda ----------
+            {
+                raiz.ResolverConexaoBanco();
+                string host = raiz.DbHost, usuario = raiz.DbUsuario, senha = raiz.DbSenha; int porta = raiz.DbPorta;
+                var rem = raiz.Copia();
+                rem.DbHost = "127.0.0.1"; rem.DbPorta = porta; rem.DbUsuario = usuario; rem.DbSenha = senha;
+                string ok = Banco.TestarConexao(rem);
+                Verdade(ok.StartsWith("MariaDB ") && ok.Contains("nota(s) em contingência"), "conexão remota: conecta e resume (" + ok + ")");
+                var errada = raiz.Copia();
+                errada.DbHost = "127.0.0.1"; errada.DbPorta = porta; errada.DbUsuario = "metre"; errada.DbSenha = "senha-errada-123";
+                string erro = null;
+                try { Banco.TestarConexao(errada); } catch (Exception ex) { erro = ex.Message; }
+                Verdade(erro != null && erro.Contains("falhou") && !erro.Contains("senha-errada-123"), "conexão remota: senha errada avisa sem mostrar a senha (" + erro + ")");
+                Verdade(raiz.DbHost == host && raiz.DbPorta == porta && raiz.DbUsuario == usuario && raiz.DbSenha == senha,
+                    "conexão remota: a configuração em uso continua a mesma");
+            }
+
             // ---------- Contingência 2: variações do nome e volta para a contingência normal ----------
             {
                 string[] sit = { "Em Contigência2", "Em Contingência 2", "Contingencia 2", "Em Contigência" };

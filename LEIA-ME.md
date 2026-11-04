@@ -126,6 +126,11 @@ Em **Configurações** dá para mudar sem abrir o ini: lista da contingência (b
 por linha. **Salvar ajustes** grava só o que mudou no `duplicidade.ini` e vale na busca seguinte. Com `Conexao.ini` pela
 rede dizendo `localhost`, o banco é procurado no computador que compartilha a pasta.
 
+**Conexão remota ao banco (experimental):** em Configurações, informe IP, porta (padrão 3307), usuário (normalmente
+`metre`) e senha, e clique em **Testar conexão**. O sistema conecta somente para leitura e mostra a versão do MariaDB
+e quantas notas estão em contingência. Só testa: nada é salvo, a senha digitada não fica gravada, e a conexão usada pelo
+sistema continua a do `duplicidade.ini`/`Conexao.ini`.
+
 **Sem conexão com o banco:** com `FonteContingencia=arquivos` e as pastas apontando para `\\SERVIDOR\Chef`, a busca pelo
 dia da autorização e as pastas extras funcionam. A lista vem dos XMLs (pode diferir da aba Contingência do Metre), o
 período é o informado na tela e não há ajuste de chave: valor igual também vai para a cópia.

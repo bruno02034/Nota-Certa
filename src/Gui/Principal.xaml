@@ -1147,6 +1147,31 @@
               <Button x:Name="BtnSalvarAjustes" Grid.Row="3" Grid.Column="1" Style="{StaticResource BtnPrimario}" Content="Salvar ajustes" HorizontalAlignment="Left" Margin="0,10,0,0"/>
             </Grid>
           </Border>
+          <!-- Conexão remota (experimental): só testa; não grava nada nem muda a conexão em uso. -->
+          <Border DockPanel.Dock="Top" BorderBrush="#EEF0F3" BorderThickness="0,0,0,1" Padding="0,0,0,12" Margin="0,0,0,8">
+            <Grid>
+              <Grid.ColumnDefinitions><ColumnDefinition Width="260"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+              <StackPanel VerticalAlignment="Top" Margin="0,4,0,0">
+                <TextBlock Text="Conexão remota ao banco" Foreground="{StaticResource TextoSec}"/>
+                <TextBlock Text="Experimental: só testa, não muda a conexão em uso" FontSize="11" Foreground="#B45309" TextWrapping="Wrap" Margin="0,0,12,0"/>
+              </StackPanel>
+              <StackPanel Grid.Column="1">
+                <WrapPanel>
+                  <TextBlock Text="IP" VerticalAlignment="Center" Foreground="{StaticResource TextoSec}" Margin="0,0,6,6"/>
+                  <TextBox x:Name="TxtRemIp" Width="150" Padding="4,3" Margin="0,0,14,6" ToolTip="IP ou nome do servidor do banco do cliente"/>
+                  <TextBlock Text="Porta" VerticalAlignment="Center" Foreground="{StaticResource TextoSec}" Margin="0,0,6,6"/>
+                  <TextBox x:Name="TxtRemPorta" Width="64" Padding="4,3" Margin="0,0,14,6" Text="3307"/>
+                  <TextBlock Text="Usuário" VerticalAlignment="Center" Foreground="{StaticResource TextoSec}" Margin="0,0,6,6"/>
+                  <TextBox x:Name="TxtRemUsuario" Width="110" Padding="4,3" Margin="0,0,14,6" Text="metre"/>
+                  <TextBlock Text="Senha" VerticalAlignment="Center" Foreground="{StaticResource TextoSec}" Margin="0,0,6,6"/>
+                  <PasswordBox x:Name="TxtRemSenha" Width="130" Padding="4,3" Margin="0,0,14,6"/>
+                  <Button x:Name="BtnTestarRemoto" Style="{StaticResource BtnSecundario}" Content="Testar conexão" Margin="0,0,0,6"/>
+                </WrapPanel>
+                <TextBlock x:Name="TxtRemResultado" FontSize="11.5" Foreground="{StaticResource TextoSec}" TextWrapping="Wrap"
+                           Text="Somente leitura. A senha digitada aqui não é salva."/>
+              </StackPanel>
+            </Grid>
+          </Border>
           <ScrollViewer VerticalScrollBarVisibility="Auto">
             <ItemsControl x:Name="ListaConfig">
               <ItemsControl.ItemTemplate>

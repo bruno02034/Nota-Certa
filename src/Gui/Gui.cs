@@ -277,6 +277,7 @@ namespace DuplicidadeNfce
                 ? "Digite a nova senha do banco do Metre. Ela substitui a guardada."
                 : "Informe a senha do banco do Metre para listar a contingência e ajustar chaves.");
             G<Button>("BtnSalvarAjustes").Click += (s, e) => SalvarAjustes();
+            G<Button>("BtnTestarRemoto").Click += (s, e) => TestarConexaoRemota();
             G<Button>("BtnRecarregar").Click += (s, e) =>
             {
                 cfg = op.CarregarConfig();
@@ -796,6 +797,37 @@ namespace DuplicidadeNfce
                     MostrarStatus(resumo.Replace("\n", " "));
                     Aviso(resumo + "\n\n" + AjusteChave.AvisoMetre);
                 }, TaskScheduler.FromCurrentSynchronizationContext());
+        }
+
+        // Configurações → conexão remota (experimental): conecta numa cópia da configuração, só leitura. Nada é salvo
+        // e a conexão em uso (duplicidade.ini/Conexao.ini) continua a mesma.
+        void TestarConexaoRemota()
+        {
+            string ip = G<TextBox>("TxtRemIp").Text.Trim(), usuario = G<TextBox>("TxtRemUsuario").Text.Trim();
+            string senha = G<PasswordBox>("TxtRemSenha").Password;
+            int porta;
+            var res = G<TextBlock>("TxtRemResultado");
+            if (ip == "" || usuario == "" || senha == "") { res.Text = "Informe IP, usuário e senha."; return; }
+            if (!int.TryParse(G<TextBox>("TxtRemPorta").Text.Trim(), out porta) || porta < 1 || porta > 65535) { res.Text = "Porta inválida."; return; }
+            var c = cfg.Copia();
+            c.DbHost = ip; c.DbPorta = porta; c.DbUsuario = usuario; c.DbSenha = senha;
+            c.OrigemConexaoBanco = "conexão remota experimental";
+            var b = G<Button>("BtnTestarRemoto");
+            b.IsEnabled = false;
+            res.Text = "Conectando em " + ip + ":" + porta + " como " + usuario + "...";
+            Task.Factory.StartNew(() => Banco.TestarConexao(c)).ContinueWith(t =>
+            {
+                b.IsEnabled = true;
+                if (t.IsFaulted)
+                {
+                    res.Text = "Não conectou: " + t.Exception.InnerException.Message;
+                    Erro("Não foi possível conectar ao banco em " + ip + ":" + porta + " como " + usuario + ":\n\n" + t.Exception.InnerException.Message);
+                    return;
+                }
+                res.Text = "Conectado em " + ip + ":" + porta + " · " + t.Result;
+                Aviso("Conexão com o banco OK.\n\n" + ip + ":" + porta + " como " + usuario + "\n" + t.Result +
+                    "\n\nTeste experimental: a conexão usada pelo sistema não mudou.");
+            }, TaskScheduler.FromCurrentSynchronizationContext());
         }
 
         // Macro na aba CONTIGÊNCIA do Metre (MacroMetre): o Metre grava o REJEICAO com a 539 que a busca usa.

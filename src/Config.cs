@@ -162,6 +162,9 @@ namespace DuplicidadeNfce
             else File.Move(tmp, arqIni);
         }
 
+        // Cópia para testar outra conexão sem mexer na configuração em uso.
+        public Config Copia() { return (Config)MemberwiseClone(); }
+
         // Completa host e porta do banco com o Conexao.ini do Metre.
         public void ResolverConexaoBanco()
         {
