@@ -158,7 +158,8 @@ namespace DuplicidadeNfce
                     Registrar539(lista, autorizadasPorNumero, rej.Prot, rej, "539 em " + rej.Nome);
                 else if (rej.Prot != null && rej.Prot.CStat != null && !autorizadas.Contains(rej.Chave) && !lista.ContainsKey(rej.Chave))
                 {
-                    var t = new Tentativa { Chave = rej.Chave, Classe = Classe.OutroErro, Erro = rej.Prot.CStat + " - " + rej.Prot.XMotivo };
+                    var t = new Tentativa { Chave = rej.Chave, Classe = Classe.OutroErro, Erro = rej.Prot.CStat + " - " + rej.Prot.XMotivo +
+                        (rej.ItemRejeitado != null ? "; " + rej.ItemRejeitado : "") };
                     t.Origens.Add("rejeição " + rej.Prot.CStat + " em " + rej.Nome);
                     lista[rej.Chave] = t;
                 }

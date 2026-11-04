@@ -52,7 +52,7 @@ marque as notas → *Processar marcadas* (consulta a SEFAZ, escolhe o arquivo e 
 |---|---|
 | A PROCESSAR | duplicidade listada, aguardando consulta à SEFAZ |
 | EM CONTINGÊNCIA | tentativa em contingência sem retorno 539: transmita a nota no Metre e liste de novo |
-| OUTRO ERRO | rejeição com outro código (ex.: 537) |
+| OUTRO ERRO | rejeição com outro código (ex.: 537); se ela cita `[nItem: N]`, o motivo traz o produto (nome, código, NCM, CFOP, valor, desconto) e, na 483 (desconto maior que o item), a causa: o rateio do desconto do Metre. Corrija no Metre e transmita de novo |
 | JÁ AUTORIZADA | a nota pedida já está autorizada e não tem tentativa pendente |
 | A COPIAR | arquivo autorizado encontrado (linha de comando sem `--copiar`) |
 | COPIADO | copiado e conferido (tamanho e SHA-256) |

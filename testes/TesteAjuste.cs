@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text;
 
 namespace DuplicidadeNfce
 {
@@ -448,6 +449,26 @@ namespace DuplicidadeNfce
                 string erro = null;
                 try { interpretar.Invoke(null, new object[] { resp, autA }); } catch (Exception ex) { erro = (ex.InnerException ?? ex).Message; }
                 Verdade(erro != null && erro.Contains("DTD"), "resposta da SEFAZ com DTD é recusada (" + erro + ")");
+            }
+
+            // ---------- Rejeição que cita o item (483: desconto do item maior que o valor, rateio do Metre) ----------
+            {
+                string ch = "31261111222333000181650030001578889451790536";
+                Func<int, string, string, string, string> det = (i, nome, vProd, vDesc) => "<det nItem=\"" + i + "\"><prod><cProd>" + (370 + i) +
+                    "</cProd><xProd>" + nome + "</xProd><NCM>22030000</NCM><CFOP>5405</CFOP><uCom>UN</uCom><qCom>3.0000</qCom><vUnCom>13.90</vUnCom><vProd>" +
+                    vProd + "</vProd><vDesc>" + vDesc + "</vDesc></prod></det>";
+                string xml = "<nfeProc versao=\"4.00\" xmlns=\"http://www.portalfiscal.inf.br/nfe\"><NFe><infNFe versao=\"4.00\" Id=\"NFe" + ch + "\"><ide><serie>3</serie><nNF>157888</nNF></ide>" +
+                    det(1, "DOCE", "126.83", "2.60") + det(2, "ORIGINAL 600ML", "41.70", "63.43") +
+                    "<total><ICMSTot><vProd>168.53</vProd><vDesc>66.03</vDesc><vNF>102.50</vNF></ICMSTot></total></infNFe></NFe>" +
+                    "<protNFe versao=\"4.00\"><infProt><chNFe>" + ch + "</chNFe><cStat>483</cStat><xMotivo>Rejeição: Valor do desconto maior que valor do produto [nItem: 2]</xMotivo></infProt></protNFe></nfeProc>";
+                var rej = NotaXml.LerConteudo("teste 483", Encoding.UTF8.GetBytes(xml));
+                string it = rej.ItemRejeitado ?? "";
+                Verdade(it.StartsWith("item 2: ORIGINAL 600ML (código 372") && it.Contains("3 UN x 13,90 = 41,70, desconto 63,43") &&
+                    it.Contains("Causa: o desconto do item é maior que o valor dele") && it.Contains("39,18%"), "rejeição 483: produto e causa (" + it + ")");
+                xml = xml.Replace("483", "778").Replace("Valor do desconto maior que valor do produto [nItem: 2]", "Informado NCM inexistente [nItem: 1]");
+                it = NotaXml.LerConteudo("teste 778", Encoding.UTF8.GetBytes(xml)).ItemRejeitado ?? "";
+                Verdade(it.StartsWith("item 1: DOCE") && !it.Contains("Causa"), "rejeição com outro código: só o produto (" + it + ")");
+                Verdade(NotaXml.LerConteudo("teste 539", Encoding.UTF8.GetBytes(xml.Replace(" [nItem: 1]", ""))).ItemRejeitado == null, "rejeição sem nItem: nada a mostrar");
             }
 
             Console.WriteLine(falhas == 0 ? "TODOS OS TESTES PASSARAM" : falhas + " FALHA(S)");

@@ -36,6 +36,7 @@ namespace DuplicidadeNfce
         public decimal? VNF;
         public string DigestDeclarado, DigestCalculado;
         public ProtocoloXml Prot;   // null quando <protNFe/> vem vazio
+        public string ItemRejeitado; // rejeição que cita [nItem: N]: produto e causa, para corrigir no Metre
 
         // O Metre regrava os arquivos sem truncar: depois do primeiro </nfeProc> pode sobrar
         // o final de uma gravação anterior. Só o primeiro documento é considerado.
@@ -202,8 +203,37 @@ namespace DuplicidadeNfce
                     DigVal = Texto(ip, "n:digVal", ns),
                     DhRecbto = Texto(ip, "n:dhRecbto", ns)
                 };
+                nota.ItemRejeitado = DescreverItem(inf, ns, nota.Prot.CStat, nota.Prot.XMotivo);
             }
         }
+
+        // "Rejeição: ... [nItem: 7]" → "item 7: ORIGINAL 600ML (código 376, NCM ..., CFOP ...): 3 UN x 13,90 = 41,70, desconto 63,43"
+        // mais a causa quando o código é conhecido.
+        internal static string DescreverItem(XmlElement inf, XmlNamespaceManager ns, string cStat, string xMotivo)
+        {
+            var m = Regex.Match(xMotivo ?? "", @"nItem\s*:?\s*(\d+)", RegexOptions.IgnoreCase);
+            if (!m.Success) return null;
+            string n = m.Groups[1].Value;
+            var det = inf.SelectSingleNode("n:det[@nItem='" + n + "']", ns);
+            if (det == null) return "item " + n + " não encontrado no XML";
+            Func<string, string> p = x => Texto(det, "n:prod/n:" + x, ns);
+            decimal vProd = Decimal(p("vProd")) ?? 0, vDesc = Decimal(p("vDesc")) ?? 0;
+            string s = "item " + n + ": " + p("xProd") + " (código " + p("cProd") + ", NCM " + p("NCM") + ", CFOP " + p("CFOP") + "): " +
+                Num(p("qCom")) + " " + p("uCom") + " x " + Analisador.Moeda(Decimal(p("vUnCom"))) + " = " + Analisador.Moeda(vProd) +
+                (vDesc > 0 ? ", desconto " + Analisador.Moeda(vDesc) : "");
+            if (cStat == "483" && vDesc > vProd)
+            {
+                decimal totProd = Decimal(Texto(inf, "n:total/n:ICMSTot/n:vProd", ns)) ?? 0, totDesc = Decimal(Texto(inf, "n:total/n:ICMSTot/n:vDesc", ns)) ?? 0;
+                s += ". Causa: o desconto do item é maior que o valor dele; o Metre rateou o desconto da venda (" + Analisador.Moeda(totDesc) +
+                    " de " + Analisador.Moeda(totProd) + ") deixando o resto nesse item";
+                if (totProd > 0)
+                    s += ". Em proporção (" + (totDesc / totProd * 100).ToString("0.00", Br) + "% em cada item) o total da nota não muda; corrija os descontos no Metre e transmita de novo";
+            }
+            return s;
+        }
+
+        static readonly System.Globalization.CultureInfo Br = new System.Globalization.CultureInfo("pt-BR");
+        static string Num(string s) { decimal? d = Decimal(s); return d == null ? s : d.Value.ToString("0.####", Br); }
 
         // SHA-1 do infNFe canonicalizado (C14N), como na assinatura da NF-e.
         // Confirma que o DigestValue declarado corresponde ao conteúdo do arquivo.
