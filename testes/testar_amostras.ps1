@@ -3,7 +3,7 @@
 # Uso: powershell -NoProfile -ExecutionPolicy Bypass -File testes\testar_amostras.ps1
 $ErrorActionPreference = 'Stop'
 $raiz = Split-Path -Parent $PSScriptRoot
-$exe = if ($env:NOTACERTA_EXE) { $env:NOTACERTA_EXE } else { Join-Path $raiz 'dist\NotaCerta.exe' }
+$exe = if ($env:NOTACERTA_EXE) { $env:NOTACERTA_EXE } else { Join-Path $raiz 'NFCe-Contingencias\NFCe-Contingencias.exe' }
 $amostras = Join-Path $raiz 'amostras'
 $tmp = Join-Path $env:TEMP ('dup_teste_' + [guid]::NewGuid().ToString('N'))
 $falhas = 0

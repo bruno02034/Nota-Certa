@@ -38,7 +38,7 @@ function Chave($numero, $cnf, $tpEmis = '9') {
     $b + $dv
 }
 
-# NFe "assinada" (DigestValue calculado como na NF-e; a SignatureValue é fictícia, o NotaCerta não a usa).
+# NFe "assinada" (DigestValue calculado como na NF-e; a SignatureValue é fictícia, o sistema não a usa).
 function NFe($chave, $numero, $vNF, $dhEmi = '2026-10-19T13:47:50-03:00', $pedido = $null) {
     $det = if ($pedido) { "<det nItem=`"1`"><prod><xPed>$pedido</xPed></prod></det>" } else { '' }
     $inf = "<infNFe versao=`"4.00`" Id=`"NFe$chave`"><ide><cUF>31</cUF><cNF>$($chave.Substring(35,8))</cNF><natOp>VENDA</natOp><mod>65</mod><serie>$Serie</serie><nNF>$numero</nNF><dhEmi>$dhEmi</dhEmi><tpNF>1</tpNF><tpEmis>9</tpEmis><cDV>$($chave.Substring(43,1))</cDV><tpAmb>1</tpAmb></ide><emit><CNPJ>$Cnpj</CNPJ><xNome>EMPRESA TESTE</xNome></emit>$det<total><ICMSTot><vNF>$vNF</vNF></ICMSTot></total></infNFe>"
@@ -314,7 +314,7 @@ FLUSH PRIVILEGES;
     $senhaCert = Senha
     NovoPfx "$tmp\emp\1\Certificado\cert.pfx" $senhaCert
 
-    # Host e porta vêm do Conexao.ini de teste (como no Metre); usuário e senha, do ini do NotaCerta.
+    # Host e porta vêm do Conexao.ini de teste (como no Metre); usuário e senha, do duplicidade.ini.
     "[Configuracao]`r`nip = 127.0.0.1`r`nporta = $porta`r`n" | Set-Content -Path "$tmp\Conexao.ini" -Encoding ASCII
     $ini = Join-Path $tmp 'teste.ini'
     @"
@@ -339,7 +339,7 @@ MariaDbDll=$PastaMariaDb\lib\libmariadb.dll
 PastasXmlExtras=$caixa;$pendrive;$tmp\caixa_desligado
 "@ | Set-Content -Path $ini -Encoding UTF8
 
-    # ---------- Programa de teste (mesmas classes do NotaCerta) ----------
+    # ---------- Programa de teste (mesmas classes do sistema) ----------
     $fw = "$env:WINDIR\Microsoft.NET\Framework\v4.0.30319"
     $exe = Join-Path $tmp 'teste_ajuste.exe'
     $fontes = @(Get-ChildItem "$raiz\src\*.cs", "$raiz\src\Gui\*.cs" | ForEach-Object { $_.FullName }) + "$PSScriptRoot\TesteAjuste.cs"
@@ -352,7 +352,7 @@ PastasXmlExtras=$caixa;$pendrive;$tmp\caixa_desligado
     $env:TESTE_PORTA = "$porta"
     & $exe $ini $tmp $senhaRoot $aSis $aAut
     $codigo = $LASTEXITCODE
-    Write-Host "Log do NotaCerta: $(Get-ChildItem "$tmp\rel\duplicidade_*.log" | Select-Object -Last 1)"
+    Write-Host "Log do sistema: $(Get-ChildItem "$tmp\rel\duplicidade_*.log" | Select-Object -Last 1)"
     Write-Host "Backups: $tmp\backups"
     exit $codigo
 }

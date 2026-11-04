@@ -3,7 +3,7 @@
 # Uso: powershell -NoProfile -ExecutionPolicy Bypass -File testes\testar_faltantes.ps1
 $ErrorActionPreference = 'Stop'
 $raiz = Split-Path -Parent $PSScriptRoot
-$exe = if ($env:NOTACERTA_EXE) { $env:NOTACERTA_EXE } else { Join-Path $raiz 'dist\NotaCerta.exe' }
+$exe = if ($env:NOTACERTA_EXE) { $env:NOTACERTA_EXE } else { Join-Path $raiz 'NFCe-Contingencias\NFCe-Contingencias.exe' }
 $tmp = Join-Path $env:TEMP ('falt_teste_' + [guid]::NewGuid().ToString('N'))
 $falhas = 0
 $execucao = 0
@@ -28,7 +28,7 @@ function Chave($cnpj, $aamm, $numero, $cnf) {
     $b + $dv
 }
 
-# NFe "assinada" (DigestValue calculado como na NF-e; a SignatureValue é fictícia, o NotaCerta não a usa).
+# NFe "assinada" (DigestValue calculado como na NF-e; a SignatureValue é fictícia, o sistema não a usa).
 function NFe($chave, $numero, $dhEmi, $vNF, $cnpj = $Cnpj) {
     $inf = "<infNFe versao=`"4.00`" Id=`"NFe$chave`"><ide><cUF>31</cUF><cNF>$($chave.Substring(35,8))</cNF><natOp>VENDA</natOp><mod>65</mod><serie>$Serie</serie><nNF>$numero</nNF><dhEmi>$dhEmi</dhEmi><tpNF>1</tpNF><tpEmis>9</tpEmis><cDV>$($chave.Substring(43,1))</cDV><tpAmb>1</tpAmb></ide><emit><CNPJ>$cnpj</CNPJ><xNome>EMPRESA TESTE</xNome></emit><total><ICMSTot><vNF>$vNF</vNF></ICMSTot></total></infNFe>"
     $d = New-Object Xml.XmlDocument; $d.PreserveWhitespace = $true

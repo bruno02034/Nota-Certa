@@ -1,6 +1,6 @@
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="NotaCerta" Width="1440" Height="880" MinWidth="900" MinHeight="600"
+        Title="NFC-e Contingências" Width="1440" Height="880" MinWidth="900" MinHeight="600"
         WindowStartupLocation="CenterScreen" Background="#EEF1F5" FontFamily="Segoe UI" FontSize="13"
         Foreground="#2B2F36" UseLayoutRounding="True" TextOptions.TextFormattingMode="Display">
   <Window.Resources>
@@ -355,8 +355,8 @@
           <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
             <Image x:Name="LogoImg" Width="48" Height="48" RenderOptions.BitmapScalingMode="HighQuality"/>
             <StackPanel x:Name="LogoTextos" Margin="12,0,0,0" VerticalAlignment="Center">
-              <TextBlock Text="NotaCerta" FontSize="22" FontWeight="Bold" Foreground="#1F2937"/>
-              <TextBlock Text="Conferência de NFC-e sem dor" FontSize="10.5" Foreground="{StaticResource TextoSec}"/>
+              <TextBlock Text="NFC-e" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource LaranjaEscuro}"/>
+              <TextBlock Text="Contingências" FontSize="20" FontWeight="Bold" Foreground="#1F2937" Margin="0,-2,0,0"/>
             </StackPanel>
           </StackPanel>
         </Border>
@@ -1012,7 +1012,7 @@
           </DockPanel>
           <Border DockPanel.Dock="Top" Background="#FFF7E0" CornerRadius="6" Padding="12,8" Margin="0,0,0,10">
             <TextBlock TextWrapping="Wrap" Foreground="#9A6700" FontSize="12"
-                       Text="⚠ Notas escondidas da aba Contingência do Metre (antigas ou com problema). Não devem ser transmitidas e o NotaCerta não processa, copia nem ajusta nenhuma delas: esta lista serve só para localizar uma nota."/>
+                       Text="⚠ Notas escondidas da aba Contingência do Metre (antigas ou com problema). Não devem ser transmitidas e o sistema não processa, copia nem ajusta nenhuma delas: esta lista serve só para localizar uma nota."/>
           </Border>
           <Grid>
             <DataGrid x:Name="GradeCont2">

@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-NotaCerta: ferramenta Windows (WPF + linha de comando, um único `NotaCerta.exe`) para o servidor de um cliente que usa o
+NFC-e Contingências: ferramenta Windows (WPF + linha de comando, um único `NFCe-Contingencias.exe`) para o servidor de um cliente que usa o
 emissor/PDV **Metre** (pasta `C:\Chef`, banco MariaDB). Resolve NFC-e rejeitadas por duplicidade (cStat 539) e, na
 seção "Notas Faltantes", localiza XMLs de números que faltam no fiscal. O `LEIA-ME.md` é o manual do usuário e
 descreve as regras de negócio em detalhe; leia-o antes de mudar comportamento. Código, mensagens e commits em português.
@@ -11,8 +11,11 @@ descreve as regras de negócio em detalhe; leia-o antes de mudar comportamento. 
 
 - `build.cmd` compila com o `csc.exe` do .NET Framework 4 (`%WINDIR%\Microsoft.NET\Framework\v4.0.30319`), sem SDK nem
   projeto .csproj: todos os `src\*.cs` e `src\Gui\*.cs`, com `src\Gui\Principal.xaml` embutido como recurso
-  `NotaCerta.Principal.xaml`. Gera `dist\NotaCerta.exe` e copia `duplicidade.ini` (modelo) para `dist\` só se lá
-  ainda não houver um (o do `dist\` guarda a senha do banco criptografada; opção nova no modelo precisa ir à mão).
+  `NotaCerta.Principal.xaml` (e `logo.png`). Gera `NFCe-Contingencias\NFCe-Contingencias.exe` e copia `duplicidade.ini`
+  (modelo) para `NFCe-Contingencias\` só se lá ainda não houver um (o de lá guarda a senha do banco criptografada; opção
+  nova no modelo precisa ir à mão).
+- O sistema se chamava NotaCerta: os nomes de recurso (`NotaCerta.*`), as variáveis `NOTACERTA_*` e as entropias DPAPI
+  (`"NotaCerta/DbSenha/v1"`, `"NotaCerta/Backups/v1"`) ficam assim; mudar as entropias impede abrir senhas e backups já gravados.
   **O csc é C# 5**: nada de `?.`, `$"..."`, `nameof`, expressões `=>` em membros, etc.
 - Testes são scripts PowerShell que rodam o exe (ou compilam um harness com as mesmas fontes); não há framework de teste
   nem como rodar um caso isolado, cada script roda tudo e imprime `OK`/`FALHA` por verificação:
@@ -20,17 +23,17 @@ descreve as regras de negócio em detalhe; leia-o antes de mudar comportamento. 
     `C:\Chef\Banco de Dados\bin`, pasta temporária, porta livre) e a SEFAZ simulada, compila `testes\TesteAjuste.cs`
     (`/main:DuplicidadeNfce.TesteAjuste`) com as fontes do app. Dados fictícios; um caso real entra só por parâmetro
     (`-Cnpj -Numero -CnfSistema -CnfAutorizada -Valor ...`). `-Manter` deixa banco e SEFAZ no ar e imprime o
-    `teste.ini` para abrir a interface com `NotaCerta.exe --gui --config <teste.ini>`.
+    `teste.ini` para abrir a interface com `NFCe-Contingencias.exe --gui --config <teste.ini>`.
   - `testes\testar_amostras.ps1`: fluxo de cópia para importação. Precisa de `amostras\` e `testes\casos.local.ps1`
     (dados reais do cliente, fora do git); sem eles sai com aviso.
   - `testes\testar_faltantes.ps1`: Notas Faltantes com XMLs sintéticos.
   - `testes\testar_macro.ps1`: macro do Metre contra uma janela "Rejeição de Nota" simulada (`janela_rejeicao.ps1`);
     o duplo clique na aba CONTIGÊNCIA só se testa com um Metre aberto (nunca o de um cliente).
   - Rode-os direto na sessão PowerShell (`& .\testes\testar_ajuste.ps1`); depois de mudar `src\`, rode `build.cmd`
-    antes de `testar_amostras`/`testar_faltantes`, que usam `dist\NotaCerta.exe` (ou `$env:NOTACERTA_EXE`).
+    antes de `testar_amostras`/`testar_faltantes`, que usam `NFCe-Contingencias\NFCe-Contingencias.exe` (ou `$env:NOTACERTA_EXE`).
 - Nenhum teste chama a SEFAZ real: `sefaz_simulada.ps1`/`sefaz_respostas.ps1` servem respostas locais
   (`UrlConsulta=` no ini aponta para elas). Nunca testar contra o banco do Metre do cliente.
-- Captura de tela da interface (sem mexer no mouse): `NotaCerta.exe --gui --captura <png>` com as variáveis
+- Captura de tela da interface (sem mexer no mouse): `NFCe-Contingencias.exe --gui --captura <png>` com as variáveis
   `NOTACERTA_LARGURA`/`NOTACERTA_ALTURA`/`NOTACERTA_PAGINA=faltantes` ou `config`/`NOTACERTA_DETALHE_FIM`/`NOTACERTA_FALT_SERIE`/
   `NOTACERTA_FALT_NUMEROS`. Sem série/números a captura de Faltantes fica esperando e trava o exe (o build falha).
 
@@ -88,12 +91,12 @@ Configuração e segredos:
 - No banco, a única escrita permitida é `chave_acesso` em `chef.nota_saida`, pelo botão "Ajustar chave", com backup
   e transação. Nunca testar escrita no banco de um cliente.
 - Alvo: .NET Framework 4.5 no Windows Server 2012 R2, com TLS 1.2 (`Sefaz.cs` liga o protocolo 3072, que o .NET 4
-  não tem como constante). O entregável é `dist\NotaCerta.exe` gerado pelo `build.cmd`.
+  não tem como constante). O entregável é `NFCe-Contingencias\NFCe-Contingencias.exe` gerado pelo `build.cmd`.
 - Rodar os testes de `testes\` antes de dizer que algo está pronto.
 - O fluxo de cópia para importação (valor diferente) não deve ser alterado sem pedido explícito; ele funciona no
   cliente. A regra do ASSINADA e do "importar-N" veio de testes reais (importar `_NFCE` aumentou a contingência).
 - Não varrer `C:\Chef\NFCe` inteiro na duplicidade: deixou o processamento lento demais no cliente.
 - A interface não busca nada ao abrir; só quando o usuário clica em "Listar contingência".
 - `amostras\`, `exemplos\`, `testes\casos.local.ps1` e `*.pfx` contêm dados reais do cliente e não vão para o git.
-- Para o cliente basta `dist\NotaCerta.exe` + `duplicidade.ini`; nas atualizações, copiar só o exe (o ini do
+- Para o cliente basta `NFCe-Contingencias\NFCe-Contingencias.exe` + `duplicidade.ini`; nas atualizações, copiar só o exe (o ini do
   servidor tem a senha criptografada daquela máquina).

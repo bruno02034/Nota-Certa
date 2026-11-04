@@ -29,15 +29,15 @@ namespace DuplicidadeNfce
 
     static class Program
     {
-        public const string NomeSistema = "NotaCerta";
+        public const string NomeSistema = "NFC-e Contingências";
 
         const string Ajuda =
-@"NotaCerta - conferência de NFC-e rejeitadas por duplicidade (539)
+@"NFC-e Contingências - conferência de NFC-e rejeitadas por duplicidade (539)
 
 Sem argumentos abre a interface gráfica. Linha de comando:
 
-     DuplicidadeNfce.exe --notas 6/88867,6/88868 [opções]
-     DuplicidadeNfce.exe --notas-arquivo notas.txt [opções]
+     NFCe-Contingencias.exe --notas 6/88867,6/88868 [opções]
+     NFCe-Contingencias.exe --notas-arquivo notas.txt [opções]
 
   --notas <lista>    notas a processar, série/número (obrigatório, ou --notas-arquivo)
   --notas-arquivo <arq>  arquivo com uma nota série/número por linha (# = comentário)
@@ -56,7 +56,7 @@ Sem argumentos abre a interface gráfica. Linha de comando:
 
 Notas Faltantes (relatório ""Notas não lançadas de Saídas""):
 
-     NotaCerta.exe --faltantes --serie 2 --numeros ""501, 503, 510-512"" [--copiar] [--zip]
+     NFCe-Contingencias.exe --faltantes --serie 2 --numeros ""501, 503, 510-512"" [--copiar] [--zip]
 
   --faltantes        busca os XMLs dos números faltantes (o CNPJ do emitente vem dos próprios XMLs)
   --serie <n>        série das notas

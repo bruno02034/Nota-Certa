@@ -117,7 +117,7 @@ namespace DuplicidadeNfce
             var tentativas = new List<string>();
             if (!string.IsNullOrEmpty(cfg.MariaDbDll)) tentativas.Add(cfg.MariaDbDll);
             // Instalação do MariaDB do Metre (a DLL fica em bin\ ou lib\) e o HeidiSQL. A pasta do exe NÃO entra
-            // (uma DLL falsa largada ao lado do NotaCerta.exe rodaria com a senha do banco); para usar uma DLL de
+            // (uma DLL falsa largada ao lado do exe rodaria com a senha do banco); para usar uma DLL de
             // outro lugar, informe MariaDbDll no ini.
             foreach (string pasta in new[] { cfg.PastaBancoMetre, @"C:\Program Files\HeidiSQL", @"C:\Program Files (x86)\HeidiSQL" })
             {

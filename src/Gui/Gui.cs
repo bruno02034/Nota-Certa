@@ -809,7 +809,7 @@ namespace DuplicidadeNfce
             if (previa.Count == 0) { Aviso("A aba CONTIGÊNCIA do Metre não tem nota em contingência na tela."); return; }
             string lista = string.Join("\n", previa.Take(15).Select(l => l.ToString())) + (previa.Count > 15 ? "\n... e as que aparecerem rolando a lista" : "");
             if (MessageBox.Show(W, "Dar duplo clique em cada nota da aba CONTIGÊNCIA do Metre?\n\n" + lista + "\n\n" +
-                "Cada duplo clique transmite a nota pelo Metre; na janela \"Rejeição de Nota\" o NotaCerta clica em \"Entendi !\".\n" +
+                "Cada duplo clique transmite a nota pelo Metre; na janela \"Rejeição de Nota\" o sistema clica em \"Entendi !\".\n" +
                 "Antes de cada clique ele confere a aba e a nota, e para se algo mudar.\n\n" +
                 "Não use o mouse nem o teclado enquanto roda (no TeamViewer/AnyDesk, deixe o mouse parado). Para parar: Esc.",
                 Program.NomeSistema, MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;

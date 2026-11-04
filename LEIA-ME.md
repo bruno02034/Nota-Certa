@@ -1,4 +1,4 @@
-# NotaCerta
+# NFC-e Contingências
 
 Conferência de NFC-e rejeitadas por duplicidade (cStat 539): consulta a chave autorizada na SEFAZ-MG e copia
 para `C:\Chef\NFCe\Duplicidade\AAAA-MM-DD` o **ASSINADA dessa chave com o mesmo valor da SEFAZ** (é o arquivo que o
@@ -6,7 +6,7 @@ Metre importa). O `_NFCE` da pasta Autorizadas só confirma o conteúdo e o valo
 
 ## Instalação no servidor
 
-Copie `dist\NotaCerta.exe` e `dist\duplicidade.ini` para uma pasta qualquer (ex.: `C:\NotaCerta`).
+Copie `NFCe-Contingencias\NFCe-Contingencias.exe` e `NFCe-Contingencias\duplicidade.ini` para uma pasta qualquer (ex.: `C:\NFCe-Contingencias`).
 Requer .NET Framework 4.5 (vem com o Windows Server 2012 R2). Nada mais a instalar.
 
 Os XMLs são lidos de `C:\Chef\NFCe\MM_AAAA\DD\` (com subpastas, ex.: `Autorizadas`) e também dos `NOTA_*`
@@ -22,7 +22,7 @@ retorno de duplicidade (539), que traz a chave autorizada. Sem essa transmissão
 aviso "Transmita a nota no Metre primeiro…" (é o esperado); transmita e liste de novo.
 
 **Gerar rejeições no Metre** (botão da tela de Duplicidade) faz essa transmissão nota a nota. Abra no Metre a
-janela de NFC-e na aba **CONTIGÊNCIA** e clique no botão. O NotaCerta mostra as notas da aba e pede confirmação.
+janela de NFC-e na aba **CONTIGÊNCIA** e clique no botão. O sistema mostra as notas da aba e pede confirmação.
 Depois dá duplo clique em cada uma e clica em "Entendi !" na janela "Rejeição de Nota" (ou "Ok"), gravando o texto
 dela em `relatorios\macro_metre_*.log`. Ele só atua na aba CONTIGÊNCIA, a única tabela com a coluna "CLIENTE
 CONTIGÊNCIA". Antes de cada clique, confere:
@@ -35,17 +35,17 @@ Se algo não bater, se aparecer outra janela (ou nenhuma em 90 s), ou se você a
 motivo. Mexer o mouse não para o macro, porque o TeamViewer/AnyDesk move o cursor do servidor sozinho. Mesmo assim,
 não use o computador enquanto ele roda. No fim, clique em *Listar contingência*.
 
-**Interface:** dê dois cliques em `NotaCerta.exe` → escolha as datas → *Listar notas com 539* →
+**Interface:** dê dois cliques em `NFCe-Contingencias.exe` → escolha as datas → *Listar notas com 539* →
 marque as notas → *Processar marcadas* (consulta a SEFAZ, escolhe o arquivo e copia).
 
 **Linha de comando** (PowerShell, na pasta do exe):
 
 ```
-.\NotaCerta.exe --notas 6/88867,6/88868 --de 19/10/2026 --ate 19/10/2026
-.\NotaCerta.exe --notas 6/88867,6/88868 --de 19/10/2026 --ate 19/10/2026 --copiar
+.\NFCe-Contingencias.exe --notas 6/88867,6/88868 --de 19/10/2026 --ate 19/10/2026
+.\NFCe-Contingencias.exe --notas 6/88867,6/88868 --de 19/10/2026 --ate 19/10/2026 --copiar
 ```
 
-`.\NotaCerta.exe --ajuda` lista todas as opções.
+`.\NFCe-Contingencias.exe --ajuda` lista todas as opções.
 
 ## Status
 
@@ -68,11 +68,11 @@ marque as notas → *Processar marcadas* (consulta a SEFAZ, escolhe o arquivo e 
 
 Com `FonteContingencia=banco`, a lista vem de `chef.nota_saida` com `situacao = 'Em contigencia'` (o Metre grava
 assim), por uma sessão **somente leitura** (só `SELECT`), usando a `libmariadb.dll` do HeidiSQL. Informe a senha do banco
-pela interface e confira com `.\NotaCerta.exe --testar-banco`. Linhas cuja chave já está autorizada
+pela interface e confira com `.\NFCe-Contingencias.exe --testar-banco`. Linhas cuja chave já está autorizada
 (criadas ao importar um NFCE) aparecem como JÁ AUTORIZADA e não são tocadas.
 
 **Contingência 2:** contingências antigas ou com problema são passadas no Metre para `Em Contigência 2` ou
-`Em Contigência2`, para sumir da aba Contingência; elas **não devem ser transmitidas**. O NotaCerta não as processa,
+`Em Contigência2`, para sumir da aba Contingência; elas **não devem ser transmitidas**. O sistema não as processa,
 copia nem ajusta: a página *Contingência 2* do menu só as lista (somente leitura, ao clicar em "Listar Contingência 2"),
 com nota, pedido, datas, valor, situação, chave e motivo, para localizar uma nota específica. A pesquisa do menu
 lateral filtra essa lista.
@@ -155,7 +155,7 @@ rollback. **Só o campo `chave_acesso` daquela linha muda.** Depois do ajuste, f
 **Desfazer ajuste** volta a chave antiga pelo backup, com as mesmas travas. Ajuste e desfazer só valem com a nota
 ainda em contingência: desfazer depois que o Metre autorizou deixaria a nota autorizada com a chave errada, e é
 recusado. O usuário do banco precisa de
-`UPDATE` em `chef.nota_saida` (é permissão do usuário no MariaDB, não da senha): `.\NotaCerta.exe --testar-banco`
+`UPDATE` em `chef.nota_saida` (é permissão do usuário no MariaDB, não da senha): `.\NFCe-Contingencias.exe --testar-banco`
 mostra as permissões e avisa se falta o UPDATE.
 
 ## Pastas das cópias
@@ -228,7 +228,7 @@ entregar outra vez). Nada é transmitido, cancelado nem inutilizado.
 Linha de comando:
 
 ```
-.\NotaCerta.exe --faltantes --serie 7 --numeros "501, 503, 510-512" --copiar --zip
+.\NFCe-Contingencias.exe --faltantes --serie 7 --numeros "501, 503, 510-512" --copiar --zip
 ```
 
 ## Desenvolvimento

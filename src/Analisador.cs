@@ -868,7 +868,7 @@ namespace DuplicidadeNfce
                 "); no sistema: " + t.DhEmi.Substring(0, 10) + ", pedido " + t.Pedido + ", " + Moeda(t.Valor) + ". Importar troca a venda do sistema pela autorizada";
         }
 
-        // Linha do Metre cuja chave_acesso já foi trocada pelo NotaCerta: o Metre só precisa ser reiniciado.
+        // Linha do Metre cuja chave_acesso já foi trocada por este sistema: o Metre só precisa ser reiniciado.
         bool Ajustada(Tentativa t, LinhaRelatorio l, Historico historico)
         {
             if (contingencia == null || t.IdMetre == null) return false;
