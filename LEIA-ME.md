@@ -71,11 +71,20 @@ assim), por uma sessão **somente leitura** (só `SELECT`), usando a `libmariadb
 pela interface e confira com `.\NFCe-Contingencias.exe --testar-banco`. Linhas cuja chave já está autorizada
 (criadas ao importar um NFCE) aparecem como JÁ AUTORIZADA e não são tocadas.
 
-**Contingência 2:** contingências antigas ou com problema são passadas no Metre para `Em Contigência 2` ou
-`Em Contigência2`, para sumir da aba Contingência; elas **não devem ser transmitidas**. O sistema não as processa,
-copia nem ajusta: a página *Contingência 2* do menu só as lista (somente leitura, ao clicar em "Listar Contingência 2"),
-com nota, pedido, datas, valor, situação, chave e motivo, para localizar uma nota específica. A pesquisa do menu
-lateral filtra essa lista.
+**Contingência 2:** contingências antigas ou com problema são passadas no Metre para `Em Contigência 2`,
+`Em Contigência2`, `Contingencia 2` ou outra variação, para sumir da aba Contingência. O sistema não as processa,
+copia nem ajusta. A página *Contingência 2* do menu lista todas as variações ao clicar em "Listar Contingência 2", sem
+diferenciar acento nem maiúscula. Para cada nota mostra nota, pedido, datas, valor, situação, chave e motivo.
+
+A lista pode ser filtrada pela **data de emissão** (de/até), pelos **números**, como em `155845, 156207` ou
+`155800-155900`, e pela pesquisa do menu lateral. **Voltar para Contingência** só age nas notas **marcadas** que estão
+visíveis no filtro, e pede confirmação com a lista. Em cada nota, troca só o campo `situacao` para o texto que o Metre
+usa na contingência normal (`Em Contigência`).
+
+Antes de gravar, ele faz backup da linha em `backups\voltar_contingencia_*.txt`. A gravação é numa transação, que é
+recusada se a situação ou a chave mudaram desde a listagem. O resultado vai para
+`relatorios\contingencia2_*.log`. As notas voltam à aba CONTIGÊNCIA do Metre (feche e abra o Metre) e podem ser
+transmitidas. Não há "desfazer" automático: o backup guarda a situação antiga.
 
 **Senha do banco:** não é digitada no ini. Ao abrir, a interface pede a senha (campo mascarado), testa a conexão e a
 grava em `DbSenhaProtegida`, criptografada pelo Windows (DPAPI da máquina): ilegível no ini e só abre naquele

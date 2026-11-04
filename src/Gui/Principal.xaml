@@ -997,7 +997,7 @@
         </Grid>
       </Grid>
 
-      <!-- ===== Página: Contingência 2 (só consulta) ===== -->
+      <!-- ===== Página: Contingência 2 ===== -->
       <Grid x:Name="PagContingencia2" Grid.Row="1" Visibility="Collapsed">
         <Border Style="{StaticResource CardFundo}"/>
         <Border Style="{StaticResource CardLinha}"/>
@@ -1005,24 +1005,52 @@
           <DockPanel DockPanel.Dock="Top" Margin="0,0,0,10">
             <Button x:Name="BtnListarCont2" DockPanel.Dock="Right" Style="{StaticResource BtnPrimario}" Content="Listar Contingência 2" VerticalAlignment="Top"/>
             <StackPanel>
-              <TextBlock Style="{StaticResource TituloCard}" Text="CONTINGÊNCIA 2 (SOMENTE CONSULTA)"/>
+              <TextBlock Style="{StaticResource TituloCard}" Text="CONTINGÊNCIA 2"/>
               <TextBlock x:Name="TxtCont2Status" FontSize="11.5" Foreground="{StaticResource TextoSec}" Margin="0,4,0,0" TextWrapping="Wrap"
-                         Text="Clique em Listar para buscar no banco do Metre as notas em &quot;Em Contigência 2&quot; e &quot;Em Contigência2&quot;."/>
+                         Text="Clique em Listar para buscar no banco do Metre as notas em &quot;Em Contigência 2&quot;, &quot;Contingencia2&quot; e variações."/>
             </StackPanel>
           </DockPanel>
           <Border DockPanel.Dock="Top" Background="#FFF7E0" CornerRadius="6" Padding="12,8" Margin="0,0,0,10">
             <TextBlock TextWrapping="Wrap" Foreground="#9A6700" FontSize="12"
-                       Text="⚠ Notas escondidas da aba Contingência do Metre (antigas ou com problema). Não devem ser transmitidas e o sistema não processa, copia nem ajusta nenhuma delas: esta lista serve só para localizar uma nota."/>
+                       Text="⚠ Notas escondidas da aba Contingência do Metre (antigas ou com problema). O sistema não processa, copia nem ajusta nenhuma delas. &quot;Voltar para Contingência&quot; muda só a situação das notas marcadas: elas voltam à aba CONTIGÊNCIA do Metre e podem ser transmitidas."/>
           </Border>
+          <!-- Filtros, seleção e ação -->
+          <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,10">
+            <Border Background="#F8FAFC" BorderBrush="{StaticResource Borda}" BorderThickness="1" CornerRadius="10" Padding="12,4" Margin="0,0,12,6" VerticalAlignment="Center">
+              <StackPanel Orientation="Horizontal">
+                <TextBlock Text="Emissão de" VerticalAlignment="Center" Foreground="{StaticResource TextoSec}" Margin="0,0,8,0"/>
+                <DatePicker x:Name="Cont2De" Width="124" VerticalContentAlignment="Center" Height="32"/>
+                <TextBlock Text="até" VerticalAlignment="Center" Foreground="{StaticResource TextoSec}" Margin="10,0,8,0"/>
+                <DatePicker x:Name="Cont2Ate" Width="124" VerticalContentAlignment="Center" Height="32"/>
+                <TextBlock Text="Números" VerticalAlignment="Center" Foreground="{StaticResource TextoSec}" Margin="16,0,8,0"/>
+                <TextBox x:Name="Cont2Numeros" Width="170" Height="30" VerticalContentAlignment="Center" ToolTip="Ex.: 155845, 156207 ou 155800-155900"/>
+              </StackPanel>
+            </Border>
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,0,6">
+              <Button x:Name="BtnMarcarCont2" Style="{StaticResource BtnLink}" Content="Marcar as visíveis" VerticalAlignment="Center"/>
+              <TextBlock Text="·" Foreground="{StaticResource TextoSec}" Margin="6,0" VerticalAlignment="Center"/>
+              <Button x:Name="BtnDesmarcarCont2" Style="{StaticResource BtnLink}" Content="Desmarcar todas" VerticalAlignment="Center" Margin="0,0,14,0"/>
+              <Button x:Name="BtnVoltarCont2" Style="{StaticResource BtnPrimario}" Content="Voltar para Contingência" IsEnabled="False"
+                      ToolTip="Muda a situação das notas marcadas (e visíveis) para a contingência normal do Metre, com backup de cada linha"/>
+            </StackPanel>
+            <TextBlock x:Name="Cont2Aviso" Foreground="#B45309" FontSize="11.5" VerticalAlignment="Center" Margin="12,0,0,6"/>
+          </WrapPanel>
           <Grid>
             <DataGrid x:Name="GradeCont2">
               <DataGrid.Columns>
+                <DataGridTemplateColumn Width="36" MinWidth="36" CanUserResize="False">
+                  <DataGridTemplateColumn.CellTemplate>
+                    <DataTemplate>
+                      <CheckBox IsChecked="{Binding Marcada, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding PodeMarcar}" HorizontalAlignment="Center" VerticalAlignment="Center" Cursor="Hand"/>
+                    </DataTemplate>
+                  </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
                 <DataGridTextColumn Header="NOTA" Binding="{Binding Nota}" Width="100" IsReadOnly="True" ElementStyle="{StaticResource TextoForte}"/>
                 <DataGridTextColumn Header="PEDIDO" Binding="{Binding Pedido}" Width="80" IsReadOnly="True"/>
                 <DataGridTextColumn Header="EMISSÃO" Binding="{Binding Emissao}" Width="120" IsReadOnly="True"/>
                 <DataGridTextColumn Header="CONTINGÊNCIA" Binding="{Binding Contingencia}" Width="120" IsReadOnly="True"/>
                 <DataGridTextColumn Header="VALOR" Binding="{Binding Valor}" Width="100" IsReadOnly="True" ElementStyle="{StaticResource TextoDireita}"/>
-                <DataGridTextColumn Header="SITUAÇÃO" Binding="{Binding Situacao}" Width="140" IsReadOnly="True"/>
+                <DataGridTextColumn Header="SITUAÇÃO" Binding="{Binding Situacao}" Width="170" IsReadOnly="True" ElementStyle="{StaticResource TextoCortado}"/>
                 <DataGridTextColumn Header="CHAVE" Binding="{Binding Chave}" Width="330" IsReadOnly="True"/>
                 <DataGridTextColumn Header="MOTIVO" Binding="{Binding Motivo}" Width="*" MinWidth="160" IsReadOnly="True" ElementStyle="{StaticResource TextoCortado}"/>
               </DataGrid.Columns>

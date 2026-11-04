@@ -264,7 +264,7 @@ namespace DuplicidadeNfce
             faltantes = new TelaFaltantes(W, () => cfg, op);
             G<RadioButton>("MenuFaltantes").Checked += (s, e) => Pagina("PagFaltantes", "Busca");
             contingencia2 = new TelaContingencia2(W, () => cfg);
-            G<RadioButton>("MenuContingencia2").Checked += (s, e) => Pagina("PagContingencia2", "Consulta");
+            G<RadioButton>("MenuContingencia2").Checked += (s, e) => Pagina("PagContingencia2", "Notas escondidas");
             G<RadioButton>("MenuHistorico").Checked += (s, e) => { Pagina("PagHistorico", "Histórico"); CarregarHistorico(); };
             G<RadioButton>("MenuRelatorios").Checked += (s, e) => { Pagina("PagRelatorios", "Relatórios"); CarregarRelatorios(); };
             G<RadioButton>("MenuConfig").Checked += (s, e) => { Pagina("PagConfig", "Configurações"); CarregarConfigTela(); };

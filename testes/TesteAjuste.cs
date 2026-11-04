@@ -471,6 +471,42 @@ namespace DuplicidadeNfce
                 Verdade(NotaXml.LerConteudo("teste 539", Encoding.UTF8.GetBytes(xml.Replace(" [nItem: 1]", ""))).ItemRejeitado == null, "rejeição sem nItem: nada a mostrar");
             }
 
+            // ---------- Contingência 2: variações do nome e volta para a contingência normal ----------
+            {
+                string[] sit = { "Em Contigência2", "Em Contingência 2", "Contingencia 2", "Em Contigência" };
+                Exec("DELETE FROM chef.nota_saida WHERE id_nota_saida BETWEEN 900001 AND 900004");
+                for (int i = 0; i < sit.Length; i++)
+                    Exec("INSERT INTO chef.nota_saida (id_nota_saida, numero, serie, chave_acesso, dt_emissao, num_pedido, valor_total_nota, situacao) VALUES (" +
+                        (900001 + i) + ", " + (3001 + i) + ", 1, '312610112223330001816500100000" + (1001 + i) + "9000000010', '2026-09-0" + (1 + i) + "', 0, 5.00, '" + sit[i] + "')");
+                try
+                {
+                    var c2 = Banco.LerContingencia2(raiz).Where(x => x.Id.StartsWith("90000")).ToList();
+                    Verdade(c2.Select(x => x.Numero).SequenceEqual(new[] { "3001", "3002", "3003" }),
+                        "Contingência 2 lista \"Em Contigência2\", \"Em Contingência 2\" e \"Contingencia 2\", não a contingência normal (" + string.Join(", ", c2.Select(x => x.Numero + "=" + x.Situacao)) + ")");
+                    Verdade(Banco.EhContingencia2("EM CONTINGENCIA-2") && !Banco.EhContingencia2("Em Contigência") && !Banco.EhContingencia2(null), "regra de Contingência 2 em C#");
+                    string pasta = Path.Combine(trabalho, "backups_cont2");
+                    using (var log = new Log(Path.Combine(trabalho, "cont2.log")))
+                    {
+                        string bk = AjusteChave.VoltarParaContingencia(raiz, c2[0], pasta, log);
+                        string normal = Sql("SELECT situacao FROM chef.nota_saida WHERE id_nota_saida = 900001")[0][0];
+                        Verdade(AjusteChave.SemAcento(normal) == "em contigencia" && File.Exists(bk) &&
+                            File.ReadAllText(bk).Contains("situacao=Em Contigência2"),
+                            "Voltar para Contingência: só a situação muda, para o texto já usado pelo Metre (" + normal + "), com backup da linha");
+                        var velha = c2[1]; velha.Situacao = "Em Contigência2";   // listagem antiga: no banco está "Em Contingência 2"
+                        string erro = null;
+                        try { AjusteChave.VoltarParaContingencia(raiz, velha, pasta, log); } catch (Exception ex) { erro = ex.Message; }
+                        Verdade(erro != null && erro.Contains("mudou desde a listagem") && erro.Contains("rollback") &&
+                            Sql("SELECT situacao FROM chef.nota_saida WHERE id_nota_saida = 900002")[0][0] == "Em Contingência 2",
+                            "Voltar para Contingência: situação mudada desde a listagem é recusada sem alterar nada (" + erro + ")");
+                        erro = null;
+                        try { AjusteChave.VoltarParaContingencia(raiz, new LinhaContingencia { Id = "900004", Numero = "3004", Serie = "1", Situacao = "Em Contigência" }, pasta, log); }
+                        catch (Exception ex) { erro = ex.Message; }
+                        Verdade(erro != null && erro.Contains("não é de Contingência 2"), "Voltar para Contingência recusa nota que não está em Contingência 2");
+                    }
+                }
+                finally { Exec("DELETE FROM chef.nota_saida WHERE id_nota_saida BETWEEN 900001 AND 900004"); }
+            }
+
             Console.WriteLine(falhas == 0 ? "TODOS OS TESTES PASSARAM" : falhas + " FALHA(S)");
             return falhas == 0 ? 0 : 1;
         }

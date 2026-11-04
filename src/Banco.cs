@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace DuplicidadeNfce
 {
@@ -280,21 +281,27 @@ namespace DuplicidadeNfce
                 cfg.DbSituacao.Replace("\\", "\\\\").Replace("'", "''") + "' ORDER BY data_contigencia";
         }
 
-        // "Contingência 2": no cliente, contingências antigas ou com problema são passadas para "Em Contigência 2" ou
-        // "Em Contigência2" para sumir da aba Contingência do Metre; não devem ser transmitidas. Só aparecem na tela
-        // Contingência 2, para consulta: nada é processado. A comparação do MariaDB ignora acento e maiúscula.
-        static readonly string[] SituacoesContingencia2 = { "Em contigencia 2", "Em contigencia2" };
+        // "Contingência 2": no cliente, contingências antigas ou com problema são passadas para "Em Contigência 2",
+        // "Em Contigência2", "Contingencia 2"... para sumir da aba Contingência do Metre. A tela Contingência 2 lista e,
+        // nas notas marcadas, volta a situação para a contingência normal (AjusteChave.VoltarParaContingencia).
+        // O LIKE do MariaDB ignora acento e maiúscula; EhContingencia2 é a mesma regra em C#.
+        const string FiltroContingencia2 = "situacao LIKE '%conti%gencia%2%'";
+
+        public static bool EhContingencia2(string situacao)
+        {
+            return situacao != null && Regex.IsMatch(AjusteChave.SemAcento(situacao), "conti.*gencia.*2");
+        }
 
         public static List<LinhaContingencia> LerContingencia2(Config cfg)
         {
-            string sql = "SELECT " + string.Join(", ", Colunas) + ", situacao FROM " + cfg.DbBanco + ".nota_saida WHERE situacao IN (" +
-                string.Join(", ", SituacoesContingencia2.Select(s => "'" + s + "'")) + ") ORDER BY serie, numero";
+            string sql = "SELECT " + string.Join(", ", Colunas) + ", situacao FROM " + cfg.DbBanco + ".nota_saida WHERE " +
+                FiltroContingencia2 + " ORDER BY serie, numero";
             return Consultar(cfg, new[] { sql }, null).Select(v =>
             {
                 var c = Montar(v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7], v[8], v[9]);
                 c.Situacao = v[10];
                 return c;
-            }).ToList();
+            }).Where(c => EhContingencia2(c.Situacao)).ToList();
         }
 
         public static List<LinhaContingencia> LerBanco(Config cfg, Log log)

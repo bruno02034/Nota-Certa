@@ -202,8 +202,71 @@ namespace DuplicidadeNfce
             }
         }
 
+        // ---------- Contingência 2 → contingência normal ----------
+        // Troca SÓ o campo situacao de UMA linha de "Em Contigência 2" (e variações) para o texto que o Metre usa na
+        // contingência normal; a nota volta à aba Contingência do Metre. Mesmas proteções do ajuste: linha travada,
+        // conferência do que foi listado, backup, UPDATE exigindo 1 linha e releitura. Exceção = nada alterado.
+        public const string SituacaoMetre = "Em Contigência";
+
+        public static string VoltarParaContingencia(Config cfg, LinhaContingencia c, string pastaBackups, Log log)
+        {
+            string id = Inteiro(c.Id), numero = Inteiro(c.Numero), serie = Inteiro(c.Serie);
+            if (!Banco.EhContingencia2(c.Situacao)) throw new Exception("a situação \"" + c.Situacao + "\" não é de Contingência 2");
+            string tabela = cfg.DbBanco + ".nota_saida";
+            string onde = "id_nota_saida = " + id + " AND numero = " + numero + " AND serie = " + serie;
+            log.Info("");
+            log.Info("Voltar para a contingência: " + tabela + " id_nota_saida " + id + ", nota " + serie + "/" + numero + " (" + c.Situacao + ")");
+            using (var s = Banco.Sessao.Abrir(cfg, x => log.Info("Banco: " + x), false))
+            {
+                // O texto exato que o Metre grava hoje na contingência normal; sem nenhuma nota lá, o visto no Metre.
+                var usada = s.Consultar("SELECT situacao FROM " + tabela + " WHERE situacao = '" + Sql(cfg.DbSituacao) + "' LIMIT 1");
+                string nova = usada.Count == 1 && usada[0][0] != null ? usada[0][0] : SituacaoMetre;
+                if (SemAcento(nova) != SemAcento(cfg.DbSituacao)) throw new Exception("situação de destino \"" + nova + "\" não confere com DbSituacao");
+                s.Comando("START TRANSACTION");
+                string backup;
+                try
+                {
+                    var linha = s.LinhaCompleta("SELECT * FROM " + tabela + " WHERE id_nota_saida = " + id + " FOR UPDATE");
+                    if (linha == null) throw new Exception("a linha id_nota_saida " + id + " não existe mais em " + tabela);
+                    Func<string, string> col = nome =>
+                    {
+                        var kv = linha.FirstOrDefault(x => x.Key.Equals(nome, StringComparison.OrdinalIgnoreCase));
+                        if (kv.Key == null) throw new Exception(tabela + " sem a coluna " + nome);
+                        return kv.Value == null ? null : Encoding.UTF8.GetString(kv.Value);
+                    };
+                    if (col("numero") != numero || col("serie") != serie)
+                        throw new Exception("a linha id_nota_saida " + id + " é da nota " + col("serie") + "/" + col("numero") + ", não " + serie + "/" + numero);
+                    if (col("situacao") != c.Situacao)
+                        throw new Exception("a situação no banco mudou desde a listagem: está \"" + (col("situacao") ?? "NULL") + "\", listada \"" + c.Situacao + "\"");
+                    if (col("chave_acesso") != c.Chave)
+                        throw new Exception("a chave_acesso no banco mudou desde a listagem: está " + (col("chave_acesso") ?? "NULL"));
+
+                    backup = GravarBackup(pastaBackups, "voltar_contingencia", tabela, id, numero, serie, c.Chave ?? "", c.Chave ?? "", linha,
+                        "situacao: " + c.Situacao + " -> " + nova);
+                    log.Info("  backup da linha: " + backup);
+
+                    long n = s.Comando("UPDATE " + tabela + " SET situacao = '" + Sql(nova) + "' WHERE " + onde + " AND situacao = '" + Sql(c.Situacao) + "'" +
+                        " AND chave_acesso " + (c.Chave == null ? "IS NULL" : "= '" + Sql(c.Chave) + "'"));
+                    if (n != 1) throw new Exception("o UPDATE afetou " + n + " linha(s), esperada exatamente 1");
+                    var relida = s.Consultar("SELECT situacao FROM " + tabela + " WHERE id_nota_saida = " + id);
+                    if (relida.Count != 1 || relida[0][0] != nova) throw new Exception("a releitura não mostrou a situação nova");
+                    s.Comando("COMMIT");
+                }
+                catch (Exception ex)
+                {
+                    try { s.Comando("ROLLBACK"); } catch { }
+                    log.Info("  ERRO, desfeito (rollback), nada alterado: " + ex.Message);
+                    throw new Exception(ex.Message + " (rollback: nada foi alterado no banco)");
+                }
+                log.Info("  gravado e relido: situacao = " + nova);
+                return backup;
+            }
+        }
+
+        static string Sql(string s) { return s.Replace("\\", "\\\\").Replace("'", "''"); }
+
         // "Em Contigência" (banco) = "Em contigencia" (ini): o MariaDB compara sem acento e sem maiúsculas.
-        static string SemAcento(string s)
+        internal static string SemAcento(string s)
         {
             if (s == null) return "";
             var d = s.Trim().ToLowerInvariant().Normalize(NormalizationForm.FormD);
@@ -222,11 +285,11 @@ namespace DuplicidadeNfce
             List<KeyValuePair<string, byte[]>> linha, string observacao)
         {
             Directory.CreateDirectory(pasta);
-            string baseNome = (operacao == "ajuste" ? "ajuste_chave_" : "desfazer_ajuste_") + serie + "-" + numero + "_id" + id + "_" + DateTime.Now.ToString("yyyyMMdd_HHmmss");
+            string baseNome = (operacao == "ajuste" ? "ajuste_chave_" : operacao == "desfazer" ? "desfazer_ajuste_" : operacao + "_") + serie + "-" + numero + "_id" + id + "_" + DateTime.Now.ToString("yyyyMMdd_HHmmss");
             string arq = Path.Combine(pasta, baseNome + ".txt");
             for (int i = 2; File.Exists(arq); i++) arq = Path.Combine(pasta, baseNome + "_" + i + ".txt");
             var sb = new StringBuilder();
-            sb.AppendLine("# " + Program.NomeSistema + " - backup da linha de " + tabela + " antes de alterar chave_acesso");
+            sb.AppendLine("# " + Program.NomeSistema + " - backup da linha de " + tabela + " antes de alterar " + (operacao == "voltar_contingencia" ? "situacao" : "chave_acesso"));
             sb.AppendLine("# Valores: texto como está no banco; \\N = NULL; 0x... = conteúdo binário ou com quebra de linha, em hexadecimal.");
             sb.AppendLine("operacao=" + operacao);
             sb.AppendLine("data=" + DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss"));
