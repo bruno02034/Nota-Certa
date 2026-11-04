@@ -27,10 +27,16 @@ namespace DuplicidadeNfce
                 {
                     string t = MacroMetre.TextoDaJanela(b[0]);
                     Verdade(t.Contains("539") && t.Contains("chNFe:31261011222333000181650060000888709880705883"), "texto da janela vai para o log: " + t);
-                    ((InvokePattern)b[0].GetCurrentPattern(InvokePattern.Pattern)).Invoke();
+                    // Clique com a posição dentro do evento (o do duplo clique na nota), só se o botão é o que está no ponto.
+                    var r = b[0].Current.BoundingRectangle;
+                    int x = (int)(r.X + r.Width / 2), y = (int)(r.Y + r.Height / 2);
+                    var noPonto = AutomationElement.FromPoint(new System.Windows.Point(x, y));
+                    bool ehOBotao = noPonto != null && (Automation.Compare(noPonto, b[0]) || Automation.Compare(TreeWalker.RawViewWalker.GetParent(noPonto), b[0]));
+                    Verdade(ehOBotao, "o \"Entendi !\" é o que está na tela no ponto do clique");
+                    if (ehOBotao) MacroMetre.Clique(x, y); else ((InvokePattern)b[0].GetCurrentPattern(InvokePattern.Pattern)).Invoke();
                     lim = DateTime.Now.AddSeconds(10);
                     while (!p.HasExited && DateTime.Now < lim) Thread.Sleep(200);
-                    Verdade(p.HasExited, "\"Entendi !\" fecha a janela");
+                    Verdade(p.HasExited, "clique com posição absoluta no \"Entendi !\" fecha a janela");
                 }
                 Verdade(MacroMetre.EmContingencia("Em Contigência") && MacroMetre.EmContingencia("Em Contingencia 2") && !MacroMetre.EmContingencia("Autorizada"),
                     "status de contingência com e sem acento");

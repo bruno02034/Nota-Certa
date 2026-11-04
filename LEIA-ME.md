@@ -31,8 +31,9 @@ CONTIGÊNCIA". Antes de cada clique, confere:
 - se o ponto do clique é a linha da nota;
 - se o status dela é "Em Contigência".
 
-Se algo não bater, se aparecer outra janela (ou nenhuma em 90 s), ou se você apertar Esc ou mexer o mouse, ele para
-e mostra o motivo. Não use o computador enquanto roda. No fim, clique em *Listar contingência*.
+Se algo não bater, se aparecer outra janela (ou nenhuma em 90 s), ou se você apertar **Esc**, ele para e mostra o
+motivo. Mexer o mouse não para o macro, porque o TeamViewer/AnyDesk move o cursor do servidor sozinho. Mesmo assim,
+não use o computador enquanto ele roda. No fim, clique em *Listar contingência*.
 
 **Interface:** dê dois cliques em `NotaCerta.exe` → escolha as datas → *Listar notas com 539* →
 marque as notas → *Processar marcadas* (consulta a SEFAZ, escolhe o arquivo e copia).

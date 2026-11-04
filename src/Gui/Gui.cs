@@ -811,7 +811,7 @@ namespace DuplicidadeNfce
             if (MessageBox.Show(W, "Dar duplo clique em cada nota da aba CONTIGÊNCIA do Metre?\n\n" + lista + "\n\n" +
                 "Cada duplo clique transmite a nota pelo Metre; na janela \"Rejeição de Nota\" o NotaCerta clica em \"Entendi !\".\n" +
                 "Antes de cada clique ele confere a aba e a nota, e para se algo mudar.\n\n" +
-                "Não use o mouse nem o teclado enquanto roda. Para parar: Esc ou mexa o mouse.",
+                "Não use o mouse nem o teclado enquanto roda (no TeamViewer/AnyDesk, deixe o mouse parado). Para parar: Esc.",
                 Program.NomeSistema, MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
             Directory.CreateDirectory(PastaRelatorios);
             string arq = System.IO.Path.Combine(PastaRelatorios, "macro_metre_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".log");

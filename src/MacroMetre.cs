@@ -25,7 +25,6 @@ namespace DuplicidadeNfce
 
         readonly Log log;
         readonly Action<string> andamento;
-        POINT cursorNosso;
 
         public MacroMetre(Log log, Action<string> andamento) { this.log = log; this.andamento = andamento; }
 
@@ -110,6 +109,7 @@ namespace DuplicidadeNfce
             var res = new Resultado();
             var feitas = new HashSet<string>();
             log.Info("Macro da contingência do Metre - " + DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss"));
+            Cancelado();   // descarta um Esc apertado antes de começar
             try
             {
                 while (true)
@@ -153,7 +153,7 @@ namespace DuplicidadeNfce
             var janela = JanelaDe(l.Elemento);
             if (janela == IntPtr.Zero) { motivo = "não achei a janela da tabela"; return null; }
             if (GetForegroundWindow() != janela) { Frente(janela); Thread.Sleep(300); }
-            if (Cancelado(true)) { motivo = "cancelado (Esc ou mouse)"; return null; }
+            if (Cancelado()) { motivo = "cancelado (Esc)"; return null; }
             int fg = ProcessoDe(GetForegroundWindow());
             if (fg != p.Id) { Frente(p.MainWindowHandle); Thread.Sleep(300); Frente(janela); Thread.Sleep(300); fg = ProcessoDe(GetForegroundWindow()); }
             if (fg != p.Id) { motivo = "o Metre não ficou em primeiro plano (na frente: " + NomeProcesso(fg) + ")"; return null; }
@@ -168,7 +168,7 @@ namespace DuplicidadeNfce
             while (DateTime.Now < limite)
             {
                 Thread.Sleep(300);
-                if (Cancelado(false)) { motivo = "cancelado (Esc ou mouse) esperando a janela do Metre"; return null; }
+                if (Cancelado()) { motivo = "cancelado (Esc) esperando a janela do Metre"; return null; }
                 var botoes = BotoesConfirmar(p.Id);
                 if (botoes.Count == 0) continue;
                 if (botoes.Count > 1) { motivo = "o Metre mostrou mais de uma janela de confirmação; responda no Metre"; return null; }
@@ -233,27 +233,29 @@ namespace DuplicidadeNfce
             object inv;
             if (b.TryGetCurrentPattern(InvokePattern.Pattern, out inv)) { ((InvokePattern)inv).Invoke(); return; }
             var r = b.Current.BoundingRectangle;
-            Mover((int)(r.X + r.Width / 2), (int)(r.Y + r.Height / 2));
-            mouse_event(2, 0, 0, 0, IntPtr.Zero); mouse_event(4, 0, 0, 0, IntPtr.Zero);
+            Clique((int)(r.X + r.Width / 2), (int)(r.Y + r.Height / 2));
         }
 
         void DuploClique(int x, int y)
         {
-            Mover(x, y);
-            for (int i = 0; i < 2; i++) { mouse_event(2, 0, 0, 0, IntPtr.Zero); mouse_event(4, 0, 0, 0, IntPtr.Zero); Thread.Sleep(60); }
+            Clique(x, y); Thread.Sleep(60); Clique(x, y);
         }
 
-        void Mover(int x, int y) { SetCursorPos(x, y); GetCursorPos(out cursorNosso); }
-
-        // Esc ou mouse mexido por quem está na frente da máquina. inicio = antes do primeiro clique, o cursor ainda é do usuário.
-        bool primeiro = true;
-        bool Cancelado(bool inicio)
+        // A posição vai dentro de cada evento do clique: o acesso remoto (TeamViewer, AnyDesk) move o cursor do servidor
+        // junto com o do técnico, e um SetCursorPos seguido de clique poderia cair em outro lugar.
+        internal static void Clique(int x, int y)
         {
-            if ((GetAsyncKeyState(0x1B) & 0x8000) != 0) return true;
-            POINT c; GetCursorPos(out c);
-            if (inicio && primeiro) { primeiro = false; cursorNosso = c; return false; }
-            return Math.Abs(c.X - cursorNosso.X) > 5 || Math.Abs(c.Y - cursorNosso.Y) > 5;
+            int vx = GetSystemMetrics(76), vy = GetSystemMetrics(77), vw = GetSystemMetrics(78), vh = GetSystemMetrics(79);
+            int nx = (int)Math.Round((x - vx) * 65535.0 / Math.Max(1, vw - 1)), ny = (int)Math.Round((y - vy) * 65535.0 / Math.Max(1, vh - 1));
+            const int Mover = 0x0001, Desce = 0x0002, Sobe = 0x0004, Absoluto = 0x8000, Virtual = 0x4000;
+            mouse_event(Mover | Absoluto | Virtual, nx, ny, 0, IntPtr.Zero);
+            mouse_event(Mover | Desce | Absoluto | Virtual, nx, ny, 0, IntPtr.Zero);
+            mouse_event(Mover | Sobe | Absoluto | Virtual, nx, ny, 0, IntPtr.Zero);
         }
+
+        // Só o Esc para: o mouse não serve de sinal, porque o acesso remoto mexe no cursor do servidor sozinho
+        // (TeamViewer, 04/11: o macro parou na primeira nota com a janela "Rejeição de Nota" já na tela).
+        static bool Cancelado() { return (GetAsyncKeyState(0x1B) & 0x8001) != 0; }
 
         static bool Ancestral(AutomationElement e, AutomationElement alvo)
         {
@@ -311,10 +313,8 @@ namespace DuplicidadeNfce
             return sb.ToString();
         }
 
-        [StructLayout(LayoutKind.Sequential)] struct POINT { public int X, Y; }
         delegate bool EnumProc(IntPtr h, IntPtr l);
-        [DllImport("user32.dll")] static extern bool SetCursorPos(int x, int y);
-        [DllImport("user32.dll")] static extern bool GetCursorPos(out POINT p);
+        [DllImport("user32.dll")] static extern int GetSystemMetrics(int i);
         [DllImport("user32.dll")] static extern void mouse_event(int f, int x, int y, int d, IntPtr e);
         [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr h);
         [DllImport("user32.dll")] static extern void keybd_event(byte vk, byte scan, int f, IntPtr e);
