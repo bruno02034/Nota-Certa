@@ -324,13 +324,10 @@ namespace DuplicidadeNfce
                 Log.Info("");
                 Log.Tela("Copiando para " + PastaExecucao);
                 Copiar(recopiar);
-                ArqCsv = Path.Combine(PastaExecucao, "relatorio_" + idEmitente + ".csv");
             }
-            else
-            {
-                foreach (var i in Itens.Where(x => x.Entregas.Count > 0)) i.Copia = CopiaFaltante.NaoCopiado;
-                ArqCsv = Path.Combine(PastaRel, "faltantes_" + idEmitente + "_" + carimbo + ".csv");
-            }
+            else foreach (var i in Itens.Where(x => x.Entregas.Count > 0)) i.Copia = CopiaFaltante.NaoCopiado;
+            // A pasta da entrega (e o zip) leva só as notas; o relatório fica nos relatórios do sistema (pedido de 05/11).
+            ArqCsv = Path.Combine(PastaRel, "faltantes_" + idEmitente + "_" + carimbo + ".csv");
             GravarCsv(ArqCsv, Itens);
 
             Log.Tela("");
@@ -508,6 +505,11 @@ namespace DuplicidadeNfce
                 item.SituacaoSefaz = Situacao(respostas.Values.First());
                 item.Motivo = "existe XML local (" + lista + "), mas a SEFAZ não conhece a chave: provavelmente contingência nunca transmitida";
                 foreach (var a in item.Arquivos.Where(x => x.Motivo == null)) a.Motivo = "SEFAZ: 217 - NF-e não consta na base de dados";
+                // Pedido do usuário (05/11): entregar os XMLs locais também, numa subpasta à parte (não são notas autorizadas).
+                // Os de contingência no nome (NOTA_..._CONTIGENCIA.xml) não vão (pedido de 05/11).
+                foreach (var v in validos.Where(x => !Regex.IsMatch(x.Nome, @"conti?n?g[eê]ncia", RegexOptions.IgnoreCase)))
+                    item.Entregas.Add(new Entrega { Origem = v.Caminho, Sha256 = v.Sha256, Tamanho = v.Tamanho,
+                        NomeDestino = Path.Combine(PastaNaoConsta, v.Nome), Descricao = "XML local que a SEFAZ não conhece" });
                 return item;
             }
             var outra = respostas.First(kv => kv.Value.CStat != "217");
@@ -721,6 +723,8 @@ namespace DuplicidadeNfce
 
         // ---------- Cópia ----------
 
+        public const string PastaNaoConsta = "NAO_CONSTA_NA_SEFAZ";
+
         void Copiar(bool recopiar)
         {
             // Uma inutilização pode cobrir vários números: o arquivo vai uma vez só.
@@ -775,6 +779,7 @@ namespace DuplicidadeNfce
         {
             Log.Info("Gravando " + (e.Conteudo != null ? e.Descricao : e.Origem) + " -> " + destino);
             if (File.Exists(destino)) return "já existe no destino: " + destino;
+            Directory.CreateDirectory(Path.GetDirectoryName(destino));
             byte[] dados;
             if (e.Conteudo != null)
             {
@@ -852,6 +857,7 @@ namespace DuplicidadeNfce
         public static string GerarZip(string pasta)
         {
             if (pasta == null || !Directory.Exists(pasta)) throw new Exception("nenhuma pasta de entrega gerada ainda");
+            if (Directory.GetFiles(pasta, "*", SearchOption.AllDirectories).Length == 0) throw new Exception("nenhuma nota copiada nesta busca; nada para zipar");
             string zip = pasta.TrimEnd('\\') + ".zip";
             for (int i = 2; File.Exists(zip); i++) zip = pasta.TrimEnd('\\') + "_" + i + ".zip";
             ZipFile.CreateFromDirectory(pasta, zip, CompressionLevel.Optimal, false);

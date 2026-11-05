@@ -247,7 +247,9 @@ a cópia nunca move nem sobrescreve, e fica registrada em historico.csv na pasta
                 if (op.Zip)
                 {
                     if (!op.Copiar) throw new Exception("--zip exige --copiar");
-                    m.Log.Tela("Zip:       " + MotorFaltantes.GerarZip(m.PastaExecucao));
+                    string zip;
+                    try { zip = MotorFaltantes.GerarZip(m.PastaExecucao); } catch (Exception ex) { zip = ex.Message; }
+                    m.Log.Tela("Zip:       " + zip);
                 }
             }
             return 0;

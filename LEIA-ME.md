@@ -230,14 +230,15 @@ enquanto você digita; repetidos e inválidos são avisados e ignorados, sem imp
 | CANCELADA – SEM XML DO EVENTO | só a nota (o evento não está no disco nem na resposta da SEFAZ) |
 | INUTILIZADA | o XML da inutilização homologada (cStat 102) que cobre o número; uma vez só, mesmo cobrindo vários números |
 
-| NÃO CONSTA NA SEFAZ | nada (217: XML local que a SEFAZ não conhece, provavelmente contingência nunca transmitida) |
+| NÃO CONSTA NA SEFAZ | os XMLs locais do número, menos os de contingência no nome (`_CONTIGENCIA`), na subpasta `NAO_CONSTA_NA_SEFAZ\` (217: a SEFAZ não conhece a chave, provavelmente contingência nunca transmitida; não são notas autorizadas) |
 | NÃO ENCONTRADA | nada (sem nota e sem inutilização: pode ser número pulado a inutilizar) |
 | PENDENTE | nada (SEFAZ não consultada, nenhum candidato com o digest da SEFAZ, mais de um autorizado, já existe no destino…) |
 
 A inutilização não tem chave para consultar: só vale o XML de inutilização salvo no computador.
 
 Saída em `C:\Chef\NFCe\NotasFaltantes\<CNPJ>_<data-hora>\` (`PastaNotasFaltantes` no ini): cópias com o nome
-original, conferidas por tamanho e SHA-256, e o relatório CSV. *Gerar zip* cria o `.zip` ao lado da pasta.
+original, conferidas por tamanho e SHA-256; só as notas (o relatório CSV fica em `relatorios\`). *Gerar zip* cria o
+`.zip` ao lado da pasta.
 O `historico.csv` da pasta base impede copiar o mesmo número de novo (marque *Copiar de novo as já copiadas* para
 entregar outra vez). Nada é transmitido, cancelado nem inutilizado.
 

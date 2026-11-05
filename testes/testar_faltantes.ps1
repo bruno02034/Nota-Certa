@@ -159,6 +159,7 @@ try {
     # 508: a SEFAZ não conhece (217)
     $n508 = NFe (Chave $Cnpj '2609' 508 '10000508') 508 '2026-09-18T09:00:00-03:00' '8.00'
     Gravar "$dia\NOTA_508_SERIE_7_ASSINADA_18_09_2026_09_00_00.xml" "<enviNFe versao=`"4.00`" xmlns=`"$Ns`"><idLote>1</idLote><indSinc>1</indSinc>$($n508.Xml)</enviNFe>"
+    Gravar "$dia\NOTA_508_SERIE_7_CONTIGENCIA.xml" "<enviNFe versao=`"4.00`" xmlns=`"$Ns`"><idLote>1</idLote><indSinc>1</indSinc>$($n508.Xml)</enviNFe>"
 
     # 509 a 511: inutilização homologada (cStat 102), um arquivo só
     Gravar "$xmls\Inutilizadas\INUT_509_511.xml" ("<procInutNFe versao=`"4.00`" xmlns=`"$Ns`"><inutNFe versao=`"4.00`"><infInut Id=`"ID31261122233300018165007000000509000000511`"><tpAmb>1</tpAmb><xServ>INUTILIZAR</xServ><cUF>31</cUF><ano>26</ano><CNPJ>$Cnpj</CNPJ><mod>65</mod><serie>7</serie><nNFIni>509</nNFIni><nNFFin>511</nNFFin><xJust>numeracao pulada por falha</xJust></infInut></inutNFe>" +
@@ -257,7 +258,9 @@ try {
     Confere $r 507 'ENCONTRADA' "NOTA_507_SERIE_7_ASSINADA_31_08_2026_23_50_00.xml | $($n507.Chave)-procNFe.xml"
     Verdade ($r['507'].'Mes emissao' -eq '08/2026 (mês diferente das demais)' -and $r['501'].'Mes emissao' -eq '09/2026') '507: mes de emissao destacado no relatorio'
     Verdade ($ultimaSaida.Contains('Emissão: 09/2026') -and $ultimaSaida.Contains('08/2026 (1)') -and $ultimaSaida.Contains('ATENÇÃO: notas de meses diferentes')) 'aviso de notas de meses diferentes'
-    Confere $r 508 'NÃO CONSTA NA SEFAZ' '' 'nunca transmitida'
+    Confere $r 508 'NÃO CONSTA NA SEFAZ' 'NOTA_508_SERIE_7_ASSINADA_18_09_2026_09_00_00.xml' 'nunca transmitida'
+    Verdade (Test-Path "$p\NAO_CONSTA_NA_SEFAZ\NOTA_508_SERIE_7_ASSINADA_18_09_2026_09_00_00.xml") '508: XML local copiado para a subpasta NAO_CONSTA_NA_SEFAZ'
+    Verdade (-not (Test-Path "$p\NAO_CONSTA_NA_SEFAZ\NOTA_508_SERIE_7_CONTIGENCIA.xml")) '508: o _CONTIGENCIA nao e copiado'
     Confere $r 509 'INUTILIZADA' 'INUT_509_511.xml'
     Confere $r 510 'INUTILIZADA' 'INUT_509_511.xml'
     Confere $r 511 'INUTILIZADA' 'INUT_509_511.xml'
@@ -270,12 +273,12 @@ try {
     Verdade ($r['501'].'CNPJ emitente' -eq '11.222.333/0001-81') '501: CNPJ do emitente vem do XML'
     Verdade ($ultimaSaida -match 'Emitente: 11.222.333/0001-81 - EMPRESA TESTE') 'emitente da busca mostrado (CNPJ e nome)'
     Confere $r 515 'PENDENTE' '' '302'
-    Verdade (Test-Path "$p\relatorio_${Cnpj}.csv") 'relatorio CSV na pasta da entrega'
+    Verdade (@(Get-ChildItem $p -Recurse -File | Where-Object { $_.Extension -ne '.xml' }).Count -eq 0 -and (Test-Path $script:ultimoCsv) -and -not $script:ultimoCsv.StartsWith($p)) 'pasta da entrega so com XMLs (relatorio fica fora)'
     $zip = "$p.zip"
-    Verdade ((Test-Path $zip) -and ([IO.Compression.ZipFile]::OpenRead($zip).Entries.Count -eq @(Get-ChildItem $p -File).Count)) 'zip com todos os arquivos da entrega'
+    Verdade ((Test-Path $zip) -and ([IO.Compression.ZipFile]::OpenRead($zip).Entries.Count -eq @(Get-ChildItem $p -File -Recurse).Count)) 'zip com todos os arquivos da entrega'
     Verdade ((HashArvore $xmls) -eq $antes) 'XMLs originais intactos (somente leitura)'
     $hist = Import-Csv "$base\historico.csv" -Delimiter ';' -Encoding UTF8
-    Verdade (@($hist | Where-Object Status -eq 'COPIADO').Count -eq 17) 'historico com uma linha por arquivo copiado'
+    Verdade (@($hist | Where-Object Status -eq 'COPIADO').Count -eq 18) 'historico com uma linha por arquivo copiado'
 
     $r = Rodar $cfg ($Faixas + '--copiar')
     Verdade ($r['501'].Copia -eq 'JÁ COPIADO' -and @(Get-ChildItem $ultimaPasta -Filter *.xml).Count -eq 0) 'segunda busca: nada copiado de novo (historico)'
