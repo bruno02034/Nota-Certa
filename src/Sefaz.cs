@@ -6,6 +6,7 @@ using System.Net;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Xml;
 
 namespace DuplicidadeNfce
@@ -31,7 +32,7 @@ namespace DuplicidadeNfce
                 // No protNFe, além de 100/150, a SEFAZ-MG devolve 120 "Autorizado o uso da NF-e, com alerta"
                 // (visto no cliente em 29/10, cMsg 172). A identidade da chave (Prot.ChNFe = a chave consultada)
                 // é conferida por quem usa isto (AjusteChave.Trava e Analisador).
-                return Ok && (CStat == "100" || CStat == "150")
+                return Ok && ProtocoloXml.Autorizado(CStat)
                     && Prot != null && ProtAutorizado(Prot.CStat) && !string.IsNullOrEmpty(Prot.NProt);
             }
         }
@@ -201,30 +202,17 @@ namespace DuplicidadeNfce
 
         static void Interpretar(RespostaSefaz r, string chave)
         {
-            // Resposta de rede: sem DTD nem entidades (como na leitura dos XMLs do disco, NotaXml).
-            var xd = new XmlDocument { XmlResolver = null };
-            using (var sr = new StringReader(r.XmlBruto))
-            using (var xr = XmlReader.Create(sr, new XmlReaderSettings { DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null }))
-                xd.Load(xr);
-            var ns = new XmlNamespaceManager(xd.NameTable);
-            ns.AddNamespace("n", NsNfe);
+            // Resposta de rede: sem DTD nem entidades (como na leitura dos XMLs do disco).
+            var xd = NotaXml.CarregarXml(r.XmlBruto, false);
+            var ns = NotaXml.Namespaces(xd);
             var ret = xd.SelectSingleNode("//n:retConsSitNFe", ns);
             if (ret == null) { r.Ok = false; r.Erro = "resposta sem retConsSitNFe"; return; }
             r.Ok = true;
-            r.CStat = Txt(ret, "n:cStat", ns);
-            r.XMotivo = Txt(ret, "n:xMotivo", ns);
-            r.DhRecbto = Txt(ret, "n:dhRecbto", ns);
+            r.CStat = NotaXml.Texto(ret, "n:cStat", ns);
+            r.XMotivo = NotaXml.Texto(ret, "n:xMotivo", ns);
+            r.DhRecbto = NotaXml.Texto(ret, "n:dhRecbto", ns);
             var ip = ret.SelectSingleNode("n:protNFe/n:infProt", ns);
-            if (ip != null)
-                r.Prot = new ProtocoloXml
-                {
-                    ChNFe = Txt(ip, "n:chNFe", ns),
-                    CStat = Txt(ip, "n:cStat", ns),
-                    XMotivo = Txt(ip, "n:xMotivo", ns),
-                    NProt = Txt(ip, "n:nProt", ns),
-                    DigVal = Txt(ip, "n:digVal", ns),
-                    DhRecbto = Txt(ip, "n:dhRecbto", ns)
-                };
+            if (ip != null) r.Prot = ProtocoloXml.De(ip, ns);
             var prot = ret.SelectSingleNode("n:protNFe", ns) as XmlElement;
             if (prot != null) r.ProtNFeXml = Trecho(r.XmlBruto, "protNFe") ?? prot.OuterXml;
             var brutos = Trechos(r.XmlBruto, "procEventoNFe");
@@ -233,11 +221,11 @@ namespace DuplicidadeNfce
             {
                 r.Eventos.Add(new EventoSefaz
                 {
-                    TpEvento = Txt(pe, "n:evento/n:infEvento/n:tpEvento", ns),
-                    ChNFe = Txt(pe, "n:evento/n:infEvento/n:chNFe", ns),
-                    CStat = Txt(pe, "n:retEvento/n:infEvento/n:cStat", ns),
-                    XMotivo = Txt(pe, "n:retEvento/n:infEvento/n:xMotivo", ns),
-                    NProt = Txt(pe, "n:retEvento/n:infEvento/n:nProt", ns),
+                    TpEvento = NotaXml.Texto(pe, "n:evento/n:infEvento/n:tpEvento", ns),
+                    ChNFe = NotaXml.Texto(pe, "n:evento/n:infEvento/n:chNFe", ns),
+                    CStat = NotaXml.Texto(pe, "n:retEvento/n:infEvento/n:cStat", ns),
+                    XMotivo = NotaXml.Texto(pe, "n:retEvento/n:infEvento/n:xMotivo", ns),
+                    NProt = NotaXml.Texto(pe, "n:retEvento/n:infEvento/n:nProt", ns),
                     Xml = i < brutos.Count ? brutos[i] : pe.OuterXml
                 });
                 i++;
@@ -254,15 +242,9 @@ namespace DuplicidadeNfce
         static List<string> Trechos(string xml, string tag)
         {
             var lista = new List<string>();
-            foreach (System.Text.RegularExpressions.Match m in System.Text.RegularExpressions.Regex.Matches(xml, "<" + tag + @"\b[\s\S]*?</" + tag + ">"))
+            foreach (Match m in Regex.Matches(xml, "<" + tag + @"\b[\s\S]*?</" + tag + ">"))
                 lista.Add(m.Value);
             return lista;
-        }
-
-        static string Txt(XmlNode raiz, string xp, XmlNamespaceManager ns)
-        {
-            var n = raiz.SelectSingleNode(xp, ns);
-            return n == null ? null : n.InnerText.Trim();
         }
 
         // Certificado A1 (.pfx) cujo CNPJ é o do emitente. Devolve null com o motivo em 'erro'.

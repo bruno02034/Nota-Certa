@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Globalization;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -412,13 +411,8 @@ namespace DuplicidadeNfce
             return s == null ? "" : Regex.Replace(s, @"\s+", " ").Trim();
         }
 
-        static string SemAcento(string s)
-        {
-            var sb = new StringBuilder();
-            foreach (var c in (s ?? "").Normalize(NormalizationForm.FormD))
-                if (CharUnicodeInfo.GetUnicodeCategory(c) != UnicodeCategory.NonSpacingMark) sb.Append(c);
-            return sb.ToString();
-        }
+        // Também em minúsculas e sem espaços nas pontas: aqui só se compara sem maiúsculas.
+        static string SemAcento(string s) { return AjusteChave.SemAcento(s); }
 
         delegate bool EnumProc(IntPtr h, IntPtr l);
         [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetWindowText(IntPtr h, StringBuilder s, int max);

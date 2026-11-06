@@ -1,6 +1,4 @@
 using System;
-using System.Collections.Generic;
-using System.IO;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -13,16 +11,13 @@ namespace DuplicidadeNfce
         public const string Chave = "DbSenhaProtegida";
         static readonly byte[] Entropia = Encoding.UTF8.GetBytes("NotaCerta/DbSenha/v1");
 
-        public static string Proteger(string senha)
-        {
-            return Convert.ToBase64String(ProtectedData.Protect(Encoding.UTF8.GetBytes(senha), Entropia, DataProtectionScope.LocalMachine));
-        }
+        public static string Proteger(string senha) { return Proteger(senha, Entropia); }
 
         public static string Abrir(string protegida)
         {
             try
             {
-                return Encoding.UTF8.GetString(ProtectedData.Unprotect(Convert.FromBase64String(protegida), Entropia, DataProtectionScope.LocalMachine));
+                return Abrir(protegida, Entropia);
             }
             catch (Exception ex)
             {
@@ -35,43 +30,36 @@ namespace DuplicidadeNfce
         public const string ChaveCert = "CertificadoSenhaProtegida";
         static readonly byte[] EntropiaCert = Encoding.UTF8.GetBytes("NotaCerta/CertSenha/v1");
 
-        public static string ProtegerCert(string senha)
+        public static string ProtegerCert(string senha) { return Proteger(senha, EntropiaCert); }
+
+        public static string AbrirCert(string protegida) { return Abrir(protegida, EntropiaCert); }
+
+        static string Proteger(string senha, byte[] entropia)
         {
-            return Convert.ToBase64String(ProtectedData.Protect(Encoding.UTF8.GetBytes(senha), EntropiaCert, DataProtectionScope.LocalMachine));
+            return Convert.ToBase64String(ProtectedData.Protect(Encoding.UTF8.GetBytes(senha), entropia, DataProtectionScope.LocalMachine));
         }
 
-        public static string AbrirCert(string protegida)
+        static string Abrir(string protegida, byte[] entropia)
         {
-            return Encoding.UTF8.GetString(ProtectedData.Unprotect(Convert.FromBase64String(protegida), EntropiaCert, DataProtectionScope.LocalMachine));
+            return Encoding.UTF8.GetString(ProtectedData.Unprotect(Convert.FromBase64String(protegida), entropia, DataProtectionScope.LocalMachine));
         }
 
         // Grava DbSenhaProtegida no ini e esvazia o DbSenha (texto simples). As demais linhas ficam como estão.
         public static void GravarNoIni(string arqIni, string senha)
         {
-            var linhas = File.Exists(arqIni) ? new List<string>(File.ReadAllLines(arqIni, Encoding.UTF8)) : new List<string>();
+            var linhas = Config.LinhasDoIni(arqIni);
             string nova = Chave + "=" + Proteger(senha);
             int posSenha = -1, posProtegida = -1;
             for (int i = 0; i < linhas.Count; i++)
             {
-                string k = NomeDaChave(linhas[i]);
+                string k = (Config.ChaveDaLinha(linhas[i]) ?? "").ToLowerInvariant();
                 if (k == "dbsenha") { linhas[i] = "DbSenha="; posSenha = i; }
                 else if (k == Chave.ToLowerInvariant()) posProtegida = i;
             }
             if (posProtegida >= 0) linhas[posProtegida] = nova;
             else if (posSenha >= 0) linhas.Insert(posSenha + 1, nova);
             else linhas.Add(nova);
-            string tmp = arqIni + ".tmp";
-            File.WriteAllLines(tmp, linhas, new UTF8Encoding(false));
-            if (File.Exists(arqIni)) File.Replace(tmp, arqIni, null);
-            else File.Move(tmp, arqIni);
-        }
-
-        static string NomeDaChave(string linha)
-        {
-            string l = linha.Trim();
-            int eq = l.IndexOf('=');
-            if (l == "" || l.StartsWith("#") || l.StartsWith(";") || eq <= 0) return null;
-            return l.Substring(0, eq).Trim().ToLowerInvariant();
+            Config.GravarIni(arqIni, linhas);
         }
     }
 }

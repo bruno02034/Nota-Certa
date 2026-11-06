@@ -1,0 +1,137 @@
+Campo(null) => 
+Dividir(Campo) => []
+Campo() => 
+Dividir(Campo) => []
+Campo(abc) => abc
+Dividir(Campo) => [abc]
+Campo(=1+1) => '=1+1
+Dividir(Campo) => [=1+1]
+Campo(+5) => '+5
+Dividir(Campo) => [+5]
+Campo(-3,50) => -3,50
+Dividir(Campo) => [-3,50]
+Campo(-x) => '-x
+Dividir(Campo) => [-x]
+Campo(@a) => '@a
+Dividir(Campo) => [@a]
+Campo(	x) => '	x
+Dividir(Campo) => [	x]
+Campo(a;b) => "a;b"
+Dividir(Campo) => [a;b]
+Campo(a"b) => "a""b"
+Dividir(Campo) => [a"b]
+Campo(linha
+nova) => "linha\nnova"
+Dividir(Campo) => [linha\nnova]
+Campo(="123") => "=""123"""
+Dividir(Campo) => [="123"]
+Campo(="12a") => "'=""12a"""
+Dividir(Campo) => [="12a"]
+Campo('=x) => '=x
+Dividir(Campo) => [=x]
+Formula(null) => 
+SemFormula(Formula) => 
+Formula() => 
+SemFormula(Formula) => 
+Formula(123) => ="123"
+SemFormula(Formula) => 123
+Formula(12a) => 12a
+SemFormula(Formula) => 12a
+Formula(31261012345678000199650010000001231000001234) => ="31261012345678000199650010000001231000001234"
+SemFormula(Formula) => 31261012345678000199650010000001231000001234
+Dividir(x) => [a|b;c|d"e||=f|'g]
+DV: iguais de 3000 => 3000
+DV: válidas de 3000 => 312
+DvValido(null) => False/False
+DvValido() => False/False
+DvValido(123) => False/False
+DvValido(3126101234567800019965001000000123100000123X) => False/False
+DvValido(00000000000000000000000000000000000000000000) => True/True
+MesmaNumeracao => True
+SemAcento(null) => 
+EhContingencia2 => False
+EmContingencia => False
+SemAcento() => 
+EhContingencia2 => False
+EmContingencia => False
+SemAcento( Em Contigência ) => em contigencia
+EhContingencia2 => False
+EmContingencia => True
+SemAcento(EM CONTINGÊNCIA 2) => em contingencia 2
+EhContingencia2 => True
+EmContingencia => True
+SemAcento(Em contigencia2) => em contigencia2
+EhContingencia2 => True
+EmContingencia => True
+SemAcento(Contingencia 2) => contingencia 2
+EhContingencia2 => True
+EmContingencia => False
+SemAcento(Autorizada) => autorizada
+EhContingencia2 => False
+EmContingencia => False
+SemAcento(Ç Ã é) => c a e
+EhContingencia2 => False
+EmContingencia => False
+EhColunaContingencia(CLIENTE CONTIGÊNCIA) => True
+EhColunaContingencia(Cliente  Contingência) => True
+EhColunaContingencia(CLIENTE CONTINGENCIA) => True
+EhColunaContingencia(CLIENTE EMISSÃO) => False
+EhColunaContingencia(null) => False
+NotaXml.Decimal(null) => (null)
+NotaXml.Decimal() => (null)
+NotaXml.Decimal(48.00) => 48,00
+NotaXml.Decimal(48,00) => 4800
+NotaXml.Decimal(1,234.5) => 1234,5
+NotaXml.Decimal(abc) => (null)
+NotaXml.Decimal(-1.5) => -1,5
+ValorDoRegistro(null) => (null)
+ValorDoRegistro() => (null)
+ValorDoRegistro(48.00) => 48,00
+ValorDoRegistro(48,00) => 4800
+ValorDoRegistro(x) => (null)
+DataEmissao(null) => (null)
+DataCurta => -
+DataEmissao() => (null)
+DataCurta => 
+DataEmissao(2026-10-19T17:05:40-03:00) => 19/10/2026 17:05:40
+DataCurta => 19/10/26 17:05
+DataEmissao(2026-10-19T23:59:00+00:00) => 19/10/2026 23:59:00
+DataCurta => 19/10/26 23:59
+DataEmissao(lixo) => (null)
+DataCurta => lixo
+Moeda => 1.234,50 ?
+FormatarCnpj => 12.345.678/0001-99 1 
+Entrada.Numeros => 1201,1202,1203,1205,1206,1207
+Entrada.Avisos => 3 inválido(s) ignorado(s): x, 9-3 (faixa invertida), 31261012345678000199650010000001231000001234 (chave com dígito verificador errado) · 1 repetido(s), buscado(s) uma vez: 1202
+Config => C:\X\NFCe C:\X 19/10/2026 texto=True
+GravarOpcoes => # comentário\r\n[secao]\r\nPastaRaiz=D:\Y\NFCe\r\nDbSenha=segredo\r\nDataInicial=19/10/2026\r\nNova=1\r\n
+GravarNoIni => # comentário\r\n[secao]\r\nPastaRaiz=D:\Y\NFCe\r\nDbSenha=\r\nDbSenhaProtegida=<protegida>\nDataInicial=19/10/2026\r\nNova=1\r\n
+Config(DbBanco=chef;) => <ini> linha 1: nome de banco inválido 'chef;' (use só letras, números e _)
+Config(DbPorta=x) => A cadeia de caracteres de entrada não estava em um formato correto.
+Config(Inexistente=1) => <ini> linha 1: opção desconhecida 'Inexistente'
+Config(DataFinal=32/13/2026) => <ini> linha 1: data inválida '32/13/2026' (use dd/mm/aaaa, hoje, ontem ou -N)
+ResolverConexaoBanco => 10.0.0.5:3308 host/porta de <tmp>\Conexao.ini
+ResolverConexaoBanco(sem ini) => 127.0.0.1:3307 (null)
+MetreIni.Senhas => [duplicidade.ini CertificadoSenha=s0|<tmp>\NFCe.ini [Certificado] SenhaCertificado=s2|<tmp>\NFCe.ini [Certificado] Pass=s3|<tmp>\NFCe.ini [Geral] Senha=s1]
+MetreIni.Pfxs => [<tmp>\cert.pfx]
+MetreIni.Lidos => [<tmp>\NFCe.ini]
+Nota => (null) 31261012345678000199650010000001231000001234 123 1 2026-10-19T17:05:40-03:00 9 555 EMPRESA 30,00 ABC= Bw1hpjFUMgfooW08FnQaCyQGKK4= 12345678000199 True 40954E7299F9C2943395D08C1378FAFEA004498080D04C4538AF07A545744A02
+Nota.Prot => 483 Rejeição: desconto [nItem: 1] 31261012345678000199650010000001231000001234 1 ABC= 2026-10-19T17:06:00-03:00
+Nota.ItemRejeitado => item 1: PROD (código 376, NCM 1, CFOP 5102): 3 UN x 13,90 = 41,70, desconto 63,43. Causa: o desconto do item é maior que o valor dele; o Metre rateou o desconto da venda (70,00 de 100,00) deixando o resto nesse item. Em proporção (70,00% em cada item) o total da nota não muda; corrija os descontos no Metre e transmita de novo
+Nota.Sobra => [X/539/dup [chNFe:31261012345678000199650010000001231000001234] [nRec:9]]
+Nota(lixo) => conteúdo não é XML em texto (2 bytes)
+Nota(DTD) => True
+Nota(arquivo) => NOTA_123_REJEICAO.xml Rejeicao infNFe não encontrado 49
+Classificar(NOTA_1_REJEICAO) => Rejeicao
+Classificar(NOTA_1_FALHA_SCHEMA) => FalhaSchema
+Classificar(NOTA_CONTIGENCIA_ENVIA_1) => ContingenciaEnvia
+Classificar(NOTA_1_Temp_ANTES) => Temp
+Classificar(NOTA_1_ASSINADA) => Assinada
+Classificar(NOTA_1_NFCE) => Autorizada
+Classificar(outro) => Outro
+historico.csv => Data/hora;Serie;Numero;Chave autorizada;Arquivo;Caminho origem;Caminho destino;Tamanho;SHA256;Status\r\n01/01/2026 10:00:00;1;2;"=""31261012345678000199650010000001231000001234""";"'=a;b";o;d;10;h;COPIADO\r\n01/01/2026 10:01:00;1;2;"=""31261012345678000199650010000001231000001234""";x;;;;;CHAVE AJUSTADA\r\n
+Historico relido => 2 =a;b True
+faltantes historico.csv => Data/hora;CNPJ;Serie;Numero;Chave;Arquivo;Caminho origem;Caminho destino;Tamanho;SHA256;Status\r\nd;"=""12345678000199""";2;5;"=""31261012345678000199650010000001231000001234""";a;o;c;1;s;COPIADO\r\n
+HistoricoFaltantes relido => 1 True
+relatorio.csv => Numero;Serie;Pedido;Emissao sistema;Valor sistema;Chave do sistema;Origem;Chave autorizada;nRec;Situacao SEFAZ;nProt SEFAZ;digVal SEFAZ;Valor SEFAZ;Arquivo escolhido;Caminho origem;Caminho destino;Status;Classificacao;Motivo\r\n2;1;;19/10/2026 17:05:40;1,50;"=""31261012345678000199650010000001231000001234""";;;;;;;;;;;PENDENTE;;'-x\r\n
+Dentro => True False

@@ -2,7 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace DuplicidadeNfce
 {
@@ -153,22 +155,47 @@ namespace DuplicidadeNfce
         // Troca só as opções informadas no ini (a que não existir entra no fim); comentários, senha e o resto ficam como estão.
         public static void GravarOpcoes(string arqIni, IDictionary<string, string> opcoes)
         {
-            var linhas = File.Exists(arqIni) ? new List<string>(File.ReadAllLines(arqIni, Encoding.UTF8)) : new List<string>();
+            var linhas = LinhasDoIni(arqIni);
             var faltam = new Dictionary<string, string>(opcoes, StringComparer.OrdinalIgnoreCase);
             for (int i = 0; i < linhas.Count; i++)
             {
-                string l = linhas[i].Trim();
-                int eq = l.IndexOf('=');
-                if (l == "" || l.StartsWith("#") || l.StartsWith(";") || eq <= 0) continue;
-                string k = l.Substring(0, eq).Trim(), v;
-                if (faltam.TryGetValue(k, out v)) { linhas[i] = k + "=" + v; faltam.Remove(k); }
+                string k = ChaveDaLinha(linhas[i]), v;
+                if (k != null && faltam.TryGetValue(k, out v)) { linhas[i] = k + "=" + v; faltam.Remove(k); }
             }
             foreach (var o in faltam) linhas.Add(o.Key + "=" + o.Value);
+            GravarIni(arqIni, linhas);
+        }
+
+        internal static List<string> LinhasDoIni(string arqIni)
+        {
+            return File.Exists(arqIni) ? new List<string>(File.ReadAllLines(arqIni, Encoding.UTF8)) : new List<string>();
+        }
+
+        // Nome da opção na linha "chave=valor"; null em linha vazia, comentário ou sem '='.
+        internal static string ChaveDaLinha(string linha)
+        {
+            string l = linha.Trim();
+            int eq = l.IndexOf('=');
+            if (l == "" || l.StartsWith("#") || l.StartsWith(";") || eq <= 0) return null;
+            return l.Substring(0, eq).Trim();
+        }
+
+        // Grava num .tmp e troca de uma vez: o ini (com a senha criptografada) nunca fica pela metade.
+        internal static void GravarIni(string arqIni, List<string> linhas)
+        {
             string tmp = arqIni + ".tmp";
             File.WriteAllLines(tmp, linhas, new UTF8Encoding(false));
             if (File.Exists(arqIni)) File.Replace(tmp, arqIni, null);
             else File.Move(tmp, arqIni);
         }
+
+        // Pasta dos relatórios e logs: relativa à pasta do exe, se não for absoluta.
+        public string PastaRelatoriosEm(string dirExe)
+        {
+            return Path.GetFullPath(Path.IsPathRooted(PastaRelatorios) ? PastaRelatorios : Path.Combine(dirExe, PastaRelatorios));
+        }
+
+        public bool UsaBanco { get { return (FonteContingencia ?? "").Trim().Equals("banco", StringComparison.OrdinalIgnoreCase); } }
 
         // Cópia para testar outra conexão sem mexer na configuração em uso.
         public Config Copia() { return (Config)MemberwiseClone(); }
@@ -177,17 +204,13 @@ namespace DuplicidadeNfce
         public void ResolverConexaoBanco()
         {
             if (!string.IsNullOrEmpty(DbHost) && DbPorta > 0) return;
-            string ip = null, porta = null, secao = "";
+            string ip = null, porta = null;
             if (!string.IsNullOrEmpty(IniConexaoMetre) && File.Exists(IniConexaoMetre))
-                foreach (string bruta in File.ReadAllLines(IniConexaoMetre, Encoding.Default))
+                foreach (var e in MetreIni.LerIni(IniConexaoMetre).Where(x => x.Secao.Trim().Equals("Configuracao", StringComparison.OrdinalIgnoreCase)))
                 {
-                    string l = bruta.Trim();
-                    if (l.StartsWith("[") && l.EndsWith("]")) { secao = l.Substring(1, l.Length - 2).Trim(); continue; }
-                    int eq = l.IndexOf('=');
-                    if (eq <= 0 || !secao.Equals("Configuracao", StringComparison.OrdinalIgnoreCase)) continue;
-                    string k = l.Substring(0, eq).Trim().ToLowerInvariant(), v = l.Substring(eq + 1).Trim();
-                    if (k == "ip") ip = v;
-                    else if (k == "porta") porta = v;
+                    string k = e.Chave.ToLowerInvariant();
+                    if (k == "ip") ip = e.Valor.Trim();
+                    else if (k == "porta") porta = e.Valor.Trim();
                 }
             // \\SERVIDOR\Chef\Conexao.ini costuma dizer localhost: lá é o próprio servidor; daqui, é quem compartilha a pasta.
             if (IniConexaoMetre != null && IniConexaoMetre.StartsWith(@"\\") && (ip == "localhost" || ip == "127.0.0.1" || ip == "::1"))
@@ -211,7 +234,7 @@ namespace DuplicidadeNfce
         // Nome de banco entra direto no SQL (chef.nota_saida): só letras, números e _.
         static string NomeBanco(string v, string origem)
         {
-            if (!System.Text.RegularExpressions.Regex.IsMatch(v, "^[A-Za-z0-9_]{1,64}$"))
+            if (!Regex.IsMatch(v, "^[A-Za-z0-9_]{1,64}$"))
                 throw new Exception(origem + ": nome de banco inválido '" + v + "' (use só letras, números e _)");
             return v;
         }

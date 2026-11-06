@@ -56,6 +56,34 @@ namespace DuplicidadeNfce
             }
             return app.Run(janela.W);
         }
+
+        // Elemento do Principal.xaml pelo nome (as telas não têm code-behind).
+        public static T Elemento<T>(Window w, string nome) where T : class
+        {
+            var o = w.FindName(nome) as T;
+            if (o == null) throw new Exception("elemento da tela não encontrado: " + nome);
+            return o;
+        }
+
+        public static Brush Pincel(string cor) { return (Brush)new BrushConverter().ConvertFromString(cor); }
+
+        // Desenvolvimento (--captura): salva a janela em PNG, com o fundo, e fecha.
+        public static void SalvarPng(Window w, string arquivo)
+        {
+            w.Dispatcher.BeginInvoke(new Action(() =>
+            {
+                var raiz = (FrameworkElement)w.Content;
+                var bmp = new RenderTargetBitmap((int)raiz.ActualWidth, (int)raiz.ActualHeight, 96, 96, PixelFormats.Pbgra32);
+                var fundo = new DrawingVisual();
+                using (var dc = fundo.RenderOpen()) dc.DrawRectangle(w.Background, null, new Rect(0, 0, raiz.ActualWidth, raiz.ActualHeight));
+                bmp.Render(fundo);
+                bmp.Render(raiz);
+                var enc = new PngBitmapEncoder();
+                enc.Frames.Add(BitmapFrame.Create(bmp));
+                using (var f = File.Create(arquivo)) enc.Save(f);
+                w.Close();
+            }), DispatcherPriority.ApplicationIdle);
+        }
     }
 
     // Linha da grade principal.
@@ -81,7 +109,20 @@ namespace DuplicidadeNfce
         }
         public Action AoMarcar;
         // Só duplicidade com retorno 539 pode ser processada (as deduzidas ficam PENDENTE "sem retorno 539").
-        public bool PodeMarcar { get { var s = Linha.Status; return s != DuplicidadeNfce.Status.JaProcessada && s != DuplicidadeNfce.Status.Copiado && s != DuplicidadeNfce.Status.EmContingencia && s != DuplicidadeNfce.Status.OutroErro && s != DuplicidadeNfce.Status.JaAutorizada && s != DuplicidadeNfce.Status.ChaveAjustada && s != DuplicidadeNfce.Status.AjusteDesfeito && s != DuplicidadeNfce.Status.LinhaDuplicada && s != DuplicidadeNfce.Status.LinhaExcluida && !(s == DuplicidadeNfce.Status.Pendente && Linha.Motivo != null && Linha.Motivo.StartsWith("sem retorno 539")); } }
+        public bool PodeMarcar
+        {
+            get
+            {
+                var s = Linha.Status;
+                return !NaoMarcaveis.Contains(s) && !(s == DuplicidadeNfce.Status.Pendente && Linha.Motivo != null && Linha.Motivo.StartsWith("sem retorno 539"));
+            }
+        }
+        static readonly string[] NaoMarcaveis =
+        {
+            DuplicidadeNfce.Status.JaProcessada, DuplicidadeNfce.Status.Copiado, DuplicidadeNfce.Status.EmContingencia, DuplicidadeNfce.Status.OutroErro,
+            DuplicidadeNfce.Status.JaAutorizada, DuplicidadeNfce.Status.ChaveAjustada, DuplicidadeNfce.Status.AjusteDesfeito,
+            DuplicidadeNfce.Status.LinhaDuplicada, DuplicidadeNfce.Status.LinhaExcluida
+        };
         public string Nota { get { return Linha.Serie + "/" + Linha.Numero; } }
         public string Pedido { get { return Linha.Pedido ?? "-"; } }
         public string Data { get { return DataCurta(Linha.DhEmiSistema); } }
@@ -115,10 +156,8 @@ namespace DuplicidadeNfce
 
         public static string DataCurta(string iso)
         {
-            DateTimeOffset d;
-            if (iso != null && DateTimeOffset.TryParse(iso, CultureInfo.InvariantCulture, DateTimeStyles.None, out d))
-                return d.ToString("dd/MM/yy HH:mm");
-            return iso ?? "-";
+            var d = NotaXml.DataHora(iso);
+            return d.HasValue ? d.Value.ToString("dd/MM/yy HH:mm") : iso ?? "-";
         }
 
         void Avisar(string p) { if (PropertyChanged != null) PropertyChanged(this, new PropertyChangedEventArgs(p)); }
@@ -354,12 +393,7 @@ namespace DuplicidadeNfce
             };
         }
 
-        T G<T>(string nome) where T : class
-        {
-            var o = W.FindName(nome) as T;
-            if (o == null) throw new Exception("elemento da tela não encontrado: " + nome);
-            return o;
-        }
+        T G<T>(string nome) where T : class { return Gui.Elemento<T>(W, nome); }
 
         // Espaço finíssimo (U+200A) entre as letras.
         static string Espacado(string s) { return string.Join(" ", s.ToCharArray().Select(c => c.ToString())); }
@@ -423,26 +457,24 @@ namespace DuplicidadeNfce
                     {
                         txt.Text = "não encontrado";
                         G<FrameworkElement>("SeloCert").ToolTip = erro;
-                        fundo.Fill = Pincel("#FDE8E8");
-                        icone.Stroke = Pincel("#DC2626");
+                        fundo.Fill = Gui.Pincel("#FDE8E8");
+                        icone.Stroke = Gui.Pincel("#DC2626");
                         return;
                     }
                     int dias = (int)Math.Floor((cert.NotAfter - DateTime.Now).TotalDays);
                     txt.Inlines.Clear();
-                    if (dias < 0) txt.Inlines.Add(new System.Windows.Documents.Run("vencido há " + (-dias) + " dias") { FontWeight = FontWeights.Bold, Foreground = Pincel("#DC2626") });
+                    if (dias < 0) txt.Inlines.Add(new System.Windows.Documents.Run("vencido há " + (-dias) + " dias") { FontWeight = FontWeights.Bold, Foreground = Gui.Pincel("#DC2626") });
                     else
                     {
                         txt.Inlines.Add(new System.Windows.Documents.Run("restam "));
-                        txt.Inlines.Add(new System.Windows.Documents.Run(dias.ToString()) { FontWeight = FontWeights.Bold, Foreground = Pincel(dias <= 30 ? "#DC2626" : "#111827") });
+                        txt.Inlines.Add(new System.Windows.Documents.Run(dias.ToString()) { FontWeight = FontWeights.Bold, Foreground = Gui.Pincel(dias <= 30 ? "#DC2626" : "#111827") });
                         txt.Inlines.Add(new System.Windows.Documents.Run(" dias p/ vencer"));
                     }
-                    if (dias <= 30) { fundo.Fill = Pincel("#FDE8E8"); icone.Stroke = Pincel("#DC2626"); }
+                    if (dias <= 30) { fundo.Fill = Gui.Pincel("#FDE8E8"); icone.Stroke = Gui.Pincel("#DC2626"); }
                     G<FrameworkElement>("SeloCert").ToolTip = cert.Subject + "\nválido até " + cert.NotAfter.ToString("dd/MM/yyyy") + "\n" + arq;
                 }));
             });
         }
-
-        static Brush Pincel(string cor) { return (Brush)new BrushConverter().ConvertFromString(cor); }
 
         // ---------- Listar ----------
         void Listar()
@@ -766,15 +798,21 @@ namespace DuplicidadeNfce
                         Erro(l.Motivo);
                         return;
                     }
-                    var r = t.Result;
-                    l.Status = Status.ChaveAjustada;
-                    l.Motivo = "chave_acesso ajustada em " + r.DataHora + ": " + a.ChaveAtual + " → " + a.ChaveNova + " (backup " + r.CaminhoDestino + ")";
-                    a.ChaveAntiga = a.ChaveAtual;
-                    a.Backup = r.CaminhoDestino;
+                    MarcarAjustada(l, t.Result);
                     AtualizarLinha(l);
                     MostrarStatus("Nota " + l.Serie + "/" + l.Numero + ": chave ajustada no banco. " + AjusteChave.AvisoMetre);
                     Aviso(AjusteChave.AvisoMetre);
                 }, TaskScheduler.FromCurrentSynchronizationContext());
+        }
+
+        // A linha depois do ajuste gravado (um ou em massa): guarda a chave antiga e o backup para o "Desfazer".
+        static void MarcarAjustada(LinhaRelatorio l, RegistroHistorico r)
+        {
+            var a = l.Ajuste;
+            l.Status = Status.ChaveAjustada;
+            l.Motivo = "chave_acesso ajustada em " + r.DataHora + ": " + a.ChaveAtual + " → " + a.ChaveNova + " (backup " + r.CaminhoDestino + ")";
+            a.ChaveAntiga = a.ChaveAtual;
+            a.Backup = r.CaminhoDestino;
         }
 
         void ExcluirDuplicada()
@@ -842,15 +880,8 @@ namespace DuplicidadeNfce
                     for (int i = 0; i < aptas.Count; i++)
                     {
                         var l = aptas[i];
-                        var a = l.Ajuste;
                         var r = t.Result[i];
-                        if (r.Item2 == null)
-                        {
-                            l.Status = Status.ChaveAjustada;
-                            l.Motivo = "chave_acesso ajustada em " + r.Item1.DataHora + ": " + a.ChaveAtual + " → " + a.ChaveNova + " (backup " + r.Item1.CaminhoDestino + ")";
-                            a.ChaveAntiga = a.ChaveAtual;
-                            a.Backup = r.Item1.CaminhoDestino;
-                        }
+                        if (r.Item2 == null) MarcarAjustada(l, r.Item1);
                         else
                         {
                             l.Status = Status.ErroAjuste;
@@ -1008,15 +1039,7 @@ namespace DuplicidadeNfce
         // ---------- Botões ----------
         // Pastas pelo ini quando ainda não houve nenhuma listagem (a busca não roda mais sozinha ao abrir).
         string PastaDestino { get { return motor != null ? motor.Destino : System.IO.Path.GetFullPath(cfg.PastaDestino); } }
-        string PastaRelatorios
-        {
-            get
-            {
-                if (motor != null) return motor.PastaRel;
-                return System.IO.Path.GetFullPath(System.IO.Path.IsPathRooted(cfg.PastaRelatorios) ? cfg.PastaRelatorios
-                    : System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, cfg.PastaRelatorios));
-            }
-        }
+        string PastaRelatorios { get { return motor != null ? motor.PastaRel : cfg.PastaRelatoriosEm(AppDomain.CurrentDomain.BaseDirectory); } }
 
         void AbrirPastaDuplicidade()
         {
@@ -1092,7 +1115,7 @@ namespace DuplicidadeNfce
                 Par("Consulta SEFAZ", SafeUrl()),
                 Par("Certificado (.pfx)", MetreIni.Pfxs.Count > 0 ? string.Join("; ", MetreIni.Pfxs) + " (do INI do emissor)" : cfg.CertificadoPfx + " e " + cfg.PastaEmpresas + @"\*\Certificado"),
                 Par("INIs do emissor lidos", MetreIni.Lidos.Count > 0 ? string.Join("; ", MetreIni.Lidos) : "nenhum encontrado em " + cfg.IniMetre),
-                Par("Banco do Metre", UsaBanco ? cfg.DbUsuario + " em " + (string.IsNullOrEmpty(cfg.DbHost) ? "(do Conexao.ini)" : cfg.DbHost + ":" + cfg.DbPorta) : "não usado"),
+                Par("Banco do Metre", cfg.UsaBanco ? cfg.DbUsuario + " em " + (string.IsNullOrEmpty(cfg.DbHost) ? "(do Conexao.ini)" : cfg.DbHost + ":" + cfg.DbPorta) : "não usado"),
                 Par("Senha do banco", EstadoSenhaBanco()),
                 Par("Fontes de senha encontradas",MetreIni.Senhas.Count > 0 ? string.Join("; ", MetreIni.Senhas.Select(s => s.Origem)) : "nenhuma")
             };
@@ -1134,12 +1157,10 @@ namespace DuplicidadeNfce
             if (motor != null) Listar();
         }
 
-        bool UsaBanco { get { return (cfg.FonteContingencia ?? "").Trim().Equals("banco", StringComparison.OrdinalIgnoreCase); } }
-
         // Ao abrir: a senha do banco em texto no ini é criptografada; sem senha (ou se a guardada não abre) pede na tela.
         void ConferirSenhaBanco()
         {
-            if (!UsaBanco) return;
+            if (!cfg.UsaBanco) return;
             if (cfg.SenhaEmTextoNoIni)
             {
                 try
@@ -1175,7 +1196,7 @@ namespace DuplicidadeNfce
             if (cfg.SenhaEmTextoNoIni) return "em texto no duplicidade.ini (será criptografada ao abrir o programa)";
             if (cfg.ErroSenhaProtegida != null) return "guardada, mas não abre neste computador: use \"Senha do banco\"";
             if (cfg.DbSenha != "") return "guardada criptografada (Windows), nunca exibida";
-            return UsaBanco ? "não informada: use \"Senha do banco\"" : "não usada (FonteContingencia=" + cfg.FonteContingencia + ")";
+            return cfg.UsaBanco ? "não informada: use \"Senha do banco\"" : "não usada (FonteContingencia=" + cfg.FonteContingencia + ")";
         }
 
         string SafeUrl()
@@ -1217,19 +1238,7 @@ namespace DuplicidadeNfce
             // NOTACERTA_DETALHE_FIM=1: mostra o fim do painel de detalhes (bloco de ajuste de chave).
             if (Environment.GetEnvironmentVariable("NOTACERTA_DETALHE_FIM") == "1")
                 W.Dispatcher.BeginInvoke(new Action(() => G<ScrollViewer>("DetPainel").ScrollToBottom()), DispatcherPriority.Loaded);
-            W.Dispatcher.BeginInvoke(new Action(() =>
-            {
-                var raiz = (FrameworkElement)W.Content;
-                var bmp = new RenderTargetBitmap((int)raiz.ActualWidth, (int)raiz.ActualHeight, 96, 96, PixelFormats.Pbgra32);
-                var fundo = new DrawingVisual();
-                using (var dc = fundo.RenderOpen()) dc.DrawRectangle(W.Background, null, new Rect(0, 0, raiz.ActualWidth, raiz.ActualHeight));
-                bmp.Render(fundo);
-                bmp.Render(raiz);
-                var enc = new PngBitmapEncoder();
-                enc.Frames.Add(BitmapFrame.Create(bmp));
-                using (var f = File.Create(op.Captura)) enc.Save(f);
-                W.Close();
-            }), DispatcherPriority.ApplicationIdle);
+            Gui.SalvarPng(W, op.Captura);
         }
     }
 }

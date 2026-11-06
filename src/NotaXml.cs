@@ -15,6 +15,23 @@ namespace DuplicidadeNfce
     class ProtocoloXml
     {
         public string CStat, XMotivo, ChNFe, NProt, DigVal, DhRecbto;
+
+        // infProt do protNFe (prefixo n = namespace da NF-e).
+        public static ProtocoloXml De(XmlNode ip, XmlNamespaceManager ns)
+        {
+            return new ProtocoloXml
+            {
+                ChNFe = NotaXml.Texto(ip, "n:chNFe", ns),
+                CStat = NotaXml.Texto(ip, "n:cStat", ns),
+                XMotivo = NotaXml.Texto(ip, "n:xMotivo", ns),
+                NProt = NotaXml.Texto(ip, "n:nProt", ns),
+                DigVal = NotaXml.Texto(ip, "n:digVal", ns),
+                DhRecbto = NotaXml.Texto(ip, "n:dhRecbto", ns)
+            };
+        }
+
+        // cStat 100/150 = autorizada (no protocolo da SEFAZ vale também o 120 "com alerta": RespostaSefaz.ProtAutorizado).
+        public static bool Autorizado(string cStat) { return cStat == "100" || cStat == "150"; }
     }
 
     // Um arquivo NOTA_* lido do disco (somente leitura).
@@ -162,19 +179,28 @@ namespace DuplicidadeNfce
             return m.Success ? m.Groups[1].Value : null;
         }
 
-        static void Interpretar(NotaXml nota, string doc)
+        // XML do disco, do banco ou da rede: sem DTD nem entidades. preservarEspacos para recalcular o digest.
+        public static XmlDocument CarregarXml(string texto, bool preservarEspacos)
         {
-            var xd = new XmlDocument();
-            xd.PreserveWhitespace = true;
-            xd.XmlResolver = null;
-            var conf = new XmlReaderSettings { DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null };
-            using (var sr = new StringReader(doc))
-            using (var xr = XmlReader.Create(sr, conf))
+            var xd = new XmlDocument { PreserveWhitespace = preservarEspacos, XmlResolver = null };
+            using (var sr = new StringReader(texto))
+            using (var xr = XmlReader.Create(sr, new XmlReaderSettings { DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null }))
                 xd.Load(xr);
+            return xd;
+        }
 
+        public static XmlNamespaceManager Namespaces(XmlDocument xd)
+        {
             var ns = new XmlNamespaceManager(xd.NameTable);
             ns.AddNamespace("n", NsNfe);
             ns.AddNamespace("ds", NsDsig);
+            return ns;
+        }
+
+        static void Interpretar(NotaXml nota, string doc)
+        {
+            var xd = CarregarXml(doc, true);
+            var ns = Namespaces(xd);
 
             var inf = xd.SelectSingleNode("//n:NFe/n:infNFe", ns) as XmlElement;
             if (inf == null) { nota.Erro = "infNFe não encontrado"; return; }
@@ -194,15 +220,7 @@ namespace DuplicidadeNfce
             var ip = xd.SelectSingleNode("//n:protNFe/n:infProt", ns);
             if (ip != null)
             {
-                nota.Prot = new ProtocoloXml
-                {
-                    ChNFe = Texto(ip, "n:chNFe", ns),
-                    CStat = Texto(ip, "n:cStat", ns),
-                    XMotivo = Texto(ip, "n:xMotivo", ns),
-                    NProt = Texto(ip, "n:nProt", ns),
-                    DigVal = Texto(ip, "n:digVal", ns),
-                    DhRecbto = Texto(ip, "n:dhRecbto", ns)
-                };
+                nota.Prot = ProtocoloXml.De(ip, ns);
                 nota.ItemRejeitado = DescreverItem(inf, ns, nota.Prot.CStat, nota.Prot.XMotivo);
             }
         }
@@ -232,7 +250,7 @@ namespace DuplicidadeNfce
             return s;
         }
 
-        static readonly System.Globalization.CultureInfo Br = new System.Globalization.CultureInfo("pt-BR");
+        static readonly CultureInfo Br = new CultureInfo("pt-BR");
         static string Num(string s) { decimal? d = Decimal(s); return d == null ? s : d.Value.ToString("0.####", Br); }
 
         // SHA-1 do infNFe canonicalizado (C14N), como na assinatura da NF-e.
@@ -256,16 +274,26 @@ namespace DuplicidadeNfce
             }
         }
 
-        static string Texto(XmlNode raiz, string xpath, XmlNamespaceManager ns)
+        // Texto do nó (sem espaços nas pontas); null se a raiz ou o nó não existirem.
+        public static string Texto(XmlNode raiz, string xpath, XmlNamespaceManager ns)
         {
-            var n = raiz.SelectSingleNode(xpath, ns);
+            var n = raiz == null ? null : raiz.SelectSingleNode(xpath, ns);
             return n == null ? null : n.InnerText.Trim();
         }
 
+        // Valor com ponto decimal (XML, banco, histórico).
         public static decimal? Decimal(string s)
         {
             decimal d;
             if (s != null && decimal.TryParse(s, NumberStyles.Number, CultureInfo.InvariantCulture, out d)) return d;
+            return null;
+        }
+
+        // Data e hora no fuso gravado (ex.: 2026-10-19T17:05:40-03:00 → 19/10/2026 17:05:40).
+        public static DateTime? DataHora(string iso)
+        {
+            DateTimeOffset d;
+            if (iso != null && DateTimeOffset.TryParse(iso, CultureInfo.InvariantCulture, DateTimeStyles.None, out d)) return d.DateTime;
             return null;
         }
     }

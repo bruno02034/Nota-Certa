@@ -107,11 +107,13 @@ namespace DuplicidadeNfce
         static string Erro(IntPtr m)
         {
             IntPtr p = mysql_error(m);
-            if (p == IntPtr.Zero) return "erro desconhecido";
-            var b = new List<byte>();
-            for (int i = 0; ; i++) { byte x = Marshal.ReadByte(p, i); if (x == 0) break; b.Add(x); }
-            return Encoding.UTF8.GetString(b.ToArray());
+            return p == IntPtr.Zero ? "erro desconhecido" : TextoC(p);
         }
+
+        // Texto entre aspas simples no SQL do MariaDB.
+        internal static string Sql(string s) { return s.Replace("\\", "\\\\").Replace("'", "''"); }
+
+        static string FiltroSituacao(Config cfg) { return "situacao = '" + Sql(cfg.DbSituacao) + "'"; }
 
         static void CarregarDll(Config cfg)
         {
@@ -284,9 +286,11 @@ namespace DuplicidadeNfce
 
         static string SqlContingencia(Config cfg)
         {
-            return "SELECT " + string.Join(", ", Colunas) + " FROM " + cfg.DbBanco + ".nota_saida WHERE situacao = '" +
-                cfg.DbSituacao.Replace("\\", "\\\\").Replace("'", "''") + "' ORDER BY data_contigencia";
+            return "SELECT " + string.Join(", ", Colunas) + " FROM " + cfg.DbBanco + ".nota_saida WHERE " + FiltroSituacao(cfg) + " ORDER BY data_contigencia";
         }
+
+        // Uma linha do SELECT das Colunas, na mesma ordem.
+        static LinhaContingencia Montar(string[] v) { return Montar(v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7], v[8], v[9]); }
 
         // "Contingência 2": no cliente, contingências antigas ou com problema são passadas para "Em Contigência 2",
         // "Em Contigência2", "Contingencia 2"... para sumir da aba Contingência do Metre. A tela Contingência 2 lista e,
@@ -305,7 +309,7 @@ namespace DuplicidadeNfce
                 FiltroContingencia2 + " ORDER BY serie, numero";
             return Consultar(cfg, new[] { sql }, null).Select(v =>
             {
-                var c = Montar(v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7], v[8], v[9]);
+                var c = Montar(v);
                 c.Situacao = v[10];
                 return c;
             }).Where(c => EhContingencia2(c.Situacao)).ToList();
@@ -314,7 +318,7 @@ namespace DuplicidadeNfce
         public static List<LinhaContingencia> LerBanco(Config cfg, Log log)
         {
             var linhas = Consultar(cfg, new[] { SqlContingencia(cfg) }, s => log.Info("Banco: " + s));
-            var lista = linhas.Select(v => Montar(v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7], v[8], v[9])).ToList();
+            var lista = linhas.Select(Montar).ToList();
             log.Tela("Contingência lida do banco " + cfg.DbBanco + " (" + cfg.DbHost + ":" + cfg.DbPorta + "): " + lista.Count + " nota(s)");
             return lista;
         }
@@ -432,8 +436,8 @@ namespace DuplicidadeNfce
                 string r = "MariaDB " + s.Consultar("SELECT VERSION()")[0][0];
                 try
                 {
-                    r += "; " + s.Consultar("SELECT COUNT(*) FROM " + cfg.DbBanco + ".nota_saida WHERE situacao = '" +
-                        cfg.DbSituacao.Replace("\\", "\\\\").Replace("'", "''") + "'")[0][0] + " nota(s) em contingência em " + cfg.DbBanco + ".nota_saida";
+                    r += "; " + s.Consultar("SELECT COUNT(*) FROM " + cfg.DbBanco + ".nota_saida WHERE " + FiltroSituacao(cfg))[0][0] +
+                        " nota(s) em contingência em " + cfg.DbBanco + ".nota_saida";
                 }
                 catch (Exception ex) { r += "; conectou, mas não leu " + cfg.DbBanco + ".nota_saida: " + ex.Message; }
                 return r;
@@ -450,20 +454,19 @@ namespace DuplicidadeNfce
             // O "Ajustar chave no banco" precisa de UPDATE em nota_saida (o hash da senha não é mostrado).
             var grants = Consultar(cfg, new[] { "SHOW GRANTS FOR CURRENT_USER()" }, null).Select(v => v[0] ?? "").ToList();
             mostrar("Permissões de " + cfg.DbUsuario + ":");
-            foreach (var g in grants) mostrar("  " + System.Text.RegularExpressions.Regex.Replace(g, @"IDENTIFIED BY PASSWORD '[^']*'", "IDENTIFIED BY PASSWORD '***'"));
+            foreach (var g in grants) mostrar("  " + Regex.Replace(g, @"IDENTIFIED BY PASSWORD '[^']*'", "IDENTIFIED BY PASSWORD '***'"));
             bool update = grants.Any(g =>
             {
-                var m = System.Text.RegularExpressions.Regex.Match(g, @"^GRANT (.+?) ON (\S+) TO ", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                var m = Regex.Match(g, @"^GRANT (.+?) ON (\S+) TO ", RegexOptions.IgnoreCase);
                 if (!m.Success) return false;
                 string priv = m.Groups[1].Value.ToUpperInvariant(), alvo = m.Groups[2].Value.Replace("`", "").ToLowerInvariant();
-                bool temUpdate = priv.Contains("ALL PRIVILEGES") || System.Text.RegularExpressions.Regex.IsMatch(priv, @"(^|, )UPDATE($|,| \()");
+                bool temUpdate = priv.Contains("ALL PRIVILEGES") || Regex.IsMatch(priv, @"(^|, )UPDATE($|,| \()");
                 string b = cfg.DbBanco.ToLowerInvariant();
                 return temUpdate && (alvo == "*.*" || alvo == b + ".*" || alvo == b + ".nota_saida");
             });
             mostrar(update ? "Ajuste de chave: OK, o usuário tem UPDATE em " + cfg.DbBanco + ".nota_saida"
                            : "Ajuste de chave: ATENÇÃO, não achei UPDATE em " + cfg.DbBanco + ".nota_saida nas permissões acima (o ajuste vai falhar sem alterar nada)");
-            var lista = Consultar(cfg, new[] { SqlContingencia(cfg) }, s => mostrar("  > " + s))
-                .Select(v => Montar(v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7], v[8], v[9])).ToList();
+            var lista = Consultar(cfg, new[] { SqlContingencia(cfg) }, s => mostrar("  > " + s)).Select(Montar).ToList();
             mostrar("Contingência ('" + cfg.DbSituacao + "'): " + lista.Count + " nota(s)");
             foreach (var c in lista.Take(5))
                 mostrar("  " + c.Serie + "/" + c.Numero + "  pedido " + (c.Pedido ?? "-") + "  R$ " + Analisador.Moeda(c.Valor) +

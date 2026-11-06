@@ -164,11 +164,7 @@ a cópia nunca move nem sobrescreve, e fica registrada em historico.csv na pasta
         {
             if (op.TestarBanco) return TestarBanco(op);
             if (op.Faltantes) return ExecutarFaltantes(op);
-            if (op.ArqNotas != null)
-            {
-                if (!File.Exists(op.ArqNotas)) throw new Exception("arquivo de notas não existe: " + op.ArqNotas);
-                op.TextoNotas.AddRange(File.ReadAllLines(op.ArqNotas, Encoding.UTF8).Select(x => x.Split('#')[0]));
-            }
+            if (op.ArqNotas != null) op.TextoNotas.AddRange(LerLista(op.ArqNotas, "notas"));
             var notasAlvo = LerNotas(op.TextoNotas);
             if (notasAlvo.Count == 0)
             {
@@ -220,11 +216,7 @@ a cópia nunca move nem sobrescreve, e fica registrada em historico.csv na pasta
         static int ExecutarFaltantes(Opcoes op)
         {
             var textos = new List<string>(op.TextoNumeros);
-            if (op.ArqNumeros != null)
-            {
-                if (!File.Exists(op.ArqNumeros)) throw new Exception("arquivo de números não existe: " + op.ArqNumeros);
-                textos.AddRange(File.ReadAllLines(op.ArqNumeros, Encoding.UTF8).Select(x => x.Split('#')[0]));
-            }
+            if (op.ArqNumeros != null) textos.AddRange(LerLista(op.ArqNumeros, "números"));
             var cfg = op.CarregarConfig();
             var entrada = EntradaNumeros.Ler(string.Join("\n", textos), cfg.LimiteNumerosFaltantes);
             int serie;
@@ -257,6 +249,13 @@ a cópia nunca move nem sobrescreve, e fica registrada em historico.csv na pasta
             }
             return 0;
         }
+        // --notas-arquivo / --numeros-arquivo: as linhas do arquivo, sem o comentário depois de '#'.
+        static IEnumerable<string> LerLista(string arq, string doQue)
+        {
+            if (!File.Exists(arq)) throw new Exception("arquivo de " + doQue + " não existe: " + arq);
+            return File.ReadAllLines(arq, Encoding.UTF8).Select(x => x.Split('#')[0]);
+        }
+
         // "6/88867", separados por vírgula, ponto e vírgula, espaço ou linha. Devolve "série/número" normalizado.
         static List<string> LerNotas(IEnumerable<string> textos)
         {

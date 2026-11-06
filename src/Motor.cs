@@ -1,9 +1,7 @@
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.IO;
 using System.Linq;
-using System.Text;
 
 namespace DuplicidadeNfce
 {
@@ -37,7 +35,7 @@ namespace DuplicidadeNfce
             Raiz = Path.GetFullPath(cfg.PastaRaiz);
             if (!Directory.Exists(Raiz)) throw new Exception("pasta raiz não existe: " + Raiz);
             Destino = Path.GetFullPath(cfg.PastaDestino);
-            PastaRel = Path.GetFullPath(Path.IsPathRooted(cfg.PastaRelatorios) ? cfg.PastaRelatorios : Path.Combine(dirExe, cfg.PastaRelatorios));
+            PastaRel = cfg.PastaRelatoriosEm(dirExe);
             foreach (var p in new[] { Destino, PastaRel })
                 if (Dentro(Raiz, p)) throw new Exception("por segurança, " + p + " não pode ser a pasta raiz nem conter os XMLs (" + Raiz + ")");
             Directory.CreateDirectory(PastaRel);
@@ -137,8 +135,7 @@ namespace DuplicidadeNfce
             Log.Tela(Notas.Count + " arquivo(s) NOTA_* lido(s); " + Notas.Count(n => n.Erro != null) + " com erro de leitura; " +
                 Notas.Count(n => n.TemSobra) + " com conteúdo residual após </nfeProc>");
             foreach (var n in Notas.Where(n => n.Erro != null)) Log.Info("Erro de leitura: " + n.Caminho + " - " + n.Erro);
-            bool comBanco = (Cfg.FonteContingencia ?? "").Trim().Equals("banco", StringComparison.OrdinalIgnoreCase);
-            Analisador = new Analisador(Notas, consultar, Log, Contingencia, comBanco
+            Analisador = new Analisador(Notas, consultar, Log, Contingencia, Cfg.UsaBanco
                 ? new FontesAjuste { BuscarXmls = BuscarXmlsChave, LinhasComChave = LinhasComChave, XmlDaLinha = XmlDaLinha }
                 : null);
             Analisador.XmlsDoDia = XmlsDoDiaDaAutorizacao;
@@ -260,9 +257,10 @@ namespace DuplicidadeNfce
 
         public string GravarRelatorio(List<LinhaRelatorio> linhas)
         {
-            string arq = Path.Combine(PastaRel, "duplicidade_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + (SemSefaz ? "_SIMULADO" : "") + ".csv");
-            for (int i = 2; File.Exists(arq); i++)
-                arq = Path.Combine(PastaRel, "duplicidade_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + "_" + i + ".csv");
+            // Um carimbo só: o nome com _2, _3... mantém o mesmo horário e o _SIMULADO do modo de teste.
+            string nome = Path.Combine(PastaRel, "duplicidade_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + (SemSefaz ? "_SIMULADO" : ""));
+            string arq = nome + ".csv";
+            for (int i = 2; File.Exists(arq); i++) arq = nome + "_" + i + ".csv";
             Relatorio.GravarCsv(arq, linhas);
             return arq;
         }
@@ -276,7 +274,7 @@ namespace DuplicidadeNfce
         // Modo de teste: o protNFe autorizado gravado no próprio XML faz o papel da resposta da SEFAZ.
         static RespostaSefaz Simular(string chave, List<NotaXml> arqs)
         {
-            var a = arqs.FirstOrDefault(x => x.Prot != null && x.Prot.ChNFe == chave && (x.Prot.CStat == "100" || x.Prot.CStat == "150"));
+            var a = arqs.FirstOrDefault(x => x.Prot != null && x.Prot.ChNFe == chave && ProtocoloXml.Autorizado(x.Prot.CStat));
             if (a == null)
                 return new RespostaSefaz { Ok = false, Simulado = true, Erro = "simulação: nenhum protNFe autorizado local para a chave" };
             return new RespostaSefaz
@@ -302,10 +300,8 @@ namespace DuplicidadeNfce
         // Dia da emissão no fuso gravado no próprio XML (ex.: 2026-10-19T17:05:40-03:00 → 19/10/2026).
         static DateTime? DiaEmissao(string dhEmi)
         {
-            DateTimeOffset d;
-            if (dhEmi != null && DateTimeOffset.TryParse(dhEmi, CultureInfo.InvariantCulture, DateTimeStyles.None, out d))
-                return d.DateTime.Date;
-            return null;
+            var d = NotaXml.DataHora(dhEmi);
+            return d.HasValue ? d.Value.Date : (DateTime?)null;
         }
 
         public static bool Dentro(string caminho, string pasta)

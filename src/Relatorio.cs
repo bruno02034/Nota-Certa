@@ -147,10 +147,8 @@ namespace DuplicidadeNfce
 
         static string DataHora(string iso)
         {
-            DateTimeOffset d;
-            if (iso != null && DateTimeOffset.TryParse(iso, CultureInfo.InvariantCulture, DateTimeStyles.None, out d))
-                return d.ToString("dd/MM/yyyy HH:mm:ss");
-            return iso ?? "";
+            var d = NotaXml.DataHora(iso);
+            return d.HasValue ? d.Value.ToString("dd/MM/yyyy HH:mm:ss") : iso ?? "";
         }
     }
 }

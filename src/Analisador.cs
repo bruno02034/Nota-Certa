@@ -94,8 +94,6 @@ namespace DuplicidadeNfce
     class Analisador
     {
         static readonly Regex Re539 = new Regex(@"chNFe:(\d{44})\]\s*\[nRec:(\d*)\]");
-        static readonly TipoArquivo[] TiposDescartados =
-            { TipoArquivo.Rejeicao, TipoArquivo.FalhaSchema, TipoArquivo.Temp, TipoArquivo.ContingenciaEnvia };
         static readonly TipoArquivo[] PrioridadeValor =
             { TipoArquivo.Rejeicao, TipoArquivo.Assinada, TipoArquivo.ContingenciaEnvia, TipoArquivo.FalhaSchema, TipoArquivo.Temp, TipoArquivo.Outro, TipoArquivo.Autorizada };
 
@@ -143,7 +141,7 @@ namespace DuplicidadeNfce
             // 0) Chaves autorizadas: XML com protNFe 100/150 da própria chave (o NFCE da pasta Autorizadas).
             var autorizadas = new HashSet<string>();
             foreach (var n in notas.Where(x => x.Chave != null && x.Tipo != TipoArquivo.Rejeicao && x.Prot != null
-                && (x.Prot.CStat == "100" || x.Prot.CStat == "150") && x.Prot.ChNFe == x.Chave))
+                && ProtocoloXml.Autorizado(x.Prot.CStat) && x.Prot.ChNFe == x.Chave))
             {
                 autorizadas.Add(n.Chave);
                 AdicionarAutorizada(autorizadasPorNumero, n.Chave);
@@ -371,7 +369,7 @@ namespace DuplicidadeNfce
                 motivo = (sel.Sefaz.NaoConsultada ? "SEFAZ não consultada: " : "SEFAZ sem resposta: ") + sel.Sefaz.Erro;
                 log.Info("  " + motivo);
                 // Sem a SEFAZ nada é escolhido; o protNFe autorizado gravado localmente só serve de indicação no relatório.
-                var local = arqs.FirstOrDefault(a => a.Prot != null && a.Prot.ChNFe == k && (a.Prot.CStat == "100" || a.Prot.CStat == "150"));
+                var local = arqs.FirstOrDefault(a => a.Prot != null && a.Prot.ChNFe == k && ProtocoloXml.Autorizado(a.Prot.CStat));
                 if (local != null)
                 {
                     log.Info("  Indicação pelo protNFe local de " + local.Nome + " (sem confirmação da SEFAZ):");
@@ -545,10 +543,25 @@ namespace DuplicidadeNfce
                 ValorSistema = t.Valor, ChaveSistema = t.Chave, ChaveAutorizada = t.ChaveAutorizada,
                 NRec = t.NRec, Origem = string.Join("; ", t.Origens), Classificacao = t.Classificacao
             };
-            List<NotaXml> arqs;
-            if (t.ChaveAutorizada != null && porChave.TryGetValue(t.ChaveAutorizada, out arqs))
-                l.ArquivosChaveAutorizada = arqs.Select(a => a.Caminho).OrderBy(c => c).ToList();
+            ArquivosDaChave(l, t.ChaveAutorizada);
             return l;
+        }
+
+        // Os arquivos lidos com a chave autorizada (painel de detalhes); sem nenhum, a linha fica como está.
+        void ArquivosDaChave(LinhaRelatorio l, string k)
+        {
+            List<NotaXml> arqs;
+            if (k != null && porChave.TryGetValue(k, out arqs)) l.ArquivosChaveAutorizada = arqs.Select(a => a.Caminho).OrderBy(c => c).ToList();
+        }
+
+        // Já copiada numa execução anterior (historico.csv).
+        static void JaCopiada(LinhaRelatorio l, RegistroHistorico reg, Historico historico)
+        {
+            l.Status = Status.JaProcessada;
+            l.Motivo = "copiado em " + reg.DataHora + " (" + historico.Caminho + ")";
+            l.ArquivoEscolhido = reg.Arquivo;
+            l.CaminhoOrigem = reg.CaminhoOrigem;
+            l.CaminhoDestino = reg.CaminhoDestino;
         }
 
         // Número sem XML autorizado no computador: pergunta à SEFAZ qual das tentativas fora da contingência
@@ -567,8 +580,7 @@ namespace DuplicidadeNfce
                     l.ChaveAutorizada = cand;
                     l.Classificacao = "Duplicidade (autorizada sem XML na pasta Autorizadas, confirmada na SEFAZ)";
                     l.Origem = string.Join("; ", t.Origens);
-                    List<NotaXml> arqs;
-                    if (porChave.TryGetValue(cand, out arqs)) l.ArquivosChaveAutorizada = arqs.Select(a => a.Caminho).OrderBy(c => c).ToList();
+                    ArquivosDaChave(l, cand);
                     return true;
                 }
                 if (s.Sefaz == null || !s.Sefaz.Ok) semResposta.Add(cand + " (" + (s.Sefaz != null ? s.Sefaz.Situacao + ": " + s.Sefaz.Erro : "sem consulta") + ")");
@@ -641,14 +653,7 @@ namespace DuplicidadeNfce
                 }
                 else if (t.ChaveAutorizada == null)
                     Pendente(l, "chave autorizada não identificada", new List<string>(t.Avisos));
-                else if (reg != null)
-                {
-                    l.Status = Status.JaProcessada;
-                    l.Motivo = "copiado em " + reg.DataHora + " (" + historico.Caminho + ")";
-                    l.ArquivoEscolhido = reg.Arquivo;
-                    l.CaminhoOrigem = reg.CaminhoOrigem;
-                    l.CaminhoDestino = reg.CaminhoDestino;
-                }
+                else if (reg != null) JaCopiada(l, reg, historico);
                 else
                 {
                     l.Status = Status.AProcessar;
@@ -718,11 +723,7 @@ namespace DuplicidadeNfce
                 var reg = contingencia == null ? historico.BuscarCopiado(t.ChaveAutorizada) : null;
                 if (reg != null)
                 {
-                    l.ArquivoEscolhido = reg.Arquivo;
-                    l.CaminhoOrigem = reg.CaminhoOrigem;
-                    l.CaminhoDestino = reg.CaminhoDestino;
-                    l.Status = Status.JaProcessada;
-                    l.Motivo = "copiado em " + reg.DataHora + " (" + historico.Caminho + ")";
+                    JaCopiada(l, reg, historico);
                     continue;
                 }
                 var sel = Selecionar(t.ChaveAutorizada);
@@ -735,8 +736,7 @@ namespace DuplicidadeNfce
                 }
                 l.ValorSefaz = sel.ValorSefaz;
                 l.Tentativa = t;
-                List<NotaXml> daChave;
-                if (porChave.TryGetValue(t.ChaveAutorizada, out daChave)) l.ArquivosChaveAutorizada = daChave.Select(a => a.Caminho).OrderBy(c => c).ToList();
+                ArquivosDaChave(l, t.ChaveAutorizada);
                 string outraVenda = OutraVenda(t, sel);
                 // Autorizada na SEFAZ, mas nenhum XML dessa chave para copiar: o caminho é ajustar a chave no banco.
                 if (sel.MotivoPendente != null && sel.SemArquivo && sel.Sefaz != null && sel.Sefaz.Autorizada && sel.Sefaz.Prot.ChNFe == t.ChaveAutorizada)
@@ -886,11 +886,6 @@ namespace DuplicidadeNfce
             return true;
         }
 
-        // Duplicidade autorizada na SEFAZ sem nenhum XML dessa chave nas pastas lidas. O valor autorizado vem de um
-        // XML da chave achado em outro lugar (DigestValue = digVal) ou da conferência manual no portal; com valor
-        // igual ao do sistema e todas as travas, a linha vira AJUSTE DE CHAVE (troca da chave_acesso no banco).
-        // valorAutorizado: já conferido pelos arquivos da chave (DigestValue = digVal); null = procurar no banco/portal.
-        // autorizado: arquivo da chave autorizada para importar, se o ajuste não resolver no Metre (ver LinhaApontaOutroXml).
         public static string DescreverLinha(LinhaContingencia o)
         {
             return "id_nota_saida " + o.Id + ": nota " + o.Serie + "/" + o.Numero + ", pedido " + (o.Pedido ?? "vazio") + ", R$ " + Moeda(o.Valor) +
@@ -907,6 +902,11 @@ namespace DuplicidadeNfce
             return null;
         }
 
+        // Duplicidade autorizada na SEFAZ sem nenhum XML dessa chave nas pastas lidas. O valor autorizado vem de um
+        // XML da chave achado em outro lugar (DigestValue = digVal) ou da conferência manual no portal; com valor
+        // igual ao do sistema e todas as travas, a linha vira AJUSTE DE CHAVE (troca da chave_acesso no banco).
+        // valorAutorizado: já conferido pelos arquivos da chave (DigestValue = digVal); null = procurar no banco/portal.
+        // autorizado: arquivo da chave autorizada para importar, se o ajuste não resolver no Metre (ver LinhaApontaOutroXml).
         void AvaliarAjuste(Tentativa t, LinhaRelatorio l, List<string> avisos, decimal? valorAutorizado = null, string origemValor = null,
             NotaXml autorizado = null)
         {
@@ -1047,7 +1047,7 @@ namespace DuplicidadeNfce
             if (fontes == null || fontes.XmlDaLinha == null) return null;
             var x = fontes.XmlDaLinha(t);
             if (x == null || (x.Erro == null && x.Chave == k)) return null;
-            if (x.Erro == null && x.Prot != null && x.Prot.ChNFe == k && (x.Prot.CStat == "100" || x.Prot.CStat == "150" || x.Prot.CStat == "120")) return null;
+            if (x.Erro == null && x.Prot != null && x.Prot.ChNFe == k && RespostaSefaz.ProtAutorizado(x.Prot.CStat)) return null;
             return "a linha aponta para o XML " + x.Caminho + (x.Erro != null ? " (ilegível: " + x.Erro + ")" : " da chave " + x.Chave + ", sem o protocolo da autorizada") +
                 ": o Metre reenvia esse XML e recebe a 539 de novo, o ajuste de chave não resolve";
         }

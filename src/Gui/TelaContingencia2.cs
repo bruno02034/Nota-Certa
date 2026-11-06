@@ -76,12 +76,7 @@ namespace DuplicidadeNfce
             AtualizarBotao();
         }
 
-        T G<T>(string nome) where T : class
-        {
-            var o = W.FindName(nome) as T;
-            if (o == null) throw new Exception("elemento da tela não encontrado: " + nome);
-            return o;
-        }
+        T G<T>(string nome) where T : class { return Gui.Elemento<T>(W, nome); }
 
         void Listar()
         {
@@ -125,7 +120,7 @@ namespace DuplicidadeNfce
                 Program.NomeSistema, MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
 
             string dir = AppDomain.CurrentDomain.BaseDirectory;
-            string rel = Path.GetFullPath(Path.IsPathRooted(c.PastaRelatorios) ? c.PastaRelatorios : Path.Combine(dir, c.PastaRelatorios));
+            string rel = c.PastaRelatoriosEm(dir);
             Directory.CreateDirectory(rel);
             string arqLog = Path.Combine(rel, "contingencia2_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".log");
             string backups = Path.Combine(dir, "backups");

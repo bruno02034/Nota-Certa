@@ -58,7 +58,7 @@ namespace DuplicidadeNfce
                 if (mk.Success)
                 {
                     string k = mk.Groups[1].Value;
-                    if (!ChaveValida(k)) { e.Invalidos.Add(item + " (chave com dígito verificador errado)"); continue; }
+                    if (!AjusteChave.DvValido(k)) { e.Invalidos.Add(item + " (chave com dígito verificador errado)"); continue; }
                     if (k.Substring(20, 2) != "65") { e.Invalidos.Add(item + " (chave de modelo " + k.Substring(20, 2) + ", não é NFC-e)"); continue; }
                     long num = long.Parse(k.Substring(25, 9));
                     e.SeriesChaves.Add(int.Parse(k.Substring(22, 3)));
@@ -105,17 +105,6 @@ namespace DuplicidadeNfce
                 return null;
             }
             return temDigitada ? null : "Informe a série (ex.: 2).";
-        }
-
-        // Dígito verificador da chave (módulo 11, pesos 2 a 9 da direita para a esquerda).
-        public static bool ChaveValida(string k)
-        {
-            if (k == null || !Regex.IsMatch(k, @"^\d{44}$")) return false;
-            int soma = 0, peso = 2;
-            for (int i = 42; i >= 0; i--) { soma += (k[i] - '0') * peso; peso = peso == 9 ? 2 : peso + 1; }
-            int dv = 11 - soma % 11;
-            if (dv >= 10) dv = 0;
-            return k[43] - '0' == dv;
         }
     }
 
@@ -174,7 +163,8 @@ namespace DuplicidadeNfce
     {
         public string Caminho, Nome, Sha256, ChNFe, TpEvento, CStat, NProt;
         public long Tamanho;
-        public bool Cancelamento { get { return (TpEvento == "110111" || TpEvento == "110112") && (CStat == "135" || CStat == "155"); } }
+        public bool Cancelamento { get { return EhCancelamento(TpEvento, CStat); } }
+        public static bool EhCancelamento(string tpEvento, string cStat) { return (tpEvento == "110111" || tpEvento == "110112") && (cStat == "135" || cStat == "155"); }
     }
 
     class HistoricoFaltantes
@@ -256,7 +246,7 @@ namespace DuplicidadeNfce
             Raiz = Path.GetFullPath(cfg.PastaRaiz);
             if (!Directory.Exists(Raiz)) throw new Exception("pasta raiz não existe: " + Raiz);
             Base = Path.GetFullPath(cfg.PastaNotasFaltantes);
-            PastaRel = Path.GetFullPath(Path.IsPathRooted(cfg.PastaRelatorios) ? cfg.PastaRelatorios : Path.Combine(dirExe, cfg.PastaRelatorios));
+            PastaRel = cfg.PastaRelatoriosEm(dirExe);
             foreach (var p in new[] { Base, PastaRel })
                 if (Motor.Dentro(Raiz, p)) throw new Exception("por segurança, " + p + " não pode ser a pasta raiz nem conter os XMLs (" + Raiz + ")");
             Directory.CreateDirectory(PastaRel);
@@ -403,12 +393,8 @@ namespace DuplicidadeNfce
                 bool evento = Regex.IsMatch(inicio, "<(procEventoNFe|evento|envEvento|retEnvEvento)[\\s>]");
                 if (!inut && !evento) return;
                 byte[] bytes = NotaXml.LerSomenteLeitura(f);
-                var xd = new XmlDocument { XmlResolver = null };
-                using (var sr = new StringReader(Encoding.UTF8.GetString(bytes).TrimStart('﻿')))
-                using (var xr = XmlReader.Create(sr, new XmlReaderSettings { DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null }))
-                    xd.Load(xr);
-                var ns = new XmlNamespaceManager(xd.NameTable);
-                ns.AddNamespace("n", NsNfe);
+                var xd = NotaXml.CarregarXml(Encoding.UTF8.GetString(bytes).TrimStart('﻿'), false);
+                var ns = NotaXml.Namespaces(xd);
                 if (inut) inuts.Add(LerInutilizacao(f, bytes, xd, ns));
                 else eventos.AddRange(LerEventos(f, bytes, xd, ns));
             }
@@ -423,7 +409,7 @@ namespace DuplicidadeNfce
             // O retorno (retInutNFe) é o que comprova; o pedido (inutNFe) completa os campos que faltarem.
             var ret = xd.SelectSingleNode("//n:retInutNFe/n:infInut", ns);
             var ped = xd.SelectSingleNode("//n:inutNFe/n:infInut", ns);
-            Func<string, string> campo = t => Txt(ret, t, ns) ?? Txt(ped, t, ns);
+            Func<string, string> campo = t => NotaXml.Texto(ret, t, ns) ?? NotaXml.Texto(ped, t, ns);
             long ini, fim;
             int serie;
             long.TryParse(campo("n:nNFIni"), out ini);
@@ -433,7 +419,7 @@ namespace DuplicidadeNfce
             {
                 Caminho = f, Nome = Path.GetFileName(f), Sha256 = NotaXml.HashSha256(bytes), Tamanho = bytes.LongLength,
                 Cnpj = campo("n:CNPJ"), Mod = campo("n:mod"), Ano = campo("n:ano"), Serie = serie, Inicial = ini, Final = fim,
-                CStat = Txt(ret, "n:cStat", ns), XMotivo = Txt(ret, "n:xMotivo", ns), NProt = Txt(ret, "n:nProt", ns)
+                CStat = NotaXml.Texto(ret, "n:cStat", ns), XMotivo = NotaXml.Texto(ret, "n:xMotivo", ns), NProt = NotaXml.Texto(ret, "n:nProt", ns)
             };
         }
 
@@ -446,18 +432,11 @@ namespace DuplicidadeNfce
                 yield return new EventoXml
                 {
                     Caminho = f, Nome = Path.GetFileName(f), Sha256 = sha, Tamanho = bytes.LongLength,
-                    ChNFe = Txt(p, "n:evento/n:infEvento/n:chNFe", ns), TpEvento = Txt(p, "n:evento/n:infEvento/n:tpEvento", ns),
+                    ChNFe = NotaXml.Texto(p, "n:evento/n:infEvento/n:chNFe", ns), TpEvento = NotaXml.Texto(p, "n:evento/n:infEvento/n:tpEvento", ns),
                     // Só o procEventoNFe (evento + retorno da SEFAZ) comprova o cancelamento.
-                    CStat = p.LocalName == "procEventoNFe" ? Txt(p, "n:retEvento/n:infEvento/n:cStat", ns) : null,
-                    NProt = p.LocalName == "procEventoNFe" ? Txt(p, "n:retEvento/n:infEvento/n:nProt", ns) : null
+                    CStat = p.LocalName == "procEventoNFe" ? NotaXml.Texto(p, "n:retEvento/n:infEvento/n:cStat", ns) : null,
+                    NProt = p.LocalName == "procEventoNFe" ? NotaXml.Texto(p, "n:retEvento/n:infEvento/n:nProt", ns) : null
                 };
-        }
-
-        static string Txt(XmlNode raiz, string xp, XmlNamespaceManager ns)
-        {
-            if (raiz == null) return null;
-            var n = raiz.SelectSingleNode(xp, ns);
-            return n == null ? null : n.InnerText.Trim();
         }
 
         // ---------- Classificação de um número ----------
@@ -518,7 +497,7 @@ namespace DuplicidadeNfce
                 Log.Info("  SEFAZ " + g.Key + ": " + Situacao(r));
             }
 
-            var conhecidas = respostas.Where(kv => kv.Value.Ok && kv.Value.Prot != null && (kv.Value.Prot.CStat == "100" || kv.Value.Prot.CStat == "150")).ToList();
+            var conhecidas = respostas.Where(kv => kv.Value.Ok && kv.Value.Prot != null && ProtocoloXml.Autorizado(kv.Value.Prot.CStat)).ToList();
             if (conhecidas.Count > 1)
             {
                 Pendente(item, "mais de um candidato autorizado na SEFAZ: " + string.Join(", ", conhecidas.Select(c => c.Key)));
@@ -664,7 +643,7 @@ namespace DuplicidadeNfce
                 return;
             }
             // Preferência: nfeProc completo e limpo (com o protocolo dessa chave), depois ASSINADA, depois os demais.
-            Func<NotaXml, bool> procCompleto = a => a.Prot != null && a.Prot.ChNFe == chave && a.Prot.DigVal == digVal && (a.Prot.CStat == "100" || a.Prot.CStat == "150") && !a.TemSobra;
+            Func<NotaXml, bool> procCompleto = a => a.Prot != null && a.Prot.ChNFe == chave && a.Prot.DigVal == digVal && ProtocoloXml.Autorizado(a.Prot.CStat) && !a.TemSobra;
             var escolhido = bons
                 .OrderByDescending(procCompleto)
                 .ThenByDescending(a => !a.TemSobra)
@@ -687,7 +666,7 @@ namespace DuplicidadeNfce
                 else motivo.Add("SEFAZ não devolveu o protNFe: vai só o XML original");
             }
 
-            bool cancelada = r.CStat == "101" || r.CStat == "151" || r.CStat == "155" || r.Eventos.Any(e => (e.TpEvento == "110111" || e.TpEvento == "110112") && (e.CStat == "135" || e.CStat == "155"));
+            bool cancelada = r.CStat == "101" || r.CStat == "151" || r.CStat == "155" || r.Eventos.Any(e => EventoXml.EhCancelamento(e.TpEvento, e.CStat));
             if (!cancelada)
             {
                 item.Status = StatusFaltante.Encontrada;
@@ -697,7 +676,7 @@ namespace DuplicidadeNfce
             }
 
             var local = eventos.Where(e => e.ChNFe == chave && e.Cancelamento).OrderByDescending(e => e.Caminho).FirstOrDefault();
-            var daSefaz = r.Eventos.FirstOrDefault(e => (e.TpEvento == "110111" || e.TpEvento == "110112") && (e.CStat == "135" || e.CStat == "155"));
+            var daSefaz = r.Eventos.FirstOrDefault(e => EventoXml.EhCancelamento(e.TpEvento, e.CStat));
             if (local != null)
             {
                 item.Status = StatusFaltante.Cancelada;
@@ -762,8 +741,8 @@ namespace DuplicidadeNfce
                             xd.Load(xr);
                         var ns = new XmlNamespaceManager(xd.NameTable);
                         ns.AddNamespace("n", NsNfe);
-                        return Txt(xd, "/n:procEventoNFe/n:evento/n:infEvento/n:chNFe", ns) == chave &&
-                            Txt(xd, "/n:procEventoNFe/n:retEvento/n:infEvento/n:nProt", ns) == ev.NProt ? null : "evento gerado não confere";
+                        return NotaXml.Texto(xd, "/n:procEventoNFe/n:evento/n:infEvento/n:chNFe", ns) == chave &&
+                            NotaXml.Texto(xd, "/n:procEventoNFe/n:retEvento/n:infEvento/n:nProt", ns) == ev.NProt ? null : "evento gerado não confere";
                     }
                     catch (Exception e) { return "evento gerado ilegível: " + e.Message; }
                 }
@@ -796,12 +775,7 @@ namespace DuplicidadeNfce
             return r.CStat + " - " + r.XMotivo + (r.Prot != null ? " (protocolo " + r.Prot.NProt + ", cStat " + r.Prot.CStat + ")" : "");
         }
 
-        public static DateTime? DataEmissao(string dhEmi)
-        {
-            DateTimeOffset d;
-            if (dhEmi != null && DateTimeOffset.TryParse(dhEmi, CultureInfo.InvariantCulture, DateTimeStyles.None, out d)) return d.DateTime;
-            return null;
-        }
+        public static DateTime? DataEmissao(string dhEmi) { return NotaXml.DataHora(dhEmi); }
 
         // ---------- Cópia ----------
 

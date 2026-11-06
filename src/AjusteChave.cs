@@ -146,20 +146,11 @@ namespace DuplicidadeNfce
             log.Info("Ajuste de chave (" + operacao + "): " + tabela + " id_nota_saida " + id + ", nota " + serie + "/" + numero + ": " + atual + " -> " + nova);
             using (var s = Banco.Sessao.Abrir(cfg, x => log.Info("Banco: " + x), false))
             {
-                s.Comando("START TRANSACTION");
-                string backup;
-                try
+                string backup = null;
+                EmTransacao(s, log, () =>
                 {
-                    var linha = s.LinhaCompleta("SELECT * FROM " + tabela + " WHERE id_nota_saida = " + id + " FOR UPDATE");
-                    if (linha == null) throw new Exception("a linha id_nota_saida " + id + " não existe mais em " + tabela);
-                    Func<string, string> col = nome =>
-                    {
-                        var c = linha.FirstOrDefault(kv => kv.Key.Equals(nome, StringComparison.OrdinalIgnoreCase));
-                        if (c.Key == null) throw new Exception(tabela + " sem a coluna " + nome);
-                        return c.Value == null ? null : Encoding.UTF8.GetString(c.Value);
-                    };
-                    if (col("numero") != numero || col("serie") != serie)
-                        throw new Exception("a linha id_nota_saida " + id + " é da nota " + col("serie") + "/" + col("numero") + ", não " + serie + "/" + numero);
+                    var linha = LinhaTravada(s, tabela, id, numero, serie);
+                    Func<string, string> col = nome => Coluna(linha, tabela, nome);
                     if (col("chave_acesso") != atual)
                         throw new Exception("a chave_acesso no banco mudou: está " + (col("chave_acesso") ?? "NULL") + ", esperada " + atual);
                     // Em 03/11 um desfazer depois que o Metre autorizou deixou a nota autorizada com a chave errada.
@@ -168,7 +159,7 @@ namespace DuplicidadeNfce
                             (operacao == "desfazer" ? "deixaria a nota autorizada com a chave errada" : "não é necessário"));
                     if (valorEsperado.HasValue)
                     {
-                        decimal? v = Decimal(col("valor_total_nota"));
+                        decimal? v = NotaXml.Decimal(col("valor_total_nota"));
                         if (v != valorEsperado) throw new Exception("valor_total_nota no banco (" + Analisador.Moeda(v) + ") diferente do conferido (" + Analisador.Moeda(valorEsperado) + ")");
                     }
                     var outras = Banco.IdsComChave(s, cfg, nova);
@@ -181,14 +172,7 @@ namespace DuplicidadeNfce
                     if (n != 1) throw new Exception("o UPDATE afetou " + n + " linha(s), esperada exatamente 1");
                     var relida = s.Consultar("SELECT chave_acesso FROM " + tabela + " WHERE id_nota_saida = " + id);
                     if (relida.Count != 1 || relida[0][0] != nova) throw new Exception("a releitura não mostrou a chave nova");
-                    s.Comando("COMMIT");
-                }
-                catch (Exception ex)
-                {
-                    try { s.Comando("ROLLBACK"); } catch { }
-                    log.Info("  ERRO, desfeito (rollback), nada alterado: " + ex.Message);
-                    throw new Exception(ex.Message + " (rollback: nada foi alterado no banco)");
-                }
+                });
                 // Confirmação fora da transação: o que ficou gravado.
                 var gravada = s.Consultar("SELECT chave_acesso FROM " + tabela + " WHERE id_nota_saida = " + id);
                 if (gravada.Count != 1 || gravada[0][0] != nova)
@@ -220,23 +204,14 @@ namespace DuplicidadeNfce
             using (var s = Banco.Sessao.Abrir(cfg, x => log.Info("Banco: " + x), false))
             {
                 // O texto exato que o Metre grava hoje na contingência normal; sem nenhuma nota lá, o visto no Metre.
-                var usada = s.Consultar("SELECT situacao FROM " + tabela + " WHERE situacao = '" + Sql(cfg.DbSituacao) + "' LIMIT 1");
+                var usada = s.Consultar("SELECT situacao FROM " + tabela + " WHERE situacao = '" + Banco.Sql(cfg.DbSituacao) + "' LIMIT 1");
                 string nova = usada.Count == 1 && usada[0][0] != null ? usada[0][0] : SituacaoMetre;
                 if (SemAcento(nova) != SemAcento(cfg.DbSituacao)) throw new Exception("situação de destino \"" + nova + "\" não confere com DbSituacao");
-                s.Comando("START TRANSACTION");
-                string backup;
-                try
+                string backup = null;
+                EmTransacao(s, log, () =>
                 {
-                    var linha = s.LinhaCompleta("SELECT * FROM " + tabela + " WHERE id_nota_saida = " + id + " FOR UPDATE");
-                    if (linha == null) throw new Exception("a linha id_nota_saida " + id + " não existe mais em " + tabela);
-                    Func<string, string> col = nome =>
-                    {
-                        var kv = linha.FirstOrDefault(x => x.Key.Equals(nome, StringComparison.OrdinalIgnoreCase));
-                        if (kv.Key == null) throw new Exception(tabela + " sem a coluna " + nome);
-                        return kv.Value == null ? null : Encoding.UTF8.GetString(kv.Value);
-                    };
-                    if (col("numero") != numero || col("serie") != serie)
-                        throw new Exception("a linha id_nota_saida " + id + " é da nota " + col("serie") + "/" + col("numero") + ", não " + serie + "/" + numero);
+                    var linha = LinhaTravada(s, tabela, id, numero, serie);
+                    Func<string, string> col = nome => Coluna(linha, tabela, nome);
                     if (col("situacao") != c.Situacao)
                         throw new Exception("a situação no banco mudou desde a listagem: está \"" + (col("situacao") ?? "NULL") + "\", listada \"" + c.Situacao + "\"");
                     if (col("chave_acesso") != c.Chave)
@@ -246,19 +221,12 @@ namespace DuplicidadeNfce
                         "situacao: " + c.Situacao + " -> " + nova);
                     log.Info("  backup da linha: " + backup);
 
-                    long n = s.Comando("UPDATE " + tabela + " SET situacao = '" + Sql(nova) + "' WHERE " + onde + " AND situacao = '" + Sql(c.Situacao) + "'" +
-                        " AND chave_acesso " + (c.Chave == null ? "IS NULL" : "= '" + Sql(c.Chave) + "'"));
+                    long n = s.Comando("UPDATE " + tabela + " SET situacao = '" + Banco.Sql(nova) + "' WHERE " + onde + " AND situacao = '" + Banco.Sql(c.Situacao) + "'" +
+                        " AND chave_acesso " + (c.Chave == null ? "IS NULL" : "= '" + Banco.Sql(c.Chave) + "'"));
                     if (n != 1) throw new Exception("o UPDATE afetou " + n + " linha(s), esperada exatamente 1");
                     var relida = s.Consultar("SELECT situacao FROM " + tabela + " WHERE id_nota_saida = " + id);
                     if (relida.Count != 1 || relida[0][0] != nova) throw new Exception("a releitura não mostrou a situação nova");
-                    s.Comando("COMMIT");
-                }
-                catch (Exception ex)
-                {
-                    try { s.Comando("ROLLBACK"); } catch { }
-                    log.Info("  ERRO, desfeito (rollback), nada alterado: " + ex.Message);
-                    throw new Exception(ex.Message + " (rollback: nada foi alterado no banco)");
-                }
+                });
                 log.Info("  gravado e relido: situacao = " + nova);
                 return backup;
             }
@@ -294,38 +262,32 @@ namespace DuplicidadeNfce
                 "); a chave autorizada " + autorizada + " está em id_nota_saida " + outra);
             using (var s = Banco.Sessao.Abrir(cfg, x => log.Info("Banco: " + x), false))
             {
-                s.Comando("START TRANSACTION");
-                string backup;
-                try
+                string backup = null;
+                EmTransacao(s, log, () =>
                 {
                     var linha = s.LinhaCompleta("SELECT * FROM " + tabela + " WHERE id_nota_saida = " + id + " FOR UPDATE");
                     if (linha == null) throw new Exception("a linha id_nota_saida " + id + " não existe mais em " + tabela);
                     var lOutra = s.LinhaCompleta("SELECT * FROM " + tabela + " WHERE id_nota_saida = " + outra + " FOR UPDATE");
                     if (lOutra == null) throw new Exception("a linha com a chave autorizada (id_nota_saida " + outra + ") não existe mais");
-                    Func<List<KeyValuePair<string, byte[]>>, string, string> col = (ln, nome) =>
-                    {
-                        var kv = ln.FirstOrDefault(x => x.Key.Equals(nome, StringComparison.OrdinalIgnoreCase));
-                        if (kv.Key == null) throw new Exception(tabela + " sem a coluna " + nome);
-                        return kv.Value == null ? null : Encoding.UTF8.GetString(kv.Value);
-                    };
+                    Func<List<KeyValuePair<string, byte[]>>, string, string> col = (ln, nome) => Coluna(ln, tabela, nome);
                     foreach (var par in new[] { Tuple.Create(linha, id, atual), Tuple.Create(lOutra, outra, autorizada) })
                     {
                         var ln = par.Item1;
-                        if (col(ln, "numero") != numero || col(ln, "serie") != serie)
-                            throw new Exception("a linha id_nota_saida " + par.Item2 + " é da nota " + col(ln, "serie") + "/" + col(ln, "numero") + ", não " + serie + "/" + numero);
+                        ConferirNota(ln, tabela, par.Item2, numero, serie);
                         if (col(ln, "chave_acesso") != par.Item3)
                             throw new Exception("a chave_acesso da linha id_nota_saida " + par.Item2 + " mudou: está " + (col(ln, "chave_acesso") ?? "NULL") + ", esperada " + par.Item3);
                         if (col(ln, "num_pedido") != pedido)
                             throw new Exception("o pedido da linha id_nota_saida " + par.Item2 + " é " + (col(ln, "num_pedido") ?? "vazio") + ", esperado " + pedido);
-                        if (Decimal(col(ln, "valor_total_nota")) != a.ValorSistema)
-                            throw new Exception("o valor da linha id_nota_saida " + par.Item2 + " é " + Analisador.Moeda(Decimal(col(ln, "valor_total_nota"))) + ", esperado " + Analisador.Moeda(a.ValorSistema));
+                        decimal? valor = NotaXml.Decimal(col(ln, "valor_total_nota"));
+                        if (valor != a.ValorSistema)
+                            throw new Exception("o valor da linha id_nota_saida " + par.Item2 + " é " + Analisador.Moeda(valor) + ", esperado " + Analisador.Moeda(a.ValorSistema));
                     }
                     if (SemAcento(col(linha, "situacao")) != SemAcento(cfg.DbSituacao))
                         throw new Exception("a linha id_nota_saida " + id + " não está mais em contingência (situação: " + (col(linha, "situacao") ?? "NULL") + ")");
 
                     // Só nota_saida_item pode apontar para a linha; outra tabela com referência a ela bloqueia.
                     foreach (var fk in s.Consultar("SELECT TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME FROM information_schema.KEY_COLUMN_USAGE WHERE REFERENCED_TABLE_SCHEMA = '" +
-                        Sql(cfg.DbBanco) + "' AND REFERENCED_TABLE_NAME = 'nota_saida'"))
+                        Banco.Sql(cfg.DbBanco) + "' AND REFERENCED_TABLE_NAME = 'nota_saida'"))
                     {
                         if (fk[0].Equals(cfg.DbBanco, StringComparison.OrdinalIgnoreCase) && fk[1].Equals("nota_saida_item", StringComparison.OrdinalIgnoreCase)) continue;
                         string n = s.Consultar("SELECT COUNT(*) FROM `" + fk[0] + "`.`" + fk[1] + "` WHERE `" + fk[2] + "` = " + id)[0][0];
@@ -348,14 +310,7 @@ namespace DuplicidadeNfce
                     if (s.Consultar("SELECT COUNT(*) FROM " + tabela + " WHERE id_nota_saida = " + id)[0][0] != "0") throw new Exception("a releitura ainda mostra a linha");
                     var ok = s.Consultar("SELECT chave_acesso FROM " + tabela + " WHERE id_nota_saida = " + outra);
                     if (ok.Count != 1 || ok[0][0] != autorizada) throw new Exception("a linha com a chave autorizada não está mais como antes");
-                    s.Comando("COMMIT");
-                }
-                catch (Exception ex)
-                {
-                    try { s.Comando("ROLLBACK"); } catch { }
-                    log.Info("  ERRO, desfeito (rollback), nada alterado: " + ex.Message);
-                    throw new Exception(ex.Message + " (rollback: nada foi alterado no banco)");
-                }
+                });
                 if (s.Consultar("SELECT COUNT(*) FROM " + tabela + " WHERE id_nota_saida = " + id)[0][0] != "0")
                     throw new Exception("COMMIT feito, mas a linha id_nota_saida " + id + " ainda aparece; conferir no banco (backup " + backup + ")");
                 log.Info("  excluída e conferida");
@@ -371,7 +326,46 @@ namespace DuplicidadeNfce
             }
         }
 
-        static string Sql(string s) { return s.Replace("\\", "\\\\").Replace("'", "''"); }
+        // START TRANSACTION, corpo e COMMIT; qualquer erro (inclusive no COMMIT) faz ROLLBACK: nada fica alterado.
+        static void EmTransacao(Banco.Sessao s, Log log, Action corpo)
+        {
+            s.Comando("START TRANSACTION");
+            try
+            {
+                corpo();
+                s.Comando("COMMIT");
+            }
+            catch (Exception ex)
+            {
+                try { s.Comando("ROLLBACK"); } catch { }
+                log.Info("  ERRO, desfeito (rollback), nada alterado: " + ex.Message);
+                throw new Exception(ex.Message + " (rollback: nada foi alterado no banco)");
+            }
+        }
+
+        // A linha inteira (SELECT *), travada até o fim da transação, conferida como da nota esperada.
+        static List<KeyValuePair<string, byte[]>> LinhaTravada(Banco.Sessao s, string tabela, string id, string numero, string serie)
+        {
+            var linha = s.LinhaCompleta("SELECT * FROM " + tabela + " WHERE id_nota_saida = " + id + " FOR UPDATE");
+            if (linha == null) throw new Exception("a linha id_nota_saida " + id + " não existe mais em " + tabela);
+            ConferirNota(linha, tabela, id, numero, serie);
+            return linha;
+        }
+
+        static void ConferirNota(List<KeyValuePair<string, byte[]>> linha, string tabela, string id, string numero, string serie)
+        {
+            string n = Coluna(linha, tabela, "numero"), s = Coluna(linha, tabela, "serie");
+            if (n != numero || s != serie)
+                throw new Exception("a linha id_nota_saida " + id + " é da nota " + s + "/" + n + ", não " + serie + "/" + numero);
+        }
+
+        // Valor de uma coluna da linha lida com SELECT * (texto UTF-8; null = NULL).
+        static string Coluna(List<KeyValuePair<string, byte[]>> linha, string tabela, string nome)
+        {
+            var kv = linha.FirstOrDefault(x => x.Key.Equals(nome, StringComparison.OrdinalIgnoreCase));
+            if (kv.Key == null) throw new Exception(tabela + " sem a coluna " + nome);
+            return kv.Value == null ? null : Encoding.UTF8.GetString(kv.Value);
+        }
 
         // "Em Contigência" (banco) = "Em contigencia" (ini): o MariaDB compara sem acento e sem maiúsculas.
         internal static string SemAcento(string s)
@@ -379,13 +373,6 @@ namespace DuplicidadeNfce
             if (s == null) return "";
             var d = s.Trim().ToLowerInvariant().Normalize(NormalizationForm.FormD);
             return new string(d.Where(c => CharUnicodeInfo.GetUnicodeCategory(c) != UnicodeCategory.NonSpacingMark).ToArray());
-        }
-
-        static decimal? Decimal(string s)
-        {
-            decimal d;
-            if (s != null && decimal.TryParse(s, NumberStyles.Number, CultureInfo.InvariantCulture, out d)) return d;
-            return null;
         }
 
         // ---------- Backup em arquivo (pasta backups ao lado do exe) ----------
@@ -453,7 +440,7 @@ namespace DuplicidadeNfce
                 string.Join(", ", linha.Select(kv =>
                 {
                     if (kv.Value == null) return "NULL";
-                    try { return "'" + Sql(estrito.GetString(kv.Value)).Replace("\r", "\\r").Replace("\n", "\\n") + "'"; }
+                    try { return "'" + Banco.Sql(estrito.GetString(kv.Value)).Replace("\r", "\\r").Replace("\n", "\\n") + "'"; }
                     catch (DecoderFallbackException) { return "0x" + BitConverter.ToString(kv.Value).Replace("-", ""); }
                 })) + ")";
         }
@@ -539,6 +526,6 @@ namespace DuplicidadeNfce
             return r;
         }
 
-        public static decimal? ValorDoRegistro(RegistroHistorico r) { return Decimal(r.Tamanho); }
+        public static decimal? ValorDoRegistro(RegistroHistorico r) { return NotaXml.Decimal(r.Tamanho); }
     }
 }

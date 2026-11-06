@@ -1,9 +1,7 @@
 using System;
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
-using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -11,8 +9,6 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Threading;
 
 namespace DuplicidadeNfce
 {
@@ -86,12 +82,7 @@ namespace DuplicidadeNfce
             Contagens();
         }
 
-        T G<T>(string nome) where T : class
-        {
-            var o = W.FindName(nome) as T;
-            if (o == null) throw new Exception("elemento da tela não encontrado: " + nome);
-            return o;
-        }
+        T G<T>(string nome) where T : class { return Gui.Elemento<T>(W, nome); }
 
         EntradaNumeros Entrada()
         {
@@ -162,8 +153,8 @@ namespace DuplicidadeNfce
                 bool varios = motor.Meses.Count > 1;
                 var meses = G<TextBlock>("FalMeses");
                 meses.Text = motor.DescricaoMeses + (varios ? "  ⚠ notas de meses diferentes" : "");
-                meses.Foreground = varios ? Pincel("#9A6700") : motor.Meses.Count == 0 ? Brushes.Gray : Brushes.Black;
-                G<Border>("FalMesesCaixa").Background = varios ? Pincel("#FFF7E0") : Brushes.Transparent;
+                meses.Foreground = varios ? Gui.Pincel("#9A6700") : motor.Meses.Count == 0 ? Brushes.Gray : Brushes.Black;
+                G<Border>("FalMesesCaixa").Background = varios ? Gui.Pincel("#FFF7E0") : Brushes.Transparent;
                 var itens = motor.Itens;
                 int copiados = itens.Count(i => i.Copia == CopiaFaltante.Copiado);
                 Status(itens.Count + " número(s): " + string.Join(", ", itens.GroupBy(i => i.Status).Select(g => g.Count() + " " + g.Key)) +
@@ -180,8 +171,6 @@ namespace DuplicidadeNfce
             W.Cursor = sim ? System.Windows.Input.Cursors.Wait : null;
             if (msg != null) { G<TextBlock>("FalStatus").Text = msg; G<ProgressBar>("FalProgresso").Value = sim ? 5 : 0; }
         }
-
-        static Brush Pincel(string cor) { return (Brush)new BrushConverter().ConvertFromString(cor); }
 
         void Status(string msg)
         {
@@ -304,19 +293,7 @@ namespace DuplicidadeNfce
             var grade = G<DataGrid>("GradeFaltantes");
             int sel;
             if (int.TryParse(Environment.GetEnvironmentVariable("NOTACERTA_FALT_SELECIONAR"), out sel) && sel < linhas.Count) grade.SelectedIndex = sel;
-            W.Dispatcher.BeginInvoke(new Action(() =>
-            {
-                var raiz = (FrameworkElement)W.Content;
-                var bmp = new RenderTargetBitmap((int)raiz.ActualWidth, (int)raiz.ActualHeight, 96, 96, PixelFormats.Pbgra32);
-                var fundo = new DrawingVisual();
-                using (var dc = fundo.RenderOpen()) dc.DrawRectangle(W.Background, null, new Rect(0, 0, raiz.ActualWidth, raiz.ActualHeight));
-                bmp.Render(fundo);
-                bmp.Render(raiz);
-                var enc = new PngBitmapEncoder();
-                enc.Frames.Add(BitmapFrame.Create(bmp));
-                using (var f = File.Create(op.Captura)) enc.Save(f);
-                W.Close();
-            }), DispatcherPriority.ApplicationIdle);
+            Gui.SalvarPng(W, op.Captura);
         }
     }
 }
