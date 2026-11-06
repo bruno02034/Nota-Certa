@@ -17,6 +17,7 @@ namespace DuplicidadeNfce
         public bool ValorManual;          // confirmado pelo usuário no portal da SEFAZ
         public bool PodeConferirPortal;   // nenhum XML com a chave autorizada: só o portal mostra o valor
         public string ChaveAntiga, Backup; // depois do ajuste (CHAVE AJUSTADA): para desfazer
+        public string IdOutraLinha, Pedido; // LINHA DUPLICADA: a linha que já tem a chave autorizada e o pedido das duas
     }
 
     // "Ajustar chave no banco": troca SÓ o campo chef.nota_saida.chave_acesso de UMA linha pela chave autorizada na
@@ -263,6 +264,113 @@ namespace DuplicidadeNfce
             }
         }
 
+        // ---------- Linha duplicada: a mesma venda já está autorizada em outra linha ----------
+        // Faz o que o suporte faz à mão (06/11): num_pedido = NULL na linha da contingência (desvincula do pedido), apaga os
+        // itens dela em nota_saida_item e depois a linha. Só com a outra linha tendo a chave autorizada e a mesma série,
+        // número, pedido e valor, conferidos de novo dentro da transação; backup da linha e dos itens (com os INSERT para
+        // restaurar) antes de apagar. Qualquer outra tabela que aponte para a linha bloqueia. Exceção = nada alterado.
+        public static string TravaExclusao(LinhaRelatorio l)
+        {
+            var a = l.Ajuste;
+            if (a == null || l.Status != Status.LinhaDuplicada) return "status não é " + Status.LinhaDuplicada;
+            var s = l.Sel != null ? l.Sel.Sefaz : null;
+            if (s == null || !s.Autorizada || s.Prot == null || s.Prot.ChNFe != a.ChaveNova) return "a SEFAZ não confirmou a chave autorizada";
+            if (string.IsNullOrEmpty(a.IdMetre) || string.IsNullOrEmpty(a.IdOutraLinha) || a.IdMetre == a.IdOutraLinha) return "linhas do banco não identificadas";
+            if (string.IsNullOrEmpty(a.Pedido) || !a.ValorSistema.HasValue) return "sem pedido ou valor para conferir";
+            if (a.ChaveAtual == a.ChaveNova) return "esta linha já tem a chave autorizada";
+            return null;
+        }
+
+        public static RegistroHistorico ExcluirDuplicada(Config cfg, LinhaRelatorio l, string pastaBackups, Historico historico, Log log)
+        {
+            string trava = TravaExclusao(l);
+            if (trava != null) throw new Exception("exclusão bloqueada: " + trava);
+            var a = l.Ajuste;
+            string id = Inteiro(a.IdMetre), outra = Inteiro(a.IdOutraLinha), numero = Inteiro(l.Numero), serie = Inteiro(l.Serie), pedido = Inteiro(a.Pedido);
+            string atual = SoDigitos(a.ChaveAtual, 44), autorizada = SoDigitos(a.ChaveNova, 44);
+            string tabela = cfg.DbBanco + ".nota_saida", itens = cfg.DbBanco + ".nota_saida_item";
+            log.Info("");
+            log.Info("Excluir linha duplicada: " + tabela + " id_nota_saida " + id + ", nota " + serie + "/" + numero + " (chave " + atual +
+                "); a chave autorizada " + autorizada + " está em id_nota_saida " + outra);
+            using (var s = Banco.Sessao.Abrir(cfg, x => log.Info("Banco: " + x), false))
+            {
+                s.Comando("START TRANSACTION");
+                string backup;
+                try
+                {
+                    var linha = s.LinhaCompleta("SELECT * FROM " + tabela + " WHERE id_nota_saida = " + id + " FOR UPDATE");
+                    if (linha == null) throw new Exception("a linha id_nota_saida " + id + " não existe mais em " + tabela);
+                    var lOutra = s.LinhaCompleta("SELECT * FROM " + tabela + " WHERE id_nota_saida = " + outra + " FOR UPDATE");
+                    if (lOutra == null) throw new Exception("a linha com a chave autorizada (id_nota_saida " + outra + ") não existe mais");
+                    Func<List<KeyValuePair<string, byte[]>>, string, string> col = (ln, nome) =>
+                    {
+                        var kv = ln.FirstOrDefault(x => x.Key.Equals(nome, StringComparison.OrdinalIgnoreCase));
+                        if (kv.Key == null) throw new Exception(tabela + " sem a coluna " + nome);
+                        return kv.Value == null ? null : Encoding.UTF8.GetString(kv.Value);
+                    };
+                    foreach (var par in new[] { Tuple.Create(linha, id, atual), Tuple.Create(lOutra, outra, autorizada) })
+                    {
+                        var ln = par.Item1;
+                        if (col(ln, "numero") != numero || col(ln, "serie") != serie)
+                            throw new Exception("a linha id_nota_saida " + par.Item2 + " é da nota " + col(ln, "serie") + "/" + col(ln, "numero") + ", não " + serie + "/" + numero);
+                        if (col(ln, "chave_acesso") != par.Item3)
+                            throw new Exception("a chave_acesso da linha id_nota_saida " + par.Item2 + " mudou: está " + (col(ln, "chave_acesso") ?? "NULL") + ", esperada " + par.Item3);
+                        if (col(ln, "num_pedido") != pedido)
+                            throw new Exception("o pedido da linha id_nota_saida " + par.Item2 + " é " + (col(ln, "num_pedido") ?? "vazio") + ", esperado " + pedido);
+                        if (Decimal(col(ln, "valor_total_nota")) != a.ValorSistema)
+                            throw new Exception("o valor da linha id_nota_saida " + par.Item2 + " é " + Analisador.Moeda(Decimal(col(ln, "valor_total_nota"))) + ", esperado " + Analisador.Moeda(a.ValorSistema));
+                    }
+                    if (SemAcento(col(linha, "situacao")) != SemAcento(cfg.DbSituacao))
+                        throw new Exception("a linha id_nota_saida " + id + " não está mais em contingência (situação: " + (col(linha, "situacao") ?? "NULL") + ")");
+
+                    // Só nota_saida_item pode apontar para a linha; outra tabela com referência a ela bloqueia.
+                    foreach (var fk in s.Consultar("SELECT TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME FROM information_schema.KEY_COLUMN_USAGE WHERE REFERENCED_TABLE_SCHEMA = '" +
+                        Sql(cfg.DbBanco) + "' AND REFERENCED_TABLE_NAME = 'nota_saida'"))
+                    {
+                        if (fk[0].Equals(cfg.DbBanco, StringComparison.OrdinalIgnoreCase) && fk[1].Equals("nota_saida_item", StringComparison.OrdinalIgnoreCase)) continue;
+                        string n = s.Consultar("SELECT COUNT(*) FROM `" + fk[0] + "`.`" + fk[1] + "` WHERE `" + fk[2] + "` = " + id)[0][0];
+                        if (n != "0") throw new Exception("a linha é usada em " + fk[0] + "." + fk[1] + " (" + n + " linha(s)); exclusão bloqueada");
+                    }
+                    var linhasItens = s.LinhasCompletas("SELECT * FROM " + itens + " WHERE id_nota_saida = " + id + " FOR UPDATE");
+
+                    backup = GravarBackup(pastaBackups, "excluir_duplicada", tabela, id, numero, serie, atual, autorizada, linha,
+                        "linha duplicada: a chave autorizada está em id_nota_saida " + outra + " (mesmo pedido " + pedido + " e valor R$ " +
+                        Analisador.Moeda(a.ValorSistema) + "); num_pedido = NULL, " + linhasItens.Count + " item(ns) e a linha apagados", itens, linhasItens);
+                    log.Info("  backup da linha e de " + linhasItens.Count + " item(ns): " + backup);
+
+                    string onde = "id_nota_saida = " + id + " AND numero = " + numero + " AND serie = " + serie + " AND chave_acesso = '" + atual + "'";
+                    long n1 = s.Comando("UPDATE " + tabela + " SET num_pedido = NULL WHERE " + onde + " AND num_pedido = " + pedido);
+                    if (n1 != 1) throw new Exception("o UPDATE do num_pedido afetou " + n1 + " linha(s), esperada exatamente 1");
+                    long n2 = s.Comando("DELETE FROM " + itens + " WHERE id_nota_saida = " + id);
+                    if (n2 != linhasItens.Count) throw new Exception("o DELETE dos itens afetou " + n2 + " linha(s), esperadas " + linhasItens.Count);
+                    long n3 = s.Comando("DELETE FROM " + tabela + " WHERE " + onde + " AND num_pedido IS NULL");
+                    if (n3 != 1) throw new Exception("o DELETE da linha afetou " + n3 + " linha(s), esperada exatamente 1");
+                    if (s.Consultar("SELECT COUNT(*) FROM " + tabela + " WHERE id_nota_saida = " + id)[0][0] != "0") throw new Exception("a releitura ainda mostra a linha");
+                    var ok = s.Consultar("SELECT chave_acesso FROM " + tabela + " WHERE id_nota_saida = " + outra);
+                    if (ok.Count != 1 || ok[0][0] != autorizada) throw new Exception("a linha com a chave autorizada não está mais como antes");
+                    s.Comando("COMMIT");
+                }
+                catch (Exception ex)
+                {
+                    try { s.Comando("ROLLBACK"); } catch { }
+                    log.Info("  ERRO, desfeito (rollback), nada alterado: " + ex.Message);
+                    throw new Exception(ex.Message + " (rollback: nada foi alterado no banco)");
+                }
+                if (s.Consultar("SELECT COUNT(*) FROM " + tabela + " WHERE id_nota_saida = " + id)[0][0] != "0")
+                    throw new Exception("COMMIT feito, mas a linha id_nota_saida " + id + " ainda aparece; conferir no banco (backup " + backup + ")");
+                log.Info("  excluída e conferida");
+                var r = new RegistroHistorico
+                {
+                    DataHora = DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss"), Serie = serie, Numero = numero, ChaveAutorizada = autorizada,
+                    Arquivo = tabela + " id_nota_saida=" + id + " excluída (autorizada em id_nota_saida=" + outra + ")", CaminhoOrigem = atual,
+                    CaminhoDestino = backup, Tamanho = a.ValorSistema.Value.ToString("0.00", CultureInfo.InvariantCulture), Sha256 = "",
+                    Status = Status.LinhaExcluida
+                };
+                historico.Registrar(r);
+                return r;
+            }
+        }
+
         static string Sql(string s) { return s.Replace("\\", "\\\\").Replace("'", "''"); }
 
         // "Em Contigência" (banco) = "Em contigencia" (ini): o MariaDB compara sem acento e sem maiúsculas.
@@ -282,14 +390,15 @@ namespace DuplicidadeNfce
 
         // ---------- Backup em arquivo (pasta backups ao lado do exe) ----------
         static string GravarBackup(string pasta, string operacao, string tabela, string id, string numero, string serie, string atual, string nova,
-            List<KeyValuePair<string, byte[]>> linha, string observacao)
+            List<KeyValuePair<string, byte[]>> linha, string observacao, string tabelaItens = null, List<List<KeyValuePair<string, byte[]>>> itens = null)
         {
             Directory.CreateDirectory(pasta);
             string baseNome = (operacao == "ajuste" ? "ajuste_chave_" : operacao == "desfazer" ? "desfazer_ajuste_" : operacao + "_") + serie + "-" + numero + "_id" + id + "_" + DateTime.Now.ToString("yyyyMMdd_HHmmss");
             string arq = Path.Combine(pasta, baseNome + ".txt");
             for (int i = 2; File.Exists(arq); i++) arq = Path.Combine(pasta, baseNome + "_" + i + ".txt");
             var sb = new StringBuilder();
-            sb.AppendLine("# " + Program.NomeSistema + " - backup da linha de " + tabela + " antes de alterar " + (operacao == "voltar_contingencia" ? "situacao" : "chave_acesso"));
+            sb.AppendLine("# " + Program.NomeSistema + " - backup da linha de " + tabela + (operacao == "excluir_duplicada" ? " e dos itens antes de EXCLUIR" :
+                " antes de alterar " + (operacao == "voltar_contingencia" ? "situacao" : "chave_acesso")));
             sb.AppendLine("# Valores: texto como está no banco; \\N = NULL; 0x... = conteúdo binário ou com quebra de linha, em hexadecimal.");
             sb.AppendLine("operacao=" + operacao);
             sb.AppendLine("data=" + DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss"));
@@ -319,9 +428,34 @@ namespace DuplicidadeNfce
                 }
                 sb.AppendLine(kv.Key + "=" + v);
             }
+            if (itens != null)
+            {
+                for (int i = 0; i < itens.Count; i++)
+                {
+                    sb.AppendLine("[item " + (i + 1) + "]");
+                    foreach (var kv in itens[i]) sb.AppendLine(kv.Key + "=" + (kv.Value == null ? "\\N" : "0x" + BitConverter.ToString(kv.Value).Replace("-", "")));
+                }
+                // Para restaurar à mão (HeidiSQL): a linha primeiro, depois os itens.
+                sb.AppendLine("[restaurar]");
+                sb.AppendLine(Insert(tabela, linha) + ";");
+                foreach (var it in itens) sb.AppendLine(Insert(tabelaItens, it) + ";");
+            }
             sb.AppendLine(LinhaAssinatura + Assinar(pasta, sb.ToString(), true));
             File.WriteAllText(arq, sb.ToString(), new UTF8Encoding(true));
             return arq;
+        }
+
+        // Valores como texto entre aspas (o MariaDB converte para o tipo da coluna); conteúdo que não é texto vai em hexadecimal.
+        static string Insert(string tabela, List<KeyValuePair<string, byte[]>> linha)
+        {
+            var estrito = new UTF8Encoding(false, true);
+            return "INSERT INTO " + tabela + " (" + string.Join(", ", linha.Select(kv => "`" + kv.Key + "`")) + ") VALUES (" +
+                string.Join(", ", linha.Select(kv =>
+                {
+                    if (kv.Value == null) return "NULL";
+                    try { return "'" + Sql(estrito.GetString(kv.Value)).Replace("\r", "\\r").Replace("\n", "\\n") + "'"; }
+                    catch (DecoderFallbackException) { return "0x" + BitConverter.ToString(kv.Value).Replace("-", ""); }
+                })) + ")";
         }
 
         // O "Desfazer" grava no banco o que o backup diz: o arquivo é assinado (HMAC-SHA256) com uma chave aleatória

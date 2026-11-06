@@ -275,6 +275,10 @@ CREATE TABLE chef.nota_saida (
   motivo_nao_transmissao VARCHAR(255) NULL, situacao VARCHAR(30) NULL, chave_acesso_devolucao VARCHAR(44) NULL, observacao TEXT NULL,
   KEY IX_DT_EMISSAO (dt_emissao), KEY IX_SITUACAO (situacao)) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 CREATE TABLE chefxml.xml (id_xml INT NOT NULL AUTO_INCREMENT PRIMARY KEY, XML LONGTEXT, id_nota_saida INT, id_pedido INT, KEY Index_2 (id_nota_saida)) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+CREATE TABLE chef.nota_saida_item (id_nota_saida_item INT NOT NULL AUTO_INCREMENT PRIMARY KEY, id_nota_saida INT NOT NULL, quantidade DECIMAL(15,3) NULL,
+  descricao VARCHAR(60) NULL, CONSTRAINT FK_nota_saida_item_id_nota_saida FOREIGN KEY (id_nota_saida) REFERENCES chef.nota_saida (id_nota_saida)) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+CREATE TABLE chef.nota_saida_ref (id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, id_nota_saida INT NULL,
+  CONSTRAINT FK_nota_saida_ref FOREIGN KEY (id_nota_saida) REFERENCES chef.nota_saida (id_nota_saida)) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 INSERT INTO chef.nota_saida (id_nota_saida, XML, numero, serie, chave_acesso, dt_emissao, num_pedido, valor_total_nota, data_contigencia, dt_tentativa_emissao, motivo_nao_transmissao, situacao, observacao) VALUES
   ($IdMetre, NULL, $Numero, $Serie, '$aSis', '2026-10-19', $Pedido, $Valor, '2026-10-19 13:47:52', '2026-10-21 17:40:00', 'Lote processado', 'Em contigencia', CONCAT('linha 1', CHAR(13), CHAR(10), 'linha 2')),
   ($($B.Id), NULL, $($B.N), $Serie, '$($B.Sis)', '2026-10-19', 1, $($B.V), '2026-10-19 10:00:00', NULL, 'Lote processado', 'Em contigencia', NULL),
@@ -296,7 +300,8 @@ INSERT INTO chefxml.xml (id_xml, XML, id_nota_saida, id_pedido) VALUES
   (400002, 'H4sIAAAAAAAAA+3BMQEAAADCoPVPbQwfoAAAAAAAAAAAAAAAAAAAAIC3AYbSVKsAQAAA', $($C.Id), 2),
   (400003, CONVERT(UNHEX('$(Hex $eXml.Xml)') USING utf8), $($E.Id), 4),
   $($sqlXmls -join ",`n  ");
-CREATE USER 'metre'@'%' IDENTIFIED BY '$senhaMetre'; GRANT SELECT, UPDATE ON chef.* TO 'metre'@'%'; GRANT SELECT ON chefxml.* TO 'metre'@'%';
+INSERT INTO chef.nota_saida_item (id_nota_saida, quantidade, descricao) VALUES ($($D.Id), 1, 'CAFE'), ($($D.Id), 2, 'PAO DE QUEIJO'), (500, 1, 'CAFE');
+CREATE USER 'metre'@'%' IDENTIFIED BY '$senhaMetre'; GRANT SELECT, UPDATE, DELETE ON chef.* TO 'metre'@'%'; GRANT SELECT ON chefxml.* TO 'metre'@'%';
 CREATE USER 'leitor'@'%' IDENTIFIED BY '$senhaMetre'; GRANT SELECT ON chef.* TO 'leitor'@'%'; GRANT SELECT ON chefxml.* TO 'leitor'@'%';
 FLUSH PRIVILEGES;
 "@

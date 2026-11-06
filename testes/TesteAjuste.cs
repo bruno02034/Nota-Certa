@@ -142,7 +142,8 @@ namespace DuplicidadeNfce
             var B = nota("2002"); var C = nota("2003"); var D = nota("2004"); var E = nota("2005");
             Verdade(B.Status == Status.AjusteChave && B.Ajuste.OrigemValor.Contains("chefxml.xml"), "B: XML autorizado no banco chefxml confere com digVal -> AJUSTE DE CHAVE (" + B.Motivo + ")");
             Verdade(C.Status == Status.Pendente && C.Ajuste.PodeConferirPortal, "C: XML autorizado só fora das pastas do período não é procurado (rápido) -> conferir no portal");
-            Verdade(D.Status == Status.Pendente && D.Motivo.Contains("já está em outra linha"), "D: chave autorizada já em outra linha -> bloqueado (" + D.Motivo + ")");
+            Verdade(D.Status == Status.LinhaDuplicada && D.Ajuste.IdOutraLinha == "500" && D.Ajuste.Pedido == "3" && AjusteChave.TravaExclusao(D) == null &&
+                AjusteChave.Trava(D) != null, "D: chave autorizada em outra linha do mesmo pedido e valor -> LINHA DUPLICADA, ajuste travado (" + D.Motivo + ")");
             Verdade(E.Status == Status.ACopiar && E.Ajuste == null && E.Fonte.Conteudo != null && E.Motivo.Contains("≠ SEFAZ"),
                 "E: XML no banco com valor diferente do sistema -> não ajusta, grava para importar (" + E.Motivo + ")");
             var F = nota("2006"); var G = nota("2007");
@@ -488,6 +489,49 @@ namespace DuplicidadeNfce
                     "conexão remota: a configuração em uso continua a mesma");
             }
 
+            // ---------- Linha duplicada: a venda já está autorizada em outra linha; a da contingência é excluída ----------
+            {
+                var t = new Tentativa { IdMetre = "10", Serie = "1", Numero = "5", Pedido = "7", Valor = 9.90m };
+                Func<string, string, string, decimal?, string> dif = (num, ped, id, v) => Analisador.DiferencaDuplicada(t,
+                    new LinhaContingencia { Id = id, Serie = "1", Numero = num, Pedido = ped, Valor = v });
+                Verdade(dif("5", "7", "11", 9.90m) == null && dif("5", "8", "11", 9.90m).Contains("pedido") && dif("5", "7", "11", 9.91m).Contains("valor") &&
+                    dif("6", "7", "11", 9.90m).Contains("nota") && dif("5", "7", "10", 9.90m) != null, "linha duplicada só com série, número, pedido e valor iguais");
+
+                var logDup = new Log(Path.Combine(trabalho, "excluir_duplicada.log"));
+                string idD = D.Ajuste.IdMetre;
+                Func<int> itensD = () => int.Parse(Sql("SELECT COUNT(*) FROM chef.nota_saida_item WHERE id_nota_saida = " + idD)[0][0]);
+                string tabDup = Tabela();
+                Func<string> tentar = () => { try { AjusteChave.ExcluirDuplicada(m.Cfg, D, m.PastaBackups, m.Historico, logDup); return null; } catch (Exception ex) { return ex.Message; } };
+
+                Exec("UPDATE chef.nota_saida SET num_pedido = 99 WHERE id_nota_saida = 500");
+                string e1 = tentar();
+                Exec("UPDATE chef.nota_saida SET num_pedido = 3 WHERE id_nota_saida = 500");
+                Verdade(e1 != null && e1.Contains("pedido da linha id_nota_saida 500") && Tabela() == tabDup && itensD() == 2, "pedido da outra linha mudou -> nada excluído (" + e1 + ")");
+                Exec("INSERT INTO chef.nota_saida_ref (id_nota_saida) VALUES (" + idD + ")");
+                string e2 = tentar();
+                Exec("DELETE FROM chef.nota_saida_ref");
+                Verdade(e2 != null && e2.Contains("nota_saida_ref") && Tabela() == tabDup && itensD() == 2, "linha usada em outra tabela -> nada excluído (" + e2 + ")");
+
+                var rDup = AjusteChave.ExcluirDuplicada(m.Cfg, D, m.PastaBackups, m.Historico, logDup);
+                Verdade(Sql("SELECT COUNT(*) FROM chef.nota_saida WHERE id_nota_saida = " + idD)[0][0] == "0" && itensD() == 0 &&
+                    Sql("SELECT chave_acesso, num_pedido FROM chef.nota_saida WHERE id_nota_saida = 500")[0][1] == "3" &&
+                    int.Parse(Sql("SELECT COUNT(*) FROM chef.nota_saida_item WHERE id_nota_saida = 500")[0][0]) == 1,
+                    "linha da contingência e os itens dela excluídos; a linha autorizada e os itens dela ficam");
+                Verdade(rDup.Status == Status.LinhaExcluida && m.Historico.Todos.Any(h => h.Status == Status.LinhaExcluida && h.ChaveAutorizada == D.Ajuste.ChaveNova),
+                    "exclusão registrada no histórico");
+                string bakDup = File.ReadAllText(rDup.CaminhoDestino);
+                Verdade(bakDup.Contains("operacao=excluir_duplicada") && bakDup.Contains("[item 2]") && bakDup.Contains("[restaurar]") && bakDup.Contains("assinatura="),
+                    "backup com a linha, os itens e os comandos para restaurar");
+                // Os INSERT do backup recolocam tudo como estava.
+                foreach (string ins in bakDup.Split('\n').Select(x => x.Trim()).Where(x => x.StartsWith("INSERT INTO "))) Exec(ins.TrimEnd(';'));
+                Verdade(Tabela() == tabDup && itensD() == 2, "os INSERT do backup restauram a linha e os itens exatamente");
+                string e3 = null;
+                D.Status = Status.Pendente;
+                try { AjusteChave.ExcluirDuplicada(m.Cfg, D, m.PastaBackups, m.Historico, logDup); } catch (Exception ex) { e3 = ex.Message; }
+                D.Status = Status.LinhaDuplicada;
+                Verdade(e3 != null && e3.Contains("exclusão bloqueada"), "fora de LINHA DUPLICADA a exclusão é recusada");
+            }
+
             // ---------- Notas Faltantes por chave: a linha de nota_saida de cada chave ----------
             {
                 string k1999 = Sql("SELECT chave_acesso FROM chef.nota_saida WHERE id_nota_saida = 501")[0][0];
@@ -508,13 +552,13 @@ namespace DuplicidadeNfce
             // ---------- Contingência 2: variações do nome e volta para a contingência normal ----------
             {
                 string[] sit = { "Em Contigência2", "Em Contingência 2", "Contingencia 2", "Em Contigência" };
-                Exec("DELETE FROM chef.nota_saida WHERE id_nota_saida BETWEEN 900001 AND 900004");
+                Exec("DELETE FROM chef.nota_saida WHERE id_nota_saida BETWEEN 910001 AND 910004");
                 for (int i = 0; i < sit.Length; i++)
                     Exec("INSERT INTO chef.nota_saida (id_nota_saida, numero, serie, chave_acesso, dt_emissao, num_pedido, valor_total_nota, situacao) VALUES (" +
-                        (900001 + i) + ", " + (3001 + i) + ", 1, '312610112223330001816500100000" + (1001 + i) + "9000000010', '2026-09-0" + (1 + i) + "', 0, 5.00, '" + sit[i] + "')");
+                        (910001 + i) + ", " + (3001 + i) + ", 1, '312610112223330001816500100000" + (1001 + i) + "9000000010', '2026-09-0" + (1 + i) + "', 0, 5.00, '" + sit[i] + "')");
                 try
                 {
-                    var c2 = Banco.LerContingencia2(raiz).Where(x => x.Id.StartsWith("90000")).ToList();
+                    var c2 = Banco.LerContingencia2(raiz).Where(x => x.Id.StartsWith("91000")).ToList();
                     Verdade(c2.Select(x => x.Numero).SequenceEqual(new[] { "3001", "3002", "3003" }),
                         "Contingência 2 lista \"Em Contigência2\", \"Em Contingência 2\" e \"Contingencia 2\", não a contingência normal (" + string.Join(", ", c2.Select(x => x.Numero + "=" + x.Situacao)) + ")");
                     Verdade(Banco.EhContingencia2("EM CONTINGENCIA-2") && !Banco.EhContingencia2("Em Contigência") && !Banco.EhContingencia2(null), "regra de Contingência 2 em C#");
@@ -522,7 +566,7 @@ namespace DuplicidadeNfce
                     using (var log = new Log(Path.Combine(trabalho, "cont2.log")))
                     {
                         string bk = AjusteChave.VoltarParaContingencia(raiz, c2[0], pasta, log);
-                        string normal = Sql("SELECT situacao FROM chef.nota_saida WHERE id_nota_saida = 900001")[0][0];
+                        string normal = Sql("SELECT situacao FROM chef.nota_saida WHERE id_nota_saida = 910001")[0][0];
                         Verdade(AjusteChave.SemAcento(normal) == "em contigencia" && File.Exists(bk) &&
                             File.ReadAllText(bk).Contains("situacao=Em Contigência2"),
                             "Voltar para Contingência: só a situação muda, para o texto já usado pelo Metre (" + normal + "), com backup da linha");
@@ -530,15 +574,15 @@ namespace DuplicidadeNfce
                         string erro = null;
                         try { AjusteChave.VoltarParaContingencia(raiz, velha, pasta, log); } catch (Exception ex) { erro = ex.Message; }
                         Verdade(erro != null && erro.Contains("mudou desde a listagem") && erro.Contains("rollback") &&
-                            Sql("SELECT situacao FROM chef.nota_saida WHERE id_nota_saida = 900002")[0][0] == "Em Contingência 2",
+                            Sql("SELECT situacao FROM chef.nota_saida WHERE id_nota_saida = 910002")[0][0] == "Em Contingência 2",
                             "Voltar para Contingência: situação mudada desde a listagem é recusada sem alterar nada (" + erro + ")");
                         erro = null;
-                        try { AjusteChave.VoltarParaContingencia(raiz, new LinhaContingencia { Id = "900004", Numero = "3004", Serie = "1", Situacao = "Em Contigência" }, pasta, log); }
+                        try { AjusteChave.VoltarParaContingencia(raiz, new LinhaContingencia { Id = "910004", Numero = "3004", Serie = "1", Situacao = "Em Contigência" }, pasta, log); }
                         catch (Exception ex) { erro = ex.Message; }
                         Verdade(erro != null && erro.Contains("não é de Contingência 2"), "Voltar para Contingência recusa nota que não está em Contingência 2");
                     }
                 }
-                finally { Exec("DELETE FROM chef.nota_saida WHERE id_nota_saida BETWEEN 900001 AND 900004"); }
+                finally { Exec("DELETE FROM chef.nota_saida WHERE id_nota_saida BETWEEN 910001 AND 910004"); }
             }
 
             Console.WriteLine(falhas == 0 ? "TODOS OS TESTES PASSARAM" : falhas + " FALHA(S)");

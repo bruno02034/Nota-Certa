@@ -64,7 +64,7 @@ namespace DuplicidadeNfce
     class FontesAjuste
     {
         public Func<Tentativa, string, List<NotaXml>> BuscarXmls;   // qualquer pasta/nome e chefxml.xml
-        public Func<string, List<string>> LinhasComChave;           // ids de nota_saida que já têm a chave
+        public Func<string, List<LinhaContingencia>> LinhasComChave; // linhas de nota_saida que já têm a chave
         public Func<Tentativa, NotaXml> XmlDaLinha;                 // o XML que a linha aponta (o que o Metre transmite); null = sem ponteiro
     }
 
@@ -891,6 +891,22 @@ namespace DuplicidadeNfce
         // igual ao do sistema e todas as travas, a linha vira AJUSTE DE CHAVE (troca da chave_acesso no banco).
         // valorAutorizado: já conferido pelos arquivos da chave (DigestValue = digVal); null = procurar no banco/portal.
         // autorizado: arquivo da chave autorizada para importar, se o ajuste não resolver no Metre (ver LinhaApontaOutroXml).
+        public static string DescreverLinha(LinhaContingencia o)
+        {
+            return "id_nota_saida " + o.Id + ": nota " + o.Serie + "/" + o.Numero + ", pedido " + (o.Pedido ?? "vazio") + ", R$ " + Moeda(o.Valor) +
+                ", " + (o.Situacao ?? "sem situação");
+        }
+
+        // null = a outra linha é a mesma venda (pode excluir esta); senão o que difere.
+        public static string DiferencaDuplicada(Tentativa t, LinhaContingencia o)
+        {
+            if (string.IsNullOrEmpty(t.IdMetre) || o.Id == t.IdMetre) return "é a própria linha";
+            if (o.Serie != t.Serie || o.Numero != t.Numero) return "a outra linha é da nota " + o.Serie + "/" + o.Numero;
+            if (string.IsNullOrEmpty(t.Pedido) || o.Pedido != t.Pedido) return "pedido diferente: " + (t.Pedido ?? "vazio") + " nesta, " + (o.Pedido ?? "vazio") + " na outra";
+            if (!t.Valor.HasValue || o.Valor != t.Valor) return "valor diferente: R$ " + Moeda(t.Valor) + " nesta, R$ " + Moeda(o.Valor) + " na outra";
+            return null;
+        }
+
         void AvaliarAjuste(Tentativa t, LinhaRelatorio l, List<string> avisos, decimal? valorAutorizado = null, string origemValor = null,
             NotaXml autorizado = null)
         {
@@ -908,7 +924,7 @@ namespace DuplicidadeNfce
                 IdMetre = t.IdMetre, Numero = t.Numero, Serie = t.Serie, ChaveAtual = t.Chave, ChaveNova = k, ValorSistema = t.Valor
             };
             // Primeiro o que bloqueia de qualquer jeito, para não mandar conferir no portal à toa.
-            List<string> outras;
+            List<LinhaContingencia> outras;
             try { outras = fontes.LinhasComChave(k); }
             catch (Exception ex)
             {
@@ -917,7 +933,20 @@ namespace DuplicidadeNfce
             }
             if (outras.Count > 0)
             {
-                Pendente(l, "a chave autorizada já está em outra linha de nota_saida (id_nota_saida " + string.Join(", ", outras) + "); ajuste bloqueado", avisos);
+                // A mesma venda duas vezes no banco: a outra linha já tem a chave autorizada e esta (da contingência) sobrou.
+                // Só com série, número, pedido e valor iguais (pedido do usuário em 06/11); senão fica para conferir à mão.
+                string dif = outras.Count == 1 ? DiferencaDuplicada(t, outras[0]) : "mais de uma linha com a chave";
+                string descr = "a chave autorizada já está em outra linha de nota_saida (" + string.Join("; ", outras.Select(DescreverLinha)) + ")";
+                if (dif == null)
+                {
+                    a.IdOutraLinha = outras[0].Id;
+                    a.Pedido = t.Pedido;
+                    l.Status = Status.LinhaDuplicada;
+                    l.Motivo = descr + ", mesma série/número, pedido e valor: esta linha da contingência sobrou e pode ser excluída";
+                    log.Info("  " + l.Motivo);
+                    return;
+                }
+                Pendente(l, descr + "; ajuste bloqueado (" + dif + ")", avisos);
                 return;
             }
 

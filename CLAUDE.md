@@ -82,7 +82,8 @@ Configuração e segredos:
   `SenhaBanco.cs`); `DbSenha` em texto é migrado e apagado ao abrir a interface. Senhas nunca vão para tela, log,
   relatório ou backup (os testes verificam).
 - `Banco.cs` usa a `libmariadb.dll` por P/Invoke (do MariaDB do Metre ou do HeidiSQL), com timeouts; sessões de
-  leitura são `READ ONLY`; as únicas escritas do sistema são o ajuste de chave e a volta da Contingência 2.
+  leitura são `READ ONLY`; as únicas escritas do sistema são o ajuste de chave, a volta da Contingência 2 e a
+  exclusão da linha duplicada.
 
 ## Regras do projeto
 
@@ -91,7 +92,10 @@ Configuração e segredos:
 - No banco, as únicas escritas permitidas são em `chef.nota_saida`, linha a linha, com backup e transação:
   `chave_acesso` pelo "Ajustar chave", e `situacao` de Contingência 2 para a contingência normal pelo "Voltar para
   Contingência" (`AjusteChave.VoltarParaContingencia`, só nas notas marcadas; pedido do usuário em 04/11/2026).
-  Nunca testar escrita no banco de um cliente.
+  E a "Excluir linha duplicada" (`AjusteChave.ExcluirDuplicada`, pedido do usuário em 06/11/2026): quando a chave
+  autorizada já está em outra linha de `nota_saida` com a mesma série, número, pedido e valor, a linha da contingência
+  ganha `num_pedido = NULL`, os itens dela em `nota_saida_item` e ela são apagados (como o suporte faz à mão), com
+  backup da linha e dos itens (com os INSERT para restaurar). Nunca testar escrita no banco de um cliente.
 - Alvo: .NET Framework 4.5 no Windows Server 2012 R2, com TLS 1.2 (`Sefaz.cs` liga o protocolo 3072, que o .NET 4
   não tem como constante). O entregável é `NFCe-Contingencias\NFCe-Contingencias.exe` gerado pelo `build.cmd`.
 - Rodar os testes de `testes\` antes de dizer que algo está pronto.

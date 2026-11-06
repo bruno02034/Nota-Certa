@@ -216,6 +216,13 @@ namespace DuplicidadeNfce
                 return nomes.Select((n, i) => new KeyValuePair<string, byte[]>(n, linhas[0][i])).ToList();
             }
 
+            // Várias linhas com colunas e valores brutos (backup dos itens antes de excluir).
+            public List<List<KeyValuePair<string, byte[]>>> LinhasCompletas(string sql)
+            {
+                string[] nomes;
+                return Executar(m, sql, true, out nomes).Select(v => nomes.Select((n, i) => new KeyValuePair<string, byte[]>(n, v[i])).ToList()).ToList();
+            }
+
             // INSERT/UPDATE/START TRANSACTION...; devolve as linhas afetadas.
             public long Comando(string sql)
             {
@@ -407,6 +414,14 @@ namespace DuplicidadeNfce
                 }
             }
             return r;
+        }
+
+        // Linhas de nota_saida que já têm a chave, com nota, pedido, valor e situação (para ver se são a mesma venda).
+        public static List<LinhaContingencia> LinhasComChave(Sessao s, Config cfg, string chave)
+        {
+            return s.Consultar("SELECT id_nota_saida, numero, serie, num_pedido, chave_acesso, valor_total_nota, situacao FROM " + cfg.DbBanco +
+                ".nota_saida WHERE chave_acesso = '" + AjusteChave.SoDigitos(chave, 44) + "'")
+                .Select(v => new LinhaContingencia { Id = v[0], Numero = v[1], Serie = v[2], Pedido = v[3], Chave = v[4], Valor = Decimal(v[5]), Situacao = v[6] }).ToList();
         }
 
         // Configurações → conexão remota (experimental): só conecta, em sessão somente leitura, e resume o que achou.

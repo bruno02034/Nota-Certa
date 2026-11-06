@@ -21,6 +21,9 @@ namespace DuplicidadeNfce
         public const string ChaveAjustada = "CHAVE AJUSTADA";
         public const string AjusteDesfeito = "AJUSTE DESFEITO";
         public const string ErroAjuste = "ERRO_AJUSTE";
+        // A chave autorizada já está em outra linha da mesma venda: esta linha da contingência sobrou (AjusteChave.ExcluirDuplicada).
+        public const string LinhaDuplicada = "LINHA DUPLICADA";
+        public const string LinhaExcluida = "LINHA EXCLUÍDA";
         public const string ValorConfereManual = "VALOR CONFERE (MANUAL)";
         public const string ValorDiferenteManual = "VALOR DIFERENTE (MANUAL)";
         public const string EmContingencia = "EM CONTINGÊNCIA";

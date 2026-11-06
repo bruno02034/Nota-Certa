@@ -219,15 +219,15 @@ namespace DuplicidadeNfce
             return x.Key == null ? null : NotaXml.LerConteudo(x.Key, x.Value);
         }
 
-        List<string> LinhasComChave(string chave)
+        List<LinhaContingencia> LinhasComChave(string chave)
         {
             var inicio = DateTime.Now;
             using (var s = Banco.Sessao.Abrir(Cfg, x => Log.Info("Banco: " + x), true))
             {
-                var ids = Banco.IdsComChave(s, Cfg, chave);
-                Log.Info("  linhas de nota_saida com a chave autorizada: " + (ids.Count == 0 ? "nenhuma" : string.Join(", ", ids)) +
+                var ls = Banco.LinhasComChave(s, Cfg, chave);
+                Log.Info("  linhas de nota_saida com a chave autorizada: " + (ls.Count == 0 ? "nenhuma" : string.Join(", ", ls.Select(Analisador.DescreverLinha))) +
                     " (" + (DateTime.Now - inicio).TotalSeconds.ToString("0.0") + "s)");
-                return ids;
+                return ls;
             }
         }
 

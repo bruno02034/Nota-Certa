@@ -71,7 +71,7 @@ namespace DuplicidadeNfce
         }
         public Action AoMarcar;
         // Só duplicidade com retorno 539 pode ser processada (as deduzidas ficam PENDENTE "sem retorno 539").
-        public bool PodeMarcar { get { var s = Linha.Status; return s != DuplicidadeNfce.Status.JaProcessada && s != DuplicidadeNfce.Status.Copiado && s != DuplicidadeNfce.Status.EmContingencia && s != DuplicidadeNfce.Status.OutroErro && s != DuplicidadeNfce.Status.JaAutorizada && s != DuplicidadeNfce.Status.ChaveAjustada && s != DuplicidadeNfce.Status.AjusteDesfeito && !(s == DuplicidadeNfce.Status.Pendente && Linha.Motivo != null && Linha.Motivo.StartsWith("sem retorno 539")); } }
+        public bool PodeMarcar { get { var s = Linha.Status; return s != DuplicidadeNfce.Status.JaProcessada && s != DuplicidadeNfce.Status.Copiado && s != DuplicidadeNfce.Status.EmContingencia && s != DuplicidadeNfce.Status.OutroErro && s != DuplicidadeNfce.Status.JaAutorizada && s != DuplicidadeNfce.Status.ChaveAjustada && s != DuplicidadeNfce.Status.AjusteDesfeito && s != DuplicidadeNfce.Status.LinhaDuplicada && s != DuplicidadeNfce.Status.LinhaExcluida && !(s == DuplicidadeNfce.Status.Pendente && Linha.Motivo != null && Linha.Motivo.StartsWith("sem retorno 539")); } }
         public string Nota { get { return Linha.Serie + "/" + Linha.Numero; } }
         public string Pedido { get { return Linha.Pedido ?? "-"; } }
         public string Data { get { return DataCurta(Linha.DhEmiSistema); } }
@@ -91,6 +91,8 @@ namespace DuplicidadeNfce
                 case DuplicidadeNfce.Status.AjusteChave: return "Ajuste";
                 case DuplicidadeNfce.Status.ValorConfereManual: return "Ajuste";
                 case DuplicidadeNfce.Status.ChaveAjustada: return "Ajustada";
+                case DuplicidadeNfce.Status.LinhaDuplicada: return "Ajuste";
+                case DuplicidadeNfce.Status.LinhaExcluida: return "Ajustada";
                 case DuplicidadeNfce.Status.ErroAjuste: return "Erro";
                 case DuplicidadeNfce.Status.ErroCopia: return "Erro";
                 case DuplicidadeNfce.Status.JaProcessada: return "Ja";
@@ -208,6 +210,7 @@ namespace DuplicidadeNfce
             G<Button>("BtnAjustarChave").Click += (s, e) => AjustarChave();
             G<Button>("BtnAjustarLote").Click += (s, e) => AjustarLote();
             G<Button>("BtnDesfazerAjuste").Click += (s, e) => DesfazerAjuste();
+            G<Button>("BtnExcluirDuplicada").Click += (s, e) => ExcluirDuplicada();
             G<Button>("BtnMacroMetre").Click += (s, e) => GerarRejeicoesMetre();
             // Telas pequenas (servidor via AnyDesk): recolhe o menu e estreita os detalhes para a grade caber.
             W.SizeChanged += (s, e) =>
@@ -657,6 +660,21 @@ namespace DuplicidadeNfce
             var a = l.Ajuste;
             G<FrameworkElement>("DetAjuste").Visibility = a == null ? Visibility.Collapsed : Visibility.Visible;
             if (a == null) return;
+            bool duplicada = l.Status == Status.LinhaDuplicada || l.Status == Status.LinhaExcluida;
+            var excluir = G<Button>("BtnExcluirDuplicada");
+            excluir.Visibility = l.Status == Status.LinhaDuplicada ? Visibility.Visible : Visibility.Collapsed;
+            excluir.IsEnabled = !ocupado && AjusteChave.TravaExclusao(l) == null;
+            excluir.ToolTip = AjusteChave.TravaExclusao(l) ?? "Pedido vazio, apaga os itens e a linha id_nota_saida " + a.IdMetre + " (com backup)";
+            if (duplicada)
+            {
+                G<TextBlock>("DetAjusteTexto").Text = l.Status == Status.LinhaExcluida
+                    ? "Linha da contingência excluída. Feche e abra o Metre para atualizar." + (a.Backup != null ? "\nBackup (com os INSERT para restaurar): " + a.Backup : "")
+                    : "A venda já está autorizada na linha id_nota_saida " + a.IdOutraLinha + " (pedido " + a.Pedido + ", R$ " + Analisador.Moeda(a.ValorSistema) +
+                      "). Esta linha (id_nota_saida " + a.IdMetre + ", chave " + a.ChaveAtual + ") sobrou: o sistema limpa o pedido, apaga os itens e a linha.";
+                G<FrameworkElement>("DetAjustePortal").Visibility = Visibility.Collapsed;
+                G<Button>("BtnAjustarChave").Visibility = G<Button>("BtnDesfazerAjuste").Visibility = Visibility.Collapsed;
+                return;
+            }
             string texto;
             if (l.Status == Status.ChaveAjustada)
                 texto = "chave_acesso trocada no banco (antes " + a.ChaveAntiga + "). Feche e abra o Metre para atualizar." +
@@ -746,6 +764,44 @@ namespace DuplicidadeNfce
                     AtualizarLinha(l);
                     MostrarStatus("Nota " + l.Serie + "/" + l.Numero + ": chave ajustada no banco. " + AjusteChave.AvisoMetre);
                     Aviso(AjusteChave.AvisoMetre);
+                }, TaskScheduler.FromCurrentSynchronizationContext());
+        }
+
+        void ExcluirDuplicada()
+        {
+            var l = Selecionada();
+            if (l == null || l.Ajuste == null || motor == null || ocupado) return;
+            string trava = AjusteChave.TravaExclusao(l);
+            if (trava != null) { Aviso("A exclusão não está liberada: " + trava); return; }
+            var a = l.Ajuste;
+            if (MessageBox.Show(W, "EXCLUIR a linha duplicada do banco do Metre?\n\n" +
+                "Nota " + l.Serie + "/" + l.Numero + " · pedido " + a.Pedido + " · R$ " + Analisador.Moeda(a.ValorSistema) + "\n\n" +
+                "Fica: id_nota_saida " + a.IdOutraLinha + " (chave autorizada " + a.ChaveNova + ")\n" +
+                "Sai: id_nota_saida " + a.IdMetre + " (contingência, chave " + a.ChaveAtual + ")\n\n" +
+                "O pedido dessa linha é limpo, os itens dela (nota_saida_item) e a linha são apagados, numa transação. " +
+                "Antes, a linha e os itens vão para um backup em " + motor.PastaBackups + ", com os comandos para restaurar.",
+                Program.NomeSistema, MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
+            var m = motor;
+            Ocupado(true, "Excluindo a linha duplicada...");
+            Task.Factory.StartNew(() => AjusteChave.ExcluirDuplicada(m.Cfg, l, m.PastaBackups, m.Historico, m.Log))
+                .ContinueWith(t =>
+                {
+                    Ocupado(false, null);
+                    if (t.IsFaulted)
+                    {
+                        l.Status = Status.ErroAjuste;
+                        l.Motivo = "exclusão NÃO feita: " + t.Exception.InnerException.Message;
+                        AtualizarLinha(l);
+                        Erro(l.Motivo);
+                        return;
+                    }
+                    var r = t.Result;
+                    l.Status = Status.LinhaExcluida;
+                    l.Motivo = "linha id_nota_saida " + a.IdMetre + " excluída em " + r.DataHora + "; a venda segue na id_nota_saida " + a.IdOutraLinha + " (backup " + r.CaminhoDestino + ")";
+                    a.Backup = r.CaminhoDestino;
+                    AtualizarLinha(l);
+                    MostrarStatus("Nota " + l.Serie + "/" + l.Numero + ": linha duplicada excluída. Feche e abra o Metre para atualizar.");
+                    Aviso("Linha duplicada excluída. Feche e abra o Metre para atualizar.");
                 }, TaskScheduler.FromCurrentSynchronizationContext());
         }
 

@@ -69,6 +69,8 @@ marque as notas → *Processar marcadas* (consulta a SEFAZ, escolhe o arquivo e 
 | AJUSTE DE CHAVE | autorizada na SEFAZ, sem XML da chave autorizada para copiar e com o mesmo valor: ajustar a chave no banco |
 | CHAVE AJUSTADA | `chave_acesso` trocada no banco; falta fechar e abrir o Metre |
 | AJUSTE DESFEITO / ERRO_AJUSTE | ajuste desfeito pelo backup / ajuste recusado (nada foi alterado) |
+| LINHA DUPLICADA | a chave autorizada já está em outra linha da mesma venda (série, número, pedido e valor iguais): a linha da contingência sobrou e pode ser excluída |
+| LINHA EXCLUÍDA | a linha duplicada foi excluída do banco; falta fechar e abrir o Metre |
 
 ## Lista da contingência (banco do Metre)
 
@@ -177,6 +179,20 @@ ainda em contingência: desfazer depois que o Metre autorizou deixaria a nota au
 recusado. O usuário do banco precisa de
 `UPDATE` em `chef.nota_saida` (é permissão do usuário no MariaDB, não da senha): `.\NFCe-Contingencias.exe --testar-banco`
 mostra as permissões e avisa se falta o UPDATE.
+
+### Linha duplicada (a venda já está autorizada em outra linha)
+
+Às vezes a mesma venda fica duas vezes em `chef.nota_saida`: uma linha já com a chave autorizada (por exemplo,
+transmitida depois com "autorização fora de prazo") e outra ainda em contingência, com a chave rejeitada (539). O
+ajuste de chave não serve, porque a chave autorizada não pode ficar em duas linhas. Quando a outra linha tem a
+**mesma série, número, pedido e valor**, a linha da contingência fica como **LINHA DUPLICADA** e o botão **Excluir
+linha duplicada** faz o que o suporte fazia à mão (visto em 06/11 na 18/12415): numa transação, com as duas linhas
+travadas e conferidas de novo, limpa o `num_pedido` dessa linha (desvincula do pedido), apaga os itens dela em
+`nota_saida_item` e apaga a linha. A linha autorizada e os itens dela não são tocados. Se outra tabela (além de
+`nota_saida_item`) apontar para a linha, a exclusão é recusada. Antes, a linha e os itens vão para `backups\`, com os
+comandos `INSERT` para restaurar no HeidiSQL. Com pedido ou valor diferente, fica PENDENTE com o que difere, para
+conferir à mão. O usuário do banco precisa de `DELETE` em `chef.nota_saida` e `chef.nota_saida_item`. Depois, feche e
+abra o Metre.
 
 ## Pastas das cópias
 
