@@ -791,7 +791,7 @@
               <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
             <DockPanel>
-              <TextBlock DockPanel.Dock="Top" Style="{StaticResource RotuloCampo}" Text="Números (separe por vírgula, espaço ou linha; 1201-1205 busca a faixa)"/>
+              <TextBlock DockPanel.Dock="Top" Style="{StaticResource RotuloCampo}" Text="Números (separe por vírgula, espaço ou linha; 1201-1205 busca a faixa; ou cole chaves de acesso)"/>
               <TextBox x:Name="FalNumeros" AcceptsReturn="True" TextWrapping="Wrap" FontFamily="Consolas" FontSize="13" MinHeight="34" MaxHeight="76"
                        VerticalScrollBarVisibility="Auto" BorderBrush="{StaticResource Borda}" Padding="6,7"/>
             </DockPanel>
@@ -1147,6 +1147,27 @@
               <Button x:Name="BtnSalvarAjustes" Grid.Row="3" Grid.Column="1" Style="{StaticResource BtnPrimario}" Content="Salvar ajustes" HorizontalAlignment="Left" Margin="0,10,0,0"/>
             </Grid>
           </Border>
+          <!-- Senha do certificado: só quando a dos INIs do Metre não abre o .pfx; testada antes de salvar (DPAPI). -->
+          <Border DockPanel.Dock="Top" BorderBrush="#EEF0F3" BorderThickness="0,0,0,1" Padding="0,0,0,12" Margin="0,0,0,8">
+            <Grid>
+              <Grid.ColumnDefinitions><ColumnDefinition Width="260"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+              <StackPanel VerticalAlignment="Top" Margin="0,4,0,0">
+                <TextBlock Text="Senha do certificado digital" Foreground="{StaticResource TextoSec}"/>
+                <TextBlock Text="Só se a senha do Metre não abrir o certificado (a do Metre continua sendo usada automaticamente)" FontSize="11"
+                           Foreground="{StaticResource TextoSec}" TextWrapping="Wrap" Margin="0,0,12,0"/>
+              </StackPanel>
+              <StackPanel Grid.Column="1">
+                <WrapPanel>
+                  <PasswordBox x:Name="TxtCertSenha" Width="160" Padding="4,3" Margin="0,0,14,6"/>
+                  <Button x:Name="BtnSalvarCertSenha" Style="{StaticResource BtnSecundario}" Content="Testar e salvar" Margin="0,0,14,6"/>
+                  <Button x:Name="BtnApagarCertSenha" Style="{StaticResource BtnSecundario}" Content="Apagar a salva" Margin="0,0,0,6"/>
+                </WrapPanel>
+                <TextBlock x:Name="TxtCertResultado" FontSize="11.5" Foreground="{StaticResource TextoSec}" TextWrapping="Wrap"
+                           Text="Testada nos .pfx da pasta do certificado antes de salvar; fica criptografada no duplicidade.ini e só abre neste computador."/>
+              </StackPanel>
+            </Grid>
+          </Border>
+
           <!-- Conexão remota (experimental): só testa; não grava nada nem muda a conexão em uso. -->
           <Border DockPanel.Dock="Top" BorderBrush="#EEF0F3" BorderThickness="0,0,0,1" Padding="0,0,0,12" Margin="0,0,0,8">
             <Grid>

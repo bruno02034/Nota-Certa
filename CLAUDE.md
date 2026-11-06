@@ -15,7 +15,7 @@ descreve as regras de negócio em detalhe; leia-o antes de mudar comportamento. 
   (modelo) para `NFCe-Contingencias\` só se lá ainda não houver um (o de lá guarda a senha do banco criptografada; opção
   nova no modelo precisa ir à mão).
 - O sistema se chamava NotaCerta: os nomes de recurso (`NotaCerta.*`), as variáveis `NOTACERTA_*` e as entropias DPAPI
-  (`"NotaCerta/DbSenha/v1"`, `"NotaCerta/Backups/v1"`) ficam assim; mudar as entropias impede abrir senhas e backups já gravados.
+  (`"NotaCerta/DbSenha/v1"`, `"NotaCerta/Backups/v1"`, `"NotaCerta/CertSenha/v1"`) ficam assim; mudar as entropias impede abrir senhas e backups já gravados.
   **O csc é C# 5**: nada de `?.`, `$"..."`, `nameof`, expressões `=>` em membros, etc.
 - Testes são scripts PowerShell que rodam o exe (ou compilam um harness com as mesmas fontes); não há framework de teste
   nem como rodar um caso isolado, cada script roda tudo e imprime `OK`/`FALHA` por verificação:

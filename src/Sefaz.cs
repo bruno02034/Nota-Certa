@@ -322,6 +322,23 @@ namespace DuplicidadeNfce
             return null;
         }
 
+        // Configurações: os .pfx que a senha abre (arquivo, titular e validade). A senha não entra no texto.
+        public static List<string> TestarSenha(Config cfg, string senha)
+        {
+            var abertos = new List<string>();
+            foreach (string f in ListarPfx(cfg))
+            {
+                try
+                {
+                    var c = new X509Certificate2(f, senha);
+                    abertos.Add(Path.GetFileName(f) + ": " + c.GetNameInfo(X509NameType.SimpleName, false) + ", válido até " + c.NotAfter.ToString("dd/MM/yyyy") +
+                        (c.NotAfter < DateTime.Now ? " (VENCIDO)" : ""));
+                }
+                catch (CryptographicException) { }
+            }
+            return abertos;
+        }
+
         static string DescreverFontes(Config cfg)
         {
             return MetreIni.Lidos.Count == 0

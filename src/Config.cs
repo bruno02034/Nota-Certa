@@ -23,6 +23,8 @@ namespace DuplicidadeNfce
         public string PastaEmpresas = @"C:\Chef\Empresa";
         // Opcional: se vazia, a senha vem dos INIs do sistema emissor (IniMetre).
         public string CertificadoSenha = "";
+        public string CertificadoSenhaProtegida = "";   // digitada em Configurações (DPAPI)
+        public string CertificadoSenhaSalva;            // a protegida já aberta; null se não houver ou não abrir aqui
         public string IniMetre = @"C:\Chef\NFCe.ini;C:\Chef\Config.ini";
 
         // De onde vem a lista da contingência: "banco" (chef.nota_saida, só leitura), "csv:<arquivo>" (exportado do
@@ -75,6 +77,11 @@ namespace DuplicidadeNfce
                 try { c.DbSenha = SenhaBanco.Abrir(c.DbSenhaProtegida); }
                 catch (Exception ex) { c.ErroSenhaProtegida = ex.Message; }
             }
+            if (c.CertificadoSenhaProtegida != "")
+            {
+                try { c.CertificadoSenhaSalva = SenhaBanco.AbrirCert(c.CertificadoSenhaProtegida); }
+                catch (Exception) { }   // ini de outra máquina: vale só a senha dos INIs do Metre
+            }
             return c;
         }
 
@@ -94,6 +101,7 @@ namespace DuplicidadeNfce
                 case "certificadopfx": CertificadoPfx = valor; break;
                 case "pastaempresas": PastaEmpresas = valor; break;
                 case "certificadosenha": CertificadoSenha = valor; break;
+                case "certificadosenhaprotegida": CertificadoSenhaProtegida = valor; break;
                 case "inimetre": IniMetre = valor; break;
                 case "fontecontingencia": FonteContingencia = valor; break;
                 case "dbhost": DbHost = valor; break;

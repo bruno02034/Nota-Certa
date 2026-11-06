@@ -103,7 +103,9 @@ namespace DuplicidadeNfce
         {
             var e = Entrada();
             var t = G<TextBlock>("FalTotal");
-            t.Text = e.Numeros.Count + " número(s) a buscar";
+            t.Text = e.Numeros.Count + " número(s) a buscar" + (e.Chaves.Count > 0 ? " (" + e.Chaves.Count + " por chave de acesso)" : "");
+            var caixaSerie = G<TextBox>("FalSerie");
+            if (e.SeriesChaves.Count == 1 && caixaSerie.Text.Trim() == "") caixaSerie.Text = e.SeriesChaves.Min.ToString();
             t.Foreground = e.Numeros.Count > cfg().LimiteNumerosFaltantes ? Brushes.Firebrick : (Brush)W.FindResource("Azul");
             var av = G<TextBlock>("FalAvisos");
             av.Text = e.Avisos();
@@ -113,9 +115,10 @@ namespace DuplicidadeNfce
         {
             if (ocupado) return;
             var entrada = Entrada();
-            if (entrada.Numeros.Count == 0) { Aviso("Digite ao menos um número (ex.: 1201, 1202)."); return; }
+            if (entrada.Numeros.Count == 0) { Aviso("Digite ao menos um número ou chave de acesso (ex.: 1201, 1202)."); return; }
             int serie;
-            if (!int.TryParse(G<TextBox>("FalSerie").Text.Trim(), out serie) || serie < 0 || serie > 999) { Aviso("Informe a série (ex.: 2)."); return; }
+            string erroSerie = entrada.ConferirSerie(G<TextBox>("FalSerie").Text, out serie);
+            if (erroSerie != null) { Aviso(erroSerie); return; }
             var numeros = entrada.Numeros;
             string avisos = entrada.Avisos();
             bool recopiar = G<CheckBox>("FalRecopiar").IsChecked == true;
@@ -130,6 +133,7 @@ namespace DuplicidadeNfce
                 var m = new MotorFaltantes(c, AppDomain.CurrentDomain.BaseDirectory);
                 m.Log.AoMostrar = Status;
                 if (avisos != "") m.Log.Info("AVISO na entrada: " + avisos);
+                m.ChavesInformadas = entrada.Chaves;
                 try
                 {
                     m.Executar(serie, numeros, true, recopiar, (feitos, total) => W.Dispatcher.BeginInvoke(new Action(() =>

@@ -36,6 +36,14 @@ namespace DuplicidadeNfce
 
         static void Ler(Config cfg, List<FonteSenha> Senhas, List<string> Pfxs, List<string> Lidos)
         {
+            LerInis(cfg, Senhas, Pfxs, Lidos);
+            // A digitada em Configurações só entra depois das do Metre (que continuam valendo sozinhas quando abrem).
+            if (!string.IsNullOrEmpty(cfg.CertificadoSenhaSalva) && !Senhas.Any(s => s.Valor == cfg.CertificadoSenhaSalva))
+                Senhas.Add(new FonteSenha { Origem = "senha salva em Configurações", Valor = cfg.CertificadoSenhaSalva });
+        }
+
+        static void LerInis(Config cfg, List<FonteSenha> Senhas, List<string> Pfxs, List<string> Lidos)
+        {
             if (!string.IsNullOrEmpty(cfg.CertificadoSenha))
                 Senhas.Add(new FonteSenha { Origem = "duplicidade.ini CertificadoSenha", Valor = cfg.CertificadoSenha });
 

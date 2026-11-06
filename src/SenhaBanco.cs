@@ -30,6 +30,21 @@ namespace DuplicidadeNfce
             }
         }
 
+        // Senha do certificado digitada em Configurações (quando a dos INIs do Metre não abre o .pfx): mesmo esquema,
+        // outra entropia. Só complementa: as senhas dos INIs do Metre continuam sendo tentadas primeiro.
+        public const string ChaveCert = "CertificadoSenhaProtegida";
+        static readonly byte[] EntropiaCert = Encoding.UTF8.GetBytes("NotaCerta/CertSenha/v1");
+
+        public static string ProtegerCert(string senha)
+        {
+            return Convert.ToBase64String(ProtectedData.Protect(Encoding.UTF8.GetBytes(senha), EntropiaCert, DataProtectionScope.LocalMachine));
+        }
+
+        public static string AbrirCert(string protegida)
+        {
+            return Encoding.UTF8.GetString(ProtectedData.Unprotect(Convert.FromBase64String(protegida), EntropiaCert, DataProtectionScope.LocalMachine));
+        }
+
         // Grava DbSenhaProtegida no ini e esvazia o DbSenha (texto simples). As demais linhas ficam como estão.
         public static void GravarNoIni(string arqIni, string senha)
         {

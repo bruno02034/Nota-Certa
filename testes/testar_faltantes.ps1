@@ -284,6 +284,34 @@ try {
     Verdade ($r['501'].Copia -eq 'JÁ COPIADO' -and @(Get-ChildItem $ultimaPasta -Filter *.xml).Count -eq 0) 'segunda busca: nada copiado de novo (historico)'
     $r = Rodar $cfg ($Faixas + '--copiar' + '--recopiar')
     Verdade ($r['501'].Copia -eq 'COPIADO' -and @(Get-ChildItem $ultimaPasta -Filter *.xml).Count -eq 15) '--recopiar copia de novo'
+
+    # ---------- Busca por chave de acesso (relatório de importação): série e número saem da chave ----------
+    Write-Host '--- Por chave de acesso'
+    $semBanco = "$cfg`r`nDbHost=127.0.0.1`r`nDbPorta=1"   # banco fora do ar: a busca segue sem ele
+    $r = Rodar $semBanco @('--numeros', "$($n503a.Chave).xml, $($n508.Chave)")
+    Verdade ($codigo -eq 0 -and @($r.Keys).Count -eq 2 -and $r['503'] -and $r['508']) 'serie e numero tirados das chaves (sem --serie)'
+    Verdade ($r['503'].Status -eq 'ENCONTRADA' -and $r['503'].Motivo.Contains("chave informada $($n503a.Chave)") -and
+        $r['503'].Motivo.Contains("NÃO é a chave encontrada ($($n503b.Chave))")) '503 pela chave nao autorizada: acha a autorizada e avisa'
+    Verdade ($r['508'].Motivo.Contains("chave informada $($n508.Chave) · é a chave encontrada")) '508: chave informada e a encontrada'
+    Verdade ($r['503'].'Chave informada' -eq "=`"$($n503a.Chave)`"") 'chave informada no relatorio'
+    Verdade ($ultimaSaida.Contains('Banco não consultado para as chaves')) 'sem banco a busca por chave segue e avisa'
+    $r = Rodar $semBanco @('--serie', '8', '--numeros', $n503a.Chave)
+    Verdade ($codigo -eq 1 -and $ultimaSaida.Contains('não é a das chaves')) 'serie digitada diferente da das chaves e recusada'
+    $ruim = $n503a.Chave.Substring(0, 43) + (([int][string]$n503a.Chave[43] + 1) % 10)
+    $r = Rodar $semBanco @('--numeros', "$ruim $($n508.Chave)")
+    Verdade ($codigo -eq 0 -and @($r.Keys).Count -eq 1 -and $ultimaSaida.Contains('dígito verificador errado')) 'chave com digito verificador errado ignorada'
+
+    # ---------- Senha do certificado salva em Configurações (DPAPI), sem CertificadoSenha nem INI do Metre ----------
+    Write-Host '--- Senha do certificado salva'
+    Add-Type -AssemblyName System.Security
+    $prot = [Convert]::ToBase64String([Security.Cryptography.ProtectedData]::Protect([Text.Encoding]::UTF8.GetBytes($senha),
+        [Text.Encoding]::UTF8.GetBytes('NotaCerta/CertSenha/v1'), [Security.Cryptography.DataProtectionScope]::LocalMachine))
+    $cfgSalva = "UrlConsulta=http://127.0.0.1:$porta/nfce/services/NFeConsultaProtocolo4`r`nCertificadoPfx=$tmp\emp\1\Certificado`r`nPastaEmpresas=$tmp\emp`r`nCertificadoSenhaProtegida=$prot"
+    $r = Rodar $cfgSalva @('--serie', '7', '--numeros', '501')
+    Verdade ($r['501'].Status -eq 'ENCONTRADA' -and $ultimaSaida.Contains('aberto com a senha de senha salva em Configurações')) 'senha salva abre o certificado e a SEFAZ e consultada'
+    Verdade (-not $ultimaSaida.Contains($senha)) 'senha salva fora da tela e do log'
+    $r = Rodar ($cfgSalva -replace 'CertificadoSenhaProtegida=.*', 'CertificadoSenhaProtegida=AAAA') @('--serie', '7', '--numeros', '501')
+    Verdade ($codigo -eq 0 -and $r['501'].Status -eq 'PENDENTE') 'senha salva que nao abre (outra maquina): segue sem SEFAZ'
 }
 finally {
     if ($servidor) { New-Item -ItemType File -Path (Join-Path $tmp 'parar') -Force | Out-Null; $servidor.WaitForExit(5000) | Out-Null }

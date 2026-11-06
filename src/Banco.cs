@@ -389,6 +389,26 @@ namespace DuplicidadeNfce
                 .Select(v => v[0]).ToList();
         }
 
+        // Notas Faltantes por chave: a linha de nota_saida de cada chave (índice único em chave_acesso). Só leitura.
+        // O chefxml não entra: não tem índice por chave e tem GBs (a consulta varreria tudo).
+        public static Dictionary<string, string> ChavesNoBanco(Config cfg, IEnumerable<string> chaves, Action<string> passo)
+        {
+            var r = new Dictionary<string, string>();
+            var ks = chaves.Select(k => AjusteChave.SoDigitos(k, 44)).ToList();
+            if (ks.Count == 0) return r;
+            string lista = string.Join(",", ks.Select(k => "'" + k + "'"));
+            using (var s = Sessao.Abrir(cfg, passo, true))
+            {
+                foreach (var v in s.Consultar("SELECT chave_acesso, serie, numero, situacao FROM " + cfg.DbBanco + ".nota_saida WHERE chave_acesso IN (" + lista + ")"))
+                {
+                    string k = v[0], nota = v[1] + "/" + v[2];
+                    string daChave = int.Parse(k.Substring(22, 3)) + "/" + long.Parse(k.Substring(25, 9));
+                    r[k] = "no banco: nota " + nota + " (" + v[3] + ")" + (nota != daChave ? " ATENÇÃO: no banco o número é diferente do da chave" : "");
+                }
+            }
+            return r;
+        }
+
         // Configurações → conexão remota (experimental): só conecta, em sessão somente leitura, e resume o que achou.
         public static string TestarConexao(Config cfg)
         {

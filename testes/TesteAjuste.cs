@@ -488,6 +488,23 @@ namespace DuplicidadeNfce
                     "conexão remota: a configuração em uso continua a mesma");
             }
 
+            // ---------- Notas Faltantes por chave: a linha de nota_saida de cada chave ----------
+            {
+                string k1999 = Sql("SELECT chave_acesso FROM chef.nota_saida WHERE id_nota_saida = 501")[0][0];
+                string fora = k1999.Substring(0, 25) + "000009999" + k1999.Substring(34);
+                var nb = Banco.ChavesNoBanco(raiz, new[] { k1999, fora }, null);
+                string t;
+                Verdade(nb.TryGetValue(k1999, out t) && t.Contains("/1999 (Autorizada)") && !t.Contains("ATENÇÃO"), "chave no banco: número e situação (" + t + ")");
+                Verdade(!nb.ContainsKey(fora), "chave fora do banco não aparece");
+                Exec("UPDATE chef.nota_saida SET numero = 1998 WHERE id_nota_saida = 501");
+                try
+                {
+                    t = Banco.ChavesNoBanco(raiz, new[] { k1999 }, null)[k1999];
+                    Verdade(t.Contains("/1998") && t.Contains("ATENÇÃO: no banco o número é diferente"), "número do banco diferente do da chave avisado (" + t + ")");
+                }
+                finally { Exec("UPDATE chef.nota_saida SET numero = 1999 WHERE id_nota_saida = 501"); }
+            }
+
             // ---------- Contingência 2: variações do nome e volta para a contingência normal ----------
             {
                 string[] sit = { "Em Contigência2", "Em Contingência 2", "Contingencia 2", "Em Contigência" };

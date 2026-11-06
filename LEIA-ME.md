@@ -14,6 +14,10 @@ soltos direto em `C:\Chef\NFCe`; para estes, o dia é a data de emissão (`dhEmi
 
 O certificado e a senha são lidos de `C:\Chef\NFCe.ini` (ou `C:\Chef\Config.ini`); o `.pfx` é procurado
 também em `C:\Chef\Empresa\*\Certificado`, valendo o do CNPJ emitente. A senha nunca aparece em tela, log ou relatório.
+Se a senha do Metre não abrir o certificado (ex.: certificado novo; as notas ficam PENDENTE com "nenhuma senha
+encontrada abriu o arquivo"), digite-a em **Configurações → Senha do certificado digital** e clique em *Testar e
+salvar*: ela só é salva se abrir algum `.pfx`, e fica criptografada no `duplicidade.ini` (`CertificadoSenhaProtegida`,
+só abre neste computador). A senha do Metre continua sendo tentada primeiro; a salva é só mais uma opção.
 
 ## Uso
 
@@ -213,6 +217,16 @@ Para o relatório "Notas não lançadas de Saídas" (números sem XML no fiscal;
 Menu **Notas Faltantes**: digite os **Números** e a **Série**. Os números podem ser separados por vírgula, ponto e
 vírgula, espaço ou linha; `1201-1205` busca a faixa inteira. A contagem "X número(s) a buscar" é atualizada
 enquanto você digita; repetidos e inválidos são avisados e ignorados, sem impedir a busca dos demais.
+
+**Por chave de acesso** (ex.: relatório de importação da contabilidade com "O arquivo não possui o número de
+protocolo de autorização"): cole as chaves no campo dos números, também com `.xml` no fim. A série e o número
+saem da chave; a série é preenchida sozinha, e chaves de séries diferentes são buscadas uma série por vez. Chave
+com dígito verificador errado ou que não é de NFC-e (modelo 65) é ignorada com aviso. A busca segue igual à dos
+números (acha a nota autorizada daquele número, mesmo que a chave informada seja outra). Em cada linha, o motivo e a coluna
+"Chave informada" do relatório dizem:
+- se a chave informada **é** a chave encontrada ou **não é** (por exemplo, era a da contingência e a SEFAZ autorizou outra);
+- o que o banco do Metre tem dela: a linha de `nota_saida` com série/número e situação (só leitura, pela chave), com
+  aviso se o número do banco for diferente do da chave. Sem banco, a busca segue e avisa.
 
 - O CNPJ não é informado: vem do emitente dos XMLs encontrados e escolhe o certificado, o nome da pasta e o
   histórico. A tela mostra o CNPJ e a empresa usados. Se um número tiver XMLs de mais de um emitente, ele fica

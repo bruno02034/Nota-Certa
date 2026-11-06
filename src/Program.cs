@@ -59,8 +59,9 @@ Notas Faltantes (relatório ""Notas não lançadas de Saídas""):
      NFCe-Contingencias.exe --faltantes --serie 2 --numeros ""501, 503, 510-512"" [--copiar] [--zip]
 
   --faltantes        busca os XMLs dos números faltantes (o CNPJ do emitente vem dos próprios XMLs)
-  --serie <n>        série das notas
-  --numeros <lista>  números separados por vírgula, ponto e vírgula, espaço ou linha; 510-512 = faixa
+  --serie <n>        série das notas (com chaves de acesso, vem da chave)
+  --numeros <lista>  números separados por vírgula, ponto e vírgula, espaço ou linha; 510-512 = faixa;
+                     ou chaves de acesso de 44 dígitos (confere a chave e o banco)
   --numeros-arquivo <arq>  arquivo com os números (mesmo formato)
   --copiar           copia para PastaNotasFaltantes\<CNPJ>_<data-hora> e confere
   --recopiar         copia também os números que já constam no histórico
@@ -224,16 +225,17 @@ a cópia nunca move nem sobrescreve, e fica registrada em historico.csv na pasta
                 if (!File.Exists(op.ArqNumeros)) throw new Exception("arquivo de números não existe: " + op.ArqNumeros);
                 textos.AddRange(File.ReadAllLines(op.ArqNumeros, Encoding.UTF8).Select(x => x.Split('#')[0]));
             }
+            var cfg = op.CarregarConfig();
+            var entrada = EntradaNumeros.Ler(string.Join("\n", textos), cfg.LimiteNumerosFaltantes);
             int serie;
-            if (op.Serie == null || !int.TryParse(op.Serie.Trim(), out serie) || serie < 0 || serie > 999)
+            string erroSerie = entrada.ConferirSerie(op.Serie, out serie);
+            if (erroSerie != null)
             {
-                Console.WriteLine("Informe --serie (ex.: 2) e os números (--numeros ou --numeros-arquivo).");
+                Console.WriteLine(erroSerie + " Informe --serie (ex.: 2) e os números ou chaves (--numeros ou --numeros-arquivo).");
                 Console.WriteLine();
                 Console.WriteLine(Ajuda);
                 return 1;
             }
-            var cfg = op.CarregarConfig();
-            var entrada = EntradaNumeros.Ler(string.Join("\n", textos), cfg.LimiteNumerosFaltantes);
             if (entrada.Avisos() != "") Console.WriteLine("AVISO: " + entrada.Avisos());
             if (entrada.Numeros.Count == 0)
             {
@@ -243,6 +245,7 @@ a cópia nunca move nem sobrescreve, e fica registrada em historico.csv na pasta
             using (var m = new MotorFaltantes(cfg, AppDomain.CurrentDomain.BaseDirectory))
             {
                 if (entrada.Avisos() != "") m.Log.Info("AVISO na entrada: " + entrada.Avisos());
+                m.ChavesInformadas = entrada.Chaves;
                 m.Executar(serie, entrada.Numeros, op.Copiar, op.Recopiar, null);
                 if (op.Zip)
                 {

@@ -42,6 +42,9 @@ namespace DuplicidadeNfce
         public List<long> Numeros = new List<long>();
         public List<string> Invalidos = new List<string>();
         public List<long> Repetidos = new List<long>();
+        // Chaves de acesso coladas no lugar dos números (ex.: do relatório de importação da contabilidade): número -> chave.
+        public Dictionary<long, string> Chaves = new Dictionary<long, string>();
+        public SortedSet<int> SeriesChaves = new SortedSet<int>();
 
         public static EntradaNumeros Ler(string texto, int limite)
         {
@@ -51,6 +54,18 @@ namespace DuplicidadeNfce
             foreach (string item in Regex.Split(t, @"[,;\s]+"))
             {
                 if (item == "") continue;
+                var mk = Regex.Match(item, @"(?<!\d)(\d{44})(?!\d)");
+                if (mk.Success)
+                {
+                    string k = mk.Groups[1].Value;
+                    if (!ChaveValida(k)) { e.Invalidos.Add(item + " (chave com dígito verificador errado)"); continue; }
+                    if (k.Substring(20, 2) != "65") { e.Invalidos.Add(item + " (chave de modelo " + k.Substring(20, 2) + ", não é NFC-e)"); continue; }
+                    long num = long.Parse(k.Substring(25, 9));
+                    e.SeriesChaves.Add(int.Parse(k.Substring(22, 3)));
+                    if (vistos.Add(num)) { e.Numeros.Add(num); e.Chaves[num] = k; }
+                    else if (!e.Repetidos.Contains(num)) e.Repetidos.Add(num);
+                    continue;
+                }
                 var m = Regex.Match(item, @"^(\d{1,9})(?:-(\d{1,9}))?$");
                 long ini, fim;
                 if (!m.Success || !long.TryParse(m.Groups[1].Value, out ini)) { e.Invalidos.Add(item); continue; }
@@ -71,7 +86,36 @@ namespace DuplicidadeNfce
             var l = new List<string>();
             if (Invalidos.Count > 0) l.Add(Invalidos.Count + " inválido(s) ignorado(s): " + string.Join(", ", Invalidos));
             if (Repetidos.Count > 0) l.Add(Repetidos.Count + " repetido(s), buscado(s) uma vez: " + string.Join(", ", Repetidos));
+            if (SeriesChaves.Count > 1) l.Add("chaves de mais de uma série (" + string.Join(", ", SeriesChaves) + "): busque uma série por vez");
             return string.Join(" · ", l);
+        }
+
+        // Série da busca: a das chaves, se houver (a digitada tem de ser a mesma); null = ok, senão o erro.
+        public string ConferirSerie(string digitada, out int serie)
+        {
+            serie = -1;
+            bool temDigitada = !string.IsNullOrWhiteSpace(digitada);
+            if (SeriesChaves.Count > 1) return "As chaves são de mais de uma série (" + string.Join(", ", SeriesChaves) + "): busque uma série por vez.";
+            if (temDigitada && (!int.TryParse(digitada.Trim(), out serie) || serie < 0 || serie > 999)) return "Série inválida: " + digitada.Trim();
+            if (SeriesChaves.Count == 1)
+            {
+                int s = SeriesChaves.Min;
+                if (temDigitada && serie != s) return "A série digitada (" + serie + ") não é a das chaves (" + s + ").";
+                serie = s;
+                return null;
+            }
+            return temDigitada ? null : "Informe a série (ex.: 2).";
+        }
+
+        // Dígito verificador da chave (módulo 11, pesos 2 a 9 da direita para a esquerda).
+        public static bool ChaveValida(string k)
+        {
+            if (k == null || !Regex.IsMatch(k, @"^\d{44}$")) return false;
+            int soma = 0, peso = 2;
+            for (int i = 42; i >= 0; i--) { soma += (k[i] - '0') * peso; peso = peso == 9 ? 2 : peso + 1; }
+            int dv = 11 - soma % 11;
+            if (dv >= 10) dv = 0;
+            return k[43] - '0' == dv;
         }
     }
 
@@ -88,6 +132,7 @@ namespace DuplicidadeNfce
         public int Serie;
         public string Status = StatusFaltante.Pendente, Motivo, Copia = "";
         public string Chave, DhEmi, SituacaoSefaz, CStat, NProt, DigVal;
+        public string ChaveInformada;   // quando a busca foi por chave de acesso
         public string Cnpj, Emitente;   // emitente descoberto pelos XMLs do número
         public bool ForaDoMesPrincipal; // emitida num mês diferente do da maioria das notas encontradas
 
@@ -304,6 +349,7 @@ namespace DuplicidadeNfce
                 Log.Tela("Emitente: " + DescricaoEmitente);
             }
             string idEmitente = Cnpj ?? "SEM-EMITENTE";
+            if (ChavesInformadas.Count > 0) ConferirChaves(serie);
 
             // Sem mês de referência: os meses de emissão aparecem, com destaque se as notas forem de meses diferentes.
             Meses = Itens.Where(i => i.MesEmissao != null).GroupBy(i => i.MesEmissao).OrderByDescending(g => g.Count())
@@ -518,6 +564,31 @@ namespace DuplicidadeNfce
             Pendente(item, "SEFAZ respondeu " + outra.Value.CStat + " - " + outra.Value.XMotivo + " para " + outra.Key);
             foreach (var a in item.Arquivos.Where(x => x.Motivo == null)) a.Motivo = "SEFAZ: " + outra.Value.CStat + " - " + outra.Value.XMotivo;
             return item;
+        }
+
+        // Busca por chave: diz se a chave informada é a encontrada e o que o banco do Metre tem dela (só leitura).
+        public Dictionary<long, string> ChavesInformadas = new Dictionary<long, string>();
+
+        void ConferirChaves(int serie)
+        {
+            var noBanco = new Dictionary<string, string>();
+            string erroBanco = null;
+            try { noBanco = Banco.ChavesNoBanco(Cfg, ChavesInformadas.Values, x => Log.Info("Banco: " + x)); }
+            catch (Exception ex) { erroBanco = ex.Message; Log.Tela("Banco não consultado para as chaves: " + ex.Message); }
+            foreach (var item in Itens)
+            {
+                string k;
+                if (!ChavesInformadas.TryGetValue(item.Numero, out k)) continue;
+                item.ChaveInformada = k;
+                var p = new List<string> { "chave informada " + k };
+                if (item.Chave != null) p.Add(item.Chave == k ? "é a chave encontrada" : "NÃO é a chave encontrada (" + item.Chave + ")");
+                if (item.Cnpj != null && item.Cnpj != k.Substring(6, 14)) p.Add("ATENÇÃO: a chave é do CNPJ " + FormatarCnpj(k.Substring(6, 14)));
+                string b;
+                if (noBanco.TryGetValue(k, out b)) p.Add(b);
+                else if (erroBanco == null) p.Add("chave não está no nota_saida do banco");
+                item.Motivo = string.Join(" · ", p) + (string.IsNullOrEmpty(item.Motivo) ? "" : " · " + item.Motivo);
+                Log.Info("  " + item.Nota + ": " + string.Join(" · ", p));
+            }
         }
 
         public string DescricaoMeses
@@ -831,7 +902,7 @@ namespace DuplicidadeNfce
         static readonly string[] Cabecalho =
         {
             "Numero", "Serie", "CNPJ emitente", "Status", "Chave", "Emissao", "Mes emissao", "Valor", "Protocolo", "cStat SEFAZ", "Situacao SEFAZ",
-            "Arquivo(s) de origem", "Arquivo(s) entregue(s)", "Copia", "Motivo"
+            "Arquivo(s) de origem", "Arquivo(s) entregue(s)", "Copia", "Motivo", "Chave informada"
         };
 
         public static void GravarCsv(string caminho, IEnumerable<ItemFaltante> itens)
@@ -847,7 +918,7 @@ namespace DuplicidadeNfce
                 {
                     i.Numero.ToString(), i.Serie.ToString(), FormatarCnpj(i.Cnpj), i.Status, Csv.Formula(i.Chave), d.HasValue ? d.Value.ToString("dd/MM/yyyy HH:mm:ss") : "", i.MesEmissao + (i.ForaDoMesPrincipal ? " (mês diferente das demais)" : ""),
                     i.Valor.HasValue ? i.Valor.Value.ToString("0.00", CultureInfo.GetCultureInfo("pt-BR")) : "", Csv.Formula(i.NProt), i.CStat,
-                    i.SituacaoSefaz, string.Join(" | ", origens), string.Join(" | ", i.Destinos.Select(Path.GetFileName)), i.Copia, i.Motivo
+                    i.SituacaoSefaz, string.Join(" | ", origens), string.Join(" | ", i.Destinos.Select(Path.GetFileName)), i.Copia, i.Motivo, Csv.Formula(i.ChaveInformada)
                 }.Select(Csv.Campo)));
             }
             File.WriteAllText(caminho, sb.ToString(), new UTF8Encoding(true));

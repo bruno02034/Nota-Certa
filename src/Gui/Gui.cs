@@ -278,6 +278,8 @@ namespace DuplicidadeNfce
                 : "Informe a senha do banco do Metre para listar a contingência e ajustar chaves.");
             G<Button>("BtnSalvarAjustes").Click += (s, e) => SalvarAjustes();
             G<Button>("BtnTestarRemoto").Click += (s, e) => TestarConexaoRemota();
+            G<Button>("BtnSalvarCertSenha").Click += (s, e) => SalvarSenhaCertificado();
+            G<Button>("BtnApagarCertSenha").Click += (s, e) => ApagarSenhaCertificado();
             G<Button>("BtnRecarregar").Click += (s, e) =>
             {
                 cfg = op.CarregarConfig();
@@ -797,6 +799,43 @@ namespace DuplicidadeNfce
                     MostrarStatus(resumo.Replace("\n", " "));
                     Aviso(resumo + "\n\n" + AjusteChave.AvisoMetre);
                 }, TaskScheduler.FromCurrentSynchronizationContext());
+        }
+
+        // Configurações → senha do certificado: testada nos .pfx; só é salva (DPAPI) se abrir algum. Complementa as do Metre.
+        void SalvarSenhaCertificado()
+        {
+            var caixa = G<PasswordBox>("TxtCertSenha");
+            var res = G<TextBlock>("TxtCertResultado");
+            string senha = caixa.Password;
+            if (senha == "") { res.Text = "Digite a senha do certificado."; return; }
+            List<string> abertos;
+            try { abertos = ClienteSefaz.TestarSenha(cfg, senha); }
+            catch (Exception ex) { res.Text = "Não foi possível testar: " + ex.Message; return; }
+            if (abertos.Count == 0)
+            {
+                res.Text = "Essa senha não abriu nenhum certificado em " + cfg.CertificadoPfx + " / " + cfg.PastaEmpresas + ". Nada foi salvo.";
+                Erro(res.Text);
+                return;
+            }
+            try
+            {
+                Config.GravarOpcoes(op.ArqConfig, new Dictionary<string, string> { { SenhaBanco.ChaveCert, SenhaBanco.ProtegerCert(senha) } });
+            }
+            catch (Exception ex) { res.Text = "A senha abriu o certificado, mas não foi salva: " + ex.Message; Erro(res.Text); return; }
+            caixa.Clear();
+            cfg.CertificadoSenhaSalva = senha;
+            res.Text = "Senha salva (criptografada). Abriu: " + string.Join("; ", abertos);
+            CarregarSelo();
+            Aviso("Senha do certificado salva.\n\nAbriu:\n" + string.Join("\n", abertos) + "\n\nClique em \"Listar contingência\" de novo para consultar a SEFAZ.");
+        }
+
+        void ApagarSenhaCertificado()
+        {
+            try { Config.GravarOpcoes(op.ArqConfig, new Dictionary<string, string> { { SenhaBanco.ChaveCert, "" } }); }
+            catch (Exception ex) { Erro("Não foi possível apagar: " + ex.Message); return; }
+            cfg.CertificadoSenhaSalva = null;
+            G<TextBlock>("TxtCertResultado").Text = "Senha salva apagada; valem só as senhas do Metre.";
+            CarregarSelo();
         }
 
         // Configurações → conexão remota (experimental): conecta numa cópia da configuração, só leitura. Nada é salvo
