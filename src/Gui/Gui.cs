@@ -25,10 +25,20 @@ namespace DuplicidadeNfce
         public static int Executar(Opcoes op)
         {
             var app = new Application { ShutdownMode = ShutdownMode.OnMainWindowClose };
+            // IsReadOnly no XAML falhou num cliente ("associado desconhecido TextBox.IsReadOnly", 06/11): vai pelo código.
+            EventManager.RegisterClassHandler(typeof(TextBox), FrameworkElement.LoadedEvent, new RoutedEventHandler((s, e) =>
+            {
+                var t = (TextBox)s;
+                if ((t.Tag as string) == "SomenteLeitura") t.IsReadOnly = true;
+            }));
+            string erroNaTela = null;   // o mesmo erro repetido (ex.: a cada redesenho) mostra uma janela só
             app.DispatcherUnhandledException += (s, e) =>
             {
-                MessageBox.Show(e.Exception.Message, Program.NomeSistema, MessageBoxButton.OK, MessageBoxImage.Error);
                 e.Handled = true;
+                if (erroNaTela == e.Exception.Message) return;
+                erroNaTela = e.Exception.Message;
+                MessageBox.Show(e.Exception.Message, Program.NomeSistema, MessageBoxButton.OK, MessageBoxImage.Error);
+                erroNaTela = null;
             };
             AppDomain.CurrentDomain.UnhandledException += (s, e) =>
                 MessageBox.Show(((Exception)e.ExceptionObject).Message, Program.NomeSistema, MessageBoxButton.OK, MessageBoxImage.Error);
