@@ -530,7 +530,13 @@ namespace DuplicidadeNfce
                 return item;
             }
 
-            // Nenhuma chave autorizada.
+            // Nenhuma chave autorizada. Inutilização homologada (102) do número prova que nenhuma nota dele foi autorizada
+            // (a SEFAZ não inutiliza número usado): vale mesmo sem certificado (caso do Meritíssimo em 06/11).
+            if (Inutilizou(item, inuts, " Os XMLs da nota com esse número não foram autorizados: " + string.Join(", ", validos.Select(v => v.Nome)) + "."))
+            {
+                foreach (var a in item.Arquivos.Where(x => x.Motivo == null)) a.Motivo = "XML não autorizado (o número foi inutilizado)";
+                return item;
+            }
             var umaChave = porChave.Count == 1 ? porChave[0].OrderByDescending(x => x.ModificadoEm).First() : null;
             if (umaChave != null) Preencher(item, umaChave);
             var semResposta = respostas.Where(kv => !kv.Value.Ok).ToList();
@@ -596,11 +602,28 @@ namespace DuplicidadeNfce
             get { return Meses.Count == 0 ? "nenhuma nota encontrada" : string.Join(", ", Meses.Select(m => m.Key + " (" + m.Value + ")")); }
         }
 
+        // Inutilização homologada (102) que cobre o número (do emitente da nota, quando já se sabe): INUTILIZADA.
+        bool Inutilizou(ItemFaltante item, List<InutilizacaoXml> inuts, string extra)
+        {
+            var homologada = inuts.Where(i => i.Homologada && i.Serie == item.Serie && i.Inicial <= item.Numero && item.Numero <= i.Final &&
+                (i.Mod == null || i.Mod == "65") && (item.Cnpj == null || i.Cnpj == item.Cnpj)).OrderByDescending(i => i.Caminho).FirstOrDefault();
+            if (homologada == null) return false;
+            item.Cnpj = homologada.Cnpj;
+            item.Status = StatusFaltante.Inutilizada;
+            item.CStat = homologada.CStat;
+            item.NProt = homologada.NProt;
+            item.SituacaoSefaz = "inutilização homologada (cStat 102) no XML local; série " + homologada.Serie + " de " + homologada.Inicial + " a " + homologada.Final;
+            item.Motivo = "número coberto pela inutilização " + homologada.Nome + extra;
+            item.Arquivos.Add(new ArquivoFaltante { Caminho = homologada.Caminho, Nome = homologada.Nome, Tipo = "Inutilização", Aceito = true, Motivo = "inutilização homologada, protocolo " + homologada.NProt });
+            item.Entregas.Add(new Entrega { Origem = homologada.Caminho, Sha256 = homologada.Sha256, Tamanho = homologada.Tamanho, NomeDestino = homologada.Nome, Descricao = "XML da inutilização" });
+            Log.Info("  INUTILIZADA por " + homologada.Caminho);
+            return true;
+        }
+
         void SemNota(ItemFaltante item, List<InutilizacaoXml> inuts)
         {
             var cobre = inuts.Where(i => i.Serie == item.Serie && i.Inicial <= item.Numero && item.Numero <= i.Final && (i.Mod == null || i.Mod == "65")).ToList();
-            var homologadas = cobre.Where(i => i.Homologada).OrderByDescending(i => i.Caminho).ToList();
-            var homologada = homologadas.FirstOrDefault();
+            var homologadas = cobre.Where(i => i.Homologada).ToList();
             int descartados = item.Arquivos.Count;
             string sobreDescartados = descartados > 0 ? " Há " + descartados + " arquivo(s) descartado(s) com esse número: " + string.Join(", ", item.Arquivos.Select(a => a.Nome + " (" + a.Motivo + ")")) + "." : "";
             if (homologadas.Select(i => i.Cnpj).Distinct().Count() > 1)
@@ -608,19 +631,7 @@ namespace DuplicidadeNfce
                 Pendente(item, "mais de um emitente com inutilização desse número: " + string.Join("; ", homologadas.Select(i => FormatarCnpj(i.Cnpj) + " (" + i.Nome + ")")));
                 return;
             }
-            if (homologada != null)
-            {
-                item.Cnpj = homologada.Cnpj;
-                item.Status = StatusFaltante.Inutilizada;
-                item.CStat = homologada.CStat;
-                item.NProt = homologada.NProt;
-                item.SituacaoSefaz = "inutilização homologada (cStat 102) no XML local; série " + homologada.Serie + " de " + homologada.Inicial + " a " + homologada.Final;
-                item.Motivo = "número coberto pela inutilização " + homologada.Nome + sobreDescartados;
-                item.Arquivos.Add(new ArquivoFaltante { Caminho = homologada.Caminho, Nome = homologada.Nome, Tipo = "Inutilização", Aceito = true, Motivo = "inutilização homologada, protocolo " + homologada.NProt });
-                item.Entregas.Add(new Entrega { Origem = homologada.Caminho, Sha256 = homologada.Sha256, Tamanho = homologada.Tamanho, NomeDestino = homologada.Nome, Descricao = "XML da inutilização" });
-                Log.Info("  INUTILIZADA por " + homologada.Caminho);
-                return;
-            }
+            if (Inutilizou(item, inuts, sobreDescartados)) return;
             item.Status = StatusFaltante.NaoEncontrada;
             item.Motivo = "nenhum XML da nota nem de inutilização para esse número/série (pode ser número pulado que precisa ser inutilizado)." +
                 (cobre.Count > 0 ? " Há pedido de inutilização sem retorno 102: " + string.Join(", ", cobre.Select(c => c.Nome + " (cStat " + (c.CStat ?? "nenhum") + ")")) + "." : "") +

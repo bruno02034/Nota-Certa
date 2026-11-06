@@ -164,6 +164,10 @@ try {
     # 509 a 511: inutilização homologada (cStat 102), um arquivo só
     Gravar "$xmls\Inutilizadas\INUT_509_511.xml" ("<procInutNFe versao=`"4.00`" xmlns=`"$Ns`"><inutNFe versao=`"4.00`"><infInut Id=`"ID31261122233300018165007000000509000000511`"><tpAmb>1</tpAmb><xServ>INUTILIZAR</xServ><cUF>31</cUF><ano>26</ano><CNPJ>$Cnpj</CNPJ><mod>65</mod><serie>7</serie><nNFIni>509</nNFIni><nNFFin>511</nNFFin><xJust>numeracao pulada por falha</xJust></infInut></inutNFe>" +
         "<retInutNFe versao=`"4.00`"><infInut><tpAmb>1</tpAmb><verAplic>TESTE</verAplic><cStat>102</cStat><xMotivo>Inutilizacao de numero homologado</xMotivo><cUF>31</cUF><ano>26</ano><CNPJ>$Cnpj</CNPJ><mod>65</mod><serie>7</serie><nNFIni>509</nNFIni><nNFFin>511</nNFFin><dhRecbto>2026-09-30T10:00:00-03:00</dhRecbto><nProt>131260000000509</nProt></infInut></retInutNFe></procInutNFe>")
+    # 510: além da inutilização há XMLs da nota (NFCE e CONTIGENCIA nunca autorizados, como no Meritíssimo): vale a inutilização
+    $n510 = NFe (Chave $Cnpj '2609' 510 '10000510') 510 '2026-09-29T09:00:00-03:00' '10.00'
+    Gravar "$dia\NOTA_510_MODELO_65_SERIE_7_NFCE.xml" "<nfeProc versao=`"4.00`" xmlns=`"$Ns`">$($n510.Xml)</nfeProc>"
+    Gravar "$dia\NOTA_510_SERIE_7_CONTIGENCIA.xml" "<enviNFe versao=`"4.00`" xmlns=`"$Ns`"><idLote>1</idLote><indSinc>1</indSinc>$($n510.Xml)</enviNFe>"
     # 512: inutilização só pedida (sem retorno 102) não comprova
     Gravar "$xmls\Inutilizadas\pedido_512.xml" "<inutNFe versao=`"4.00`" xmlns=`"$Ns`"><infInut><tpAmb>1</tpAmb><xServ>INUTILIZAR</xServ><cUF>31</cUF><ano>26</ano><CNPJ>$Cnpj</CNPJ><mod>65</mod><serie>7</serie><nNFIni>512</nNFIni><nNFFin>512</nNFFin><xJust>teste sem retorno</xJust></infInut></inutNFe>"
 
@@ -215,6 +219,7 @@ try {
     Confere $r 501 'PENDENTE' '' 'SEFAZ não consultada'
     Verdade ($r['501'].Chave -match $n501.Chave -and $r['501'].Valor -eq '33,00') '501: chave e valor do candidato aparecem mesmo sem SEFAZ'
     Confere $r 509 'INUTILIZADA' 'INUT_509_511.xml' 'INUT_509_511.xml'
+    Confere $r 510 'INUTILIZADA' 'INUT_509_511.xml' 'não foram autorizados'
     Confere $r 512 'NÃO ENCONTRADA' '' 'sem retorno 102'
     Confere $r 514 'PENDENTE' '' 'SEFAZ não consultada'
     Verdade (@(Get-ChildItem $ultimaPasta -Filter *.xml).Count -eq 1) 'sem SEFAZ so a inutilizacao (local) e copiada'
@@ -262,7 +267,7 @@ try {
     Verdade (Test-Path "$p\NAO_CONSTA_NA_SEFAZ\NOTA_508_SERIE_7_ASSINADA_18_09_2026_09_00_00.xml") '508: XML local copiado para a subpasta NAO_CONSTA_NA_SEFAZ'
     Verdade (-not (Test-Path "$p\NAO_CONSTA_NA_SEFAZ\NOTA_508_SERIE_7_CONTIGENCIA.xml")) '508: o _CONTIGENCIA nao e copiado'
     Confere $r 509 'INUTILIZADA' 'INUT_509_511.xml'
-    Confere $r 510 'INUTILIZADA' 'INUT_509_511.xml'
+    Confere $r 510 'INUTILIZADA' 'INUT_509_511.xml' 'não foram autorizados'
     Confere $r 511 'INUTILIZADA' 'INUT_509_511.xml'
     Verdade (@(Get-ChildItem $p -Filter 'INUT_*').Count -eq 1) 'inutilizacao copiada uma vez so'
     Confere $r 512 'NÃO ENCONTRADA' '' 'inutilizado'

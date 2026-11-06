@@ -258,7 +258,7 @@ números (acha a nota autorizada daquele número, mesmo que a chave informada se
 | ENCONTRADA | o XML da nota; se ele não tiver o protocolo, também `<chave>-procNFe.xml` (a nota + o protNFe da SEFAZ) |
 | CANCELADA | a nota e o evento de cancelamento: o `procEventoNFe` do disco ou, sem ele, o devolvido pela SEFAZ (`<chave>-procEventoNFe-110111.xml`) |
 | CANCELADA – SEM XML DO EVENTO | só a nota (o evento não está no disco nem na resposta da SEFAZ) |
-| INUTILIZADA | o XML da inutilização homologada (cStat 102) que cobre o número; uma vez só, mesmo cobrindo vários números |
+| INUTILIZADA | o XML da inutilização homologada (cStat 102) que cobre o número; uma vez só, mesmo cobrindo vários números. Vale também quando há XMLs da nota (NFCE/CONTIGENCIA) que a SEFAZ não mostra autorizados ou não pôde ser consultada (certificado vencido): a SEFAZ não inutiliza número usado |
 
 | NÃO CONSTA NA SEFAZ | os XMLs locais do número, menos os de contingência no nome (`_CONTIGENCIA`), na subpasta `NAO_CONSTA_NA_SEFAZ\` (217: a SEFAZ não conhece a chave, provavelmente contingência nunca transmitida; não são notas autorizadas) |
 | NÃO ENCONTRADA | nada (sem nota e sem inutilização: pode ser número pulado a inutilizar) |
