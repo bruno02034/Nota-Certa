@@ -19,7 +19,6 @@ namespace DuplicidadeNfce
     // "CLIENTE EMISSÃO"). Antes de cada clique tudo é conferido de novo; qualquer divergência para o macro.
     class MacroMetre
     {
-        public const string ColunaContingencia = "CLIENTE CONTIGÊNCIA";
         public int SegundosJanela = 90;      // espera da janela com Ok depois do duplo clique (a transmissão demora)
         public Func<Process> AcharProcesso = AcharMetre;
 
@@ -43,52 +42,119 @@ namespace DuplicidadeNfce
             public string Parada;           // null = terminou a lista
         }
 
+        // O Metre abre a janela de NFC-e como outra janela do mesmo processo java: procura em todas as janelas visíveis
+        // (o MainWindowHandle pode ser a de NFC-e, sem "Metre" no título; visto em 06/11).
         public static Process AcharMetre()
         {
-            return Process.GetProcessesByName("javaw").Concat(Process.GetProcessesByName("java"))
-                .FirstOrDefault(p => p.MainWindowHandle != IntPtr.Zero && p.MainWindowTitle.StartsWith("Metre", StringComparison.OrdinalIgnoreCase));
+            foreach (var p in Process.GetProcessesByName("javaw").Concat(Process.GetProcessesByName("java")))
+                foreach (var h in Janelas(p.Id))
+                    if (Titulo(h).StartsWith("Metre", StringComparison.OrdinalIgnoreCase)) return p;
+            return null;
         }
 
-        // Tabela da aba Contingência que está de fato na tela (o que está desenhado no centro dela é a própria tabela);
-        // null se a janela de NFC-e não estiver aberta nessa aba.
+        // Cabeçalho da coluna da aba Contingência, em qualquer grafia ("CONTIGÊNCIA" do Metre, "CONTINGÊNCIA", sem acento).
+        public static bool EhColunaContingencia(string nome)
+        {
+            return Regex.IsMatch(SemAcento(Normalizar(nome)), @"^CLIENTE CONTI?N?GENCIA$", RegexOptions.IgnoreCase);
+        }
+
+        // Propriedades lidas numa só ida ao Metre (cada leitura avulsa de UI Automation no JavaFX é lenta).
+        static CacheRequest Cache(TreeScope escopo)
+        {
+            var cr = new CacheRequest { TreeFilter = Condition.TrueCondition, TreeScope = escopo };
+            cr.Add(AutomationElement.NameProperty);
+            cr.Add(AutomationElement.ControlTypeProperty);
+            cr.Add(AutomationElement.IsOffscreenProperty);
+            cr.Add(AutomationElement.BoundingRectangleProperty);
+            return cr;
+        }
+
+        // Tabela da aba Contingência que está de fato na tela (o que está desenhado no centro dela é a própria tabela),
+        // em qualquer janela do Metre; null se a janela de NFC-e não estiver aberta nessa aba.
         public static AutomationElement TabelaContingencia(Process p)
         {
-            var raiz = AutomationElement.FromHandle(p.MainWindowHandle);
-            if (ProcessoDe(GetForegroundWindow()) != p.Id) { Frente(p.MainWindowHandle); Thread.Sleep(400); }
-            var tabelas = raiz.FindAll(TreeScope.Descendants, new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Table));
-            foreach (AutomationElement t in tabelas)
+            string vistas;
+            return TabelaContingencia(p, out vistas);
+        }
+
+        public static AutomationElement TabelaContingencia(Process p, out string vistas)
+        {
+            var cabecalhos = new List<string>();
+            vistas = "";
+            foreach (var h in Janelas(p.Id))
             {
-                bool contingencia = false;
-                foreach (AutomationElement c in t.FindAll(TreeScope.Children, Condition.TrueCondition))
-                    if (Normalizar(c.Current.Name) == ColunaContingencia) { contingencia = true; break; }
-                if (!contingencia) continue;
-                var r = t.Current.BoundingRectangle;
-                if (r.IsEmpty || r.Width < 50 || r.Height < 50) continue;
-                var janela = JanelaDe(t);
-                if (janela != IntPtr.Zero && GetForegroundWindow() != janela) { Frente(janela); Thread.Sleep(400); }
-                if (Dentro(new Point(r.X + r.Width / 2, r.Y + r.Height / 2), t)) return t;
+                AutomationElementCollection tabelas;
+                try
+                {
+                    using (Cache(TreeScope.Element | TreeScope.Children).Activate())
+                        tabelas = AutomationElement.FromHandle(h).FindAll(TreeScope.Descendants, new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Table));
+                }
+                catch (ElementNotAvailableException) { continue; }
+                foreach (AutomationElement t in tabelas)
+                {
+                    var nomes = Filhos(t).Select(c => Normalizar(c.Cached.Name)).Where(s => s.Length > 0).ToList();
+                    if (!nomes.Any(EhColunaContingencia)) { cabecalhos.Add("[" + string.Join(", ", nomes.Take(6)) + "]"); continue; }
+                    var r = t.Cached.BoundingRectangle;
+                    if (r.IsEmpty || r.Width < 50 || r.Height < 50) { cabecalhos.Add("[aba Contingência fora da tela]"); continue; }
+                    if (NaTela(t)) return t;
+                    cabecalhos.Add("[aba Contingência coberta por outra janela]");
+                }
             }
+            vistas = cabecalhos.Count == 0 ? "nenhuma tabela nas janelas do Metre" : "tabelas vistas: " + string.Join(" ", cabecalhos.Take(5));
             return null;
+        }
+
+        // A tabela continua na tela e na frente (o centro dela é ela mesma); traz a janela dela para a frente se precisar.
+        static bool NaTela(AutomationElement t)
+        {
+            try
+            {
+                var r = t.Current.BoundingRectangle;
+                if (r.IsEmpty || r.Width < 50 || r.Height < 50) return false;
+                var janela = JanelaDe(t);
+                if (janela != IntPtr.Zero && GetForegroundWindow() != janela) { Frente(janela); Thread.Sleep(300); }
+                return Dentro(new Point(r.X + r.Width / 2, r.Y + r.Height / 2), t);
+            }
+            catch (ElementNotAvailableException) { return false; }
         }
 
         public static List<LinhaMetre> Linhas(AutomationElement tabela)
         {
             var linhas = new List<LinhaMetre>();
-            foreach (AutomationElement row in tabela.FindAll(TreeScope.Children, new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Custom)))
+            AutomationElementCollection rows;
+            // A tabela inteira (linhas, células e o texto dentro delas) numa só leitura.
+            using (Cache(TreeScope.Element | TreeScope.Descendants).Activate())
+                rows = tabela.FindAll(TreeScope.Children, new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Custom));
+            foreach (AutomationElement row in rows)
             {
-                var cel = row.FindAll(TreeScope.Children, Condition.TrueCondition).Cast<AutomationElement>().ToList();
+                var cel = Filhos(row).ToList();
                 if (cel.Count < 5) continue;
-                var sn = Normalizar(cel[1].Current.Name).Split(' ');
+                var sn = Normalizar(cel[1].Cached.Name).Split(' ');
                 if (sn.Length != 2) continue;   // cabeçalho ou linha vazia
                 linhas.Add(new LinhaMetre
                 {
-                    Serie = sn[0], Numero = sn[1], Pedido = Normalizar(cel[2].Current.Name),
-                    Cliente = Normalizar(string.Join(" ", cel[3].FindAll(TreeScope.Descendants, Condition.TrueCondition).Cast<AutomationElement>()
-                        .Select(e => e.Current.Name).Where(s => !string.IsNullOrEmpty(s)).Distinct())),
-                    Status = Normalizar(cel[4].Current.Name), Elemento = row, Celula = cel[2]
+                    Serie = sn[0], Numero = sn[1], Pedido = Normalizar(cel[2].Cached.Name),
+                    Cliente = Normalizar(string.Join(" ", Descendentes(cel[3]).Select(e => e.Cached.Name).Where(s => !string.IsNullOrEmpty(s)).Distinct())),
+                    Status = Normalizar(cel[4].Cached.Name), Elemento = row, Celula = cel[2]
                 });
             }
             return linhas;
+        }
+
+        static IEnumerable<AutomationElement> Filhos(AutomationElement e)
+        {
+            AutomationElementCollection c = null;
+            try { c = e.CachedChildren; } catch (InvalidOperationException) { }
+            return c == null ? Enumerable.Empty<AutomationElement>() : c.Cast<AutomationElement>();
+        }
+
+        static IEnumerable<AutomationElement> Descendentes(AutomationElement e)
+        {
+            foreach (var f in Filhos(e))
+            {
+                yield return f;
+                foreach (var d in Descendentes(f)) yield return d;
+            }
         }
 
         // O Metre grava "Em Contigência" (sem o n); aceita também a grafia certa.
@@ -100,8 +166,9 @@ namespace DuplicidadeNfce
             motivo = null;
             var p = AcharProcesso();
             if (p == null) { motivo = "o Metre não está aberto nesta máquina"; return null; }
-            var t = TabelaContingencia(p);
-            if (t == null) { motivo = "abra no Metre a janela de NFC-e na aba CONTIGÊNCIA (não achei a tabela dessa aba na tela)"; return null; }
+            string vistas;
+            var t = TabelaContingencia(p, out vistas);
+            if (t == null) { motivo = "abra no Metre a janela de NFC-e na aba CONTIGÊNCIA (não achei a tabela dessa aba na tela; " + vistas + ")"; return null; }
             return Linhas(t).Where(l => EmContingencia(l.Status)).ToList();
         }
 
@@ -113,12 +180,15 @@ namespace DuplicidadeNfce
             Cancelado();   // descarta um Esc apertado antes de começar
             try
             {
+                Process p = null;
+                AutomationElement tabela = null;
                 while (true)
                 {
                     string motivo;
-                    var p = AcharProcesso();
+                    if (p == null || p.HasExited) p = AcharProcesso();
                     if (p == null) { res.Parada = "o Metre foi fechado"; break; }
-                    var tabela = TabelaContingencia(p);
+                    // A mesma tabela entre uma nota e outra, enquanto ela continuar na tela (procurar de novo é o lento).
+                    if (tabela == null || !NaTela(tabela)) tabela = TabelaContingencia(p);
                     if (tabela == null) { res.Parada = "a aba CONTIGÊNCIA do Metre não está mais na tela"; break; }
                     var prox = Linhas(tabela).FirstOrDefault(l => EmContingencia(l.Status) && !feitas.Contains(l.Chave));
                     if (prox == null)
@@ -128,7 +198,9 @@ namespace DuplicidadeNfce
                     }
                     feitas.Add(prox.Chave);
                     andamento("Metre: nota " + prox + " (" + (res.Feitas.Count + 1) + ")...");
+                    var relogio = Stopwatch.StartNew();
                     string msg = UmaNota(p, tabela, prox, out motivo);
+                    log.Info("  (" + relogio.ElapsedMilliseconds + " ms)");
                     if (motivo != null) { res.Parada = "nota " + prox + ": " + motivo; break; }
                     res.Feitas.Add(prox + ": " + msg);
                     if (msg.StartsWith(PrefixoCancelado)) res.Canceladas.Add(prox.ToString());
@@ -206,16 +278,20 @@ namespace DuplicidadeNfce
         {
             var l = new List<AutomationElement>();
             nao = new List<AutomationElement>();
+            // Só botões visíveis, filtrados no próprio Metre, com o nome já na resposta.
+            var visivel = new AndCondition(new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button),
+                new PropertyCondition(AutomationElement.IsOffscreenProperty, false));
             foreach (var h in Janelas(pid))
             {
                 try
                 {
-                    foreach (AutomationElement b in AutomationElement.FromHandle(h).FindAll(TreeScope.Descendants,
-                        new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button)))
+                    AutomationElementCollection achados;
+                    using (Cache(TreeScope.Element).Activate()) achados = AutomationElement.FromHandle(h).FindAll(TreeScope.Descendants, visivel);
+                    foreach (AutomationElement b in achados)
                     {
-                        string nome = Normalizar(b.Current.Name);
-                        if (Confirmar.IsMatch(nome)) { if (!b.Current.IsOffscreen) l.Add(b); }
-                        else if (SemAcento(nome).ToLowerInvariant() == "nao" && !b.Current.IsOffscreen &&
+                        string nome = Normalizar(b.Cached.Name);
+                        if (Confirmar.IsMatch(nome)) l.Add(b);
+                        else if (SemAcento(nome).ToLowerInvariant() == "nao" &&
                             Regex.IsMatch(SemAcento(TextoDaJanela(b)), @"pedido foi cancelad", RegexOptions.IgnoreCase)) nao.Add(b);
                     }
                 }
@@ -322,6 +398,13 @@ namespace DuplicidadeNfce
             try { return Process.GetProcessById(pid).ProcessName; } catch (ArgumentException) { return "processo " + pid; }
         }
 
+        static string Titulo(IntPtr h)
+        {
+            var sb = new StringBuilder(256);
+            GetWindowText(h, sb, sb.Capacity);
+            return sb.ToString();
+        }
+
         static int ProcessoDe(IntPtr h) { uint pid; GetWindowThreadProcessId(h, out pid); return (int)pid; }
 
         public static string Normalizar(string s)
@@ -338,6 +421,7 @@ namespace DuplicidadeNfce
         }
 
         delegate bool EnumProc(IntPtr h, IntPtr l);
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetWindowText(IntPtr h, StringBuilder s, int max);
         [DllImport("user32.dll")] static extern int GetSystemMetrics(int i);
         [DllImport("user32.dll")] static extern void mouse_event(int f, int x, int y, int d, IntPtr e);
         [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr h);

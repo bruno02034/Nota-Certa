@@ -68,7 +68,8 @@ namespace DuplicidadeNfce
                 }
                 Verdade(MacroMetre.EmContingencia("Em Contigência") && MacroMetre.EmContingencia("Em Contingencia 2") && !MacroMetre.EmContingencia("Autorizada"),
                     "status de contingência com e sem acento");
-                Verdade(MacroMetre.Normalizar("CLIENTE\nCONTIGÊNCIA") == MacroMetre.ColunaContingencia, "cabeçalho da coluna em duas linhas casa com a da aba CONTIGÊNCIA");
+                Verdade(MacroMetre.EhColunaContingencia("CLIENTE\nCONTIGÊNCIA") && MacroMetre.EhColunaContingencia("Cliente Contingencia") &&
+                    !MacroMetre.EhColunaContingencia("CLIENTE EMISSÃO"), "cabeçalho da coluna da aba CONTIGÊNCIA em duas linhas e em outras grafias");
             }
             finally { if (!p.HasExited) p.Kill(); }
             string canc = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(a[0]), "janela_cancelado.ps1");
