@@ -192,8 +192,18 @@ try {
     Gravar "$aut\NOTA_516_SERIE_7_NFCE.xml" "<nfeProc versao=`"4.00`" xmlns=`"$Ns`">$($n516b.Xml)</nfeProc>"
     Resposta $n516a.Chave (Ret100 $n516a.Chave $n516a.Digest '131260000000516')
 
+    # 517: o primeiro envio (Temp_ANTES_ENVIO) foi o autorizado; o NFCE é de outra tentativa e a SEFAZ responde 562 com a chave certa
+    $n517a = NFe (Chave $Cnpj '2609' 517 '10000517') 517 '2026-09-23T09:00:00-03:00' '17.00'
+    $n517b = NFe (Chave $Cnpj '2609' 517 '20000517') 517 '2026-09-23T09:00:20-03:00' '17.00'
+    $temp517 = "NOTA_517_MODELO_65_SERIE_7_CHAVE_$($n517a.Chave)_Temp_ANTES_ENVIO_23_09_2026_09_00_00.xml"
+    Gravar "$dia\$temp517" "<enviNFe versao=`"4.00`" xmlns=`"$Ns`"><idLote>1</idLote><indSinc>1</indSinc>$($n517a.Xml)</enviNFe>"
+    Gravar "$dia\NOTA_517_MODELO_65_SERIE_7_CHAVE_$($n517b.Chave)_Temp_ANTES_ENVIO_23_09_2026_09_00_20.xml" "<enviNFe versao=`"4.00`" xmlns=`"$Ns`"><idLote>1</idLote><indSinc>1</indSinc>$($n517b.Xml)</enviNFe>"
+    Gravar "$dia\NOTA_517_MODELO_65_SERIE_7_NFCE.xml" "<nfeProc versao=`"4.00`" xmlns=`"$Ns`">$($n517b.Xml)</nfeProc>"
+    Resposta $n517b.Chave "<cStat>562</cStat><xMotivo>Rejeição: Código Numérico informado na Chave de Acesso difere do Código Numérico da NF-e$($n517a.Chave)</xMotivo><cUF>31</cUF><dhRecbto>2026-10-22T12:00:00-03:00</dhRecbto><chNFe>$($n517b.Chave)</chNFe>"
+    Resposta $n517a.Chave (Ret100 $n517a.Chave $n517a.Digest '131260000000517')
+
     $antes = HashArvore $xmls
-    $Faixas = @('--serie', '7', '--numeros', "501-506, 507;508  509 - 512`n513-516")
+    $Faixas = @('--serie', '7', '--numeros', "501-506, 507;508  509 - 512`n513-517")
 
     # ---------- Entrada ----------
     Write-Host '--- Entrada'
@@ -275,6 +285,8 @@ try {
     Confere $r 514 'PENDENTE' '' 'SEFAZ não consultada'
     Verdade ($r['514'].'CNPJ emitente' -eq '99.888.777/0001-66') '514: CNPJ do emitente vem do XML'
     Confere $r 516 'PENDENTE' '' 'mais de um emitente'
+    Confere $r 517 'ENCONTRADA' "$temp517 | $($n517a.Chave)-procNFe.xml" 'digest = digVal'
+    Verdade ((Hash "$p\$temp517") -eq (Hash "$dia\$temp517")) '517: 562 leva a chave do primeiro envio (Temp copiado identico)'
     Verdade ($r['501'].'CNPJ emitente' -eq '11.222.333/0001-81') '501: CNPJ do emitente vem do XML'
     Verdade ($ultimaSaida -match 'Emitente: 11.222.333/0001-81 - EMPRESA TESTE') 'emitente da busca mostrado (CNPJ e nome)'
     Confere $r 515 'PENDENTE' '' '302'
@@ -283,12 +295,12 @@ try {
     Verdade ((Test-Path $zip) -and ([IO.Compression.ZipFile]::OpenRead($zip).Entries.Count -eq @(Get-ChildItem $p -File -Recurse).Count)) 'zip com todos os arquivos da entrega'
     Verdade ((HashArvore $xmls) -eq $antes) 'XMLs originais intactos (somente leitura)'
     $hist = Import-Csv "$base\historico.csv" -Delimiter ';' -Encoding UTF8
-    Verdade (@($hist | Where-Object Status -eq 'COPIADO').Count -eq 18) 'historico com uma linha por arquivo copiado'
+    Verdade (@($hist | Where-Object Status -eq 'COPIADO').Count -eq 20) 'historico com uma linha por arquivo copiado'
 
     $r = Rodar $cfg ($Faixas + '--copiar')
     Verdade ($r['501'].Copia -eq 'JÁ COPIADO' -and @(Get-ChildItem $ultimaPasta -Filter *.xml).Count -eq 0) 'segunda busca: nada copiado de novo (historico)'
     $r = Rodar $cfg ($Faixas + '--copiar' + '--recopiar')
-    Verdade ($r['501'].Copia -eq 'COPIADO' -and @(Get-ChildItem $ultimaPasta -Filter *.xml).Count -eq 15) '--recopiar copia de novo'
+    Verdade ($r['501'].Copia -eq 'COPIADO' -and @(Get-ChildItem $ultimaPasta -Filter *.xml).Count -eq 17) '--recopiar copia de novo'
 
     # ---------- Busca por chave de acesso (relatório de importação): série e número saem da chave ----------
     Write-Host '--- Por chave de acesso'

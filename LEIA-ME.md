@@ -249,6 +249,10 @@ números (acha a nota autorizada daquele número, mesmo que a chave informada se
   PENDENTE "mais de um emitente" e os demais seguem.
 - Varre todas as subpastas de `C:\Chef\NFCe`. O nome do arquivo só pré-filtra; modelo 65, série e número são
   conferidos no conteúdo. `REJEICAO`, `FALHA_SCHEMA`/`ERRO_SCHEMA` e `Temp` são descartados (ficam no log).
+- Se a SEFAZ responder 562 ("Código Numérico ... difere"), o número foi autorizado com a chave de outra tentativa,
+  em geral o primeiro envio. Essa chave vem na resposta e também é consultada. O XML dela é o `Temp_ANTES_ENVIO` do
+  disco que tenha o DigestValue igual ao `digVal`. Se não houver arquivo, o XML vem do `chefxml` do pedido (só
+  leitura). A entrega leva esse XML e o procNFe com o protocolo da SEFAZ.
 - Não há mês de referência: a grade mostra a emissão (`dhEmi`) de cada nota e, se as notas encontradas forem de meses
   diferentes entre si, a tela destaca os meses e as notas fora do mês da maioria (a pasta do arquivo não conta).
 - Cada chave é consultada uma vez na SEFAZ; o arquivo certo é o de DigestValue (recalculado) igual ao `digVal`.

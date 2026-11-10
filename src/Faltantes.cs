@@ -496,8 +496,16 @@ namespace DuplicidadeNfce
                 respostas[g.Key] = r;
                 Log.Info("  SEFAZ " + g.Key + ": " + Situacao(r));
             }
+            // 562: o número foi autorizado com o cNF de outra tentativa (em geral o primeiro envio); a resposta traz essa chave.
+            foreach (var kv in respostas.ToList())
+            {
+                string k = ChaveDo562(kv.Key, kv.Value);
+                if (k == null || respostas.ContainsKey(k)) continue;
+                respostas[k] = consultar(k);
+                Log.Info("  SEFAZ " + k + " (chave indicada pelo 562): " + Situacao(respostas[k]));
+            }
 
-            var conhecidas = respostas.Where(kv => kv.Value.Ok && kv.Value.Prot != null && ProtocoloXml.Autorizado(kv.Value.Prot.CStat)).ToList();
+            var conhecidas =respostas.Where(kv => kv.Value.Ok && kv.Value.Prot != null && ProtocoloXml.Autorizado(kv.Value.Prot.CStat)).ToList();
             if (conhecidas.Count > 1)
             {
                 Pendente(item, "mais de um candidato autorizado na SEFAZ: " + string.Join(", ", conhecidas.Select(c => c.Key)));
@@ -505,7 +513,26 @@ namespace DuplicidadeNfce
             }
             if (conhecidas.Count == 1)
             {
-                Autorizada(item, conhecidas[0].Key, conhecidas[0].Value, porChave.First(g => g.Key == conhecidas[0].Key).ToList(), eventos);
+                string k = conhecidas[0].Key;
+                var daChave = validos.Where(v => v.Chave == k).ToList();
+                if (daChave.Count == 0)
+                {
+                    // Chave do 562: o XML dela é a tentativa (Temp_ANTES_ENVIO) do disco ou, sem arquivo, a do banco chefxml.
+                    daChave = arquivos.Where(a => a.Erro == null && a.Chave == k && a.Numero == numero.ToString() && a.Serie == serie.ToString()).ToList();
+                    if (daChave.Count == 0) daChave = XmlsNoBanco(k, validos.Select(v => v.Chave));
+                    foreach (var a in daChave.Where(a => !item.Arquivos.Any(x => x.Caminho == a.Caminho)))
+                        item.Arquivos.Add(new ArquivoFaltante { Caminho = a.Caminho, Nome = a.Nome, Tipo = a.Tipo.ToString() });
+                    if (daChave.Count == 0)
+                    {
+                        Preencher(item, validos.OrderByDescending(x => x.ModificadoEm).First());
+                        item.Chave = k;
+                        item.CStat = conhecidas[0].Value.CStat;
+                        item.SituacaoSefaz = Situacao(conhecidas[0].Value);
+                        Pendente(item, "a SEFAZ autorizou o número com a chave " + k + " (indicada pelo 562), mas o XML dela não está no disco nem no banco");
+                        return item;
+                    }
+                }
+                Autorizada(item, k, conhecidas[0].Value, daChave, eventos);
                 return item;
             }
 
@@ -654,7 +681,10 @@ namespace DuplicidadeNfce
             foreach (var a in item.Arquivos) a.Aceito = a.Caminho == escolhido.Caminho;
             item.Arquivos.First(x => x.Caminho == escolhido.Caminho).Motivo += " · escolhido";
 
-            item.Entregas.Add(new Entrega { Origem = escolhido.Caminho, Sha256 = escolhido.Sha256, Tamanho = escolhido.Tamanho, NomeDestino = escolhido.Nome, Descricao = "XML da nota" });
+            if (escolhido.Conteudo != null)
+                item.Entregas.Add(new Entrega { Conteudo = Texto(escolhido), NomeDestino = chave + "-NFe.xml", Descricao = "XML da nota (banco " + escolhido.Caminho + ")" });
+            else
+                item.Entregas.Add(new Entrega { Origem = escolhido.Caminho, Sha256 = escolhido.Sha256, Tamanho = escolhido.Tamanho, NomeDestino = escolhido.Nome, Descricao = "XML da nota" });
             var motivo = new List<string> { "arquivo com o mesmo conteúdo autorizado (digest = digVal)" };
             if (!procCompleto(escolhido))
             {
@@ -702,7 +732,7 @@ namespace DuplicidadeNfce
         // nfeProc = a NFe do arquivo, sem mexer em um caractere, + o protNFe exatamente como a SEFAZ devolveu.
         Entrega GerarProcNFe(NotaXml nota, string chave, string digVal, string protNFe)
         {
-            string texto = Encoding.UTF8.GetString(NotaXml.LerSomenteLeitura(nota.Caminho)).TrimStart('﻿');
+            string texto = Texto(nota);
             var m = Regex.Match(texto, @"<NFe[\s>]");
             int fim = m.Success ? texto.IndexOf("</NFe>", m.Index, StringComparison.Ordinal) : -1;
             if (fim < 0) throw new Exception("NFe não encontrada em " + nota.Caminho);
@@ -710,7 +740,7 @@ namespace DuplicidadeNfce
             string xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><nfeProc versao=\"4.00\" xmlns=\"" + NsNfe + "\">" + nfe + protNFe + "</nfeProc>";
             return new Entrega
             {
-                Origem = nota.Caminho, Sha256 = nota.Sha256, Conteudo = xml, NomeDestino = chave + "-procNFe.xml", Descricao = "procNFe (nota + protocolo da SEFAZ)",
+                Origem = nota.Conteudo == null ? nota.Caminho : null, Sha256 = nota.Sha256, Conteudo = xml, NomeDestino = chave + "-procNFe.xml", Descricao = "procNFe (nota + protocolo da SEFAZ)",
                 Conferir = caminho =>
                 {
                     var g = NotaXml.Ler(caminho);
@@ -720,6 +750,41 @@ namespace DuplicidadeNfce
                     return null;
                 }
             };
+        }
+
+        static string Texto(NotaXml nota)
+        {
+            return Encoding.UTF8.GetString(nota.Conteudo ?? NotaXml.LerSomenteLeitura(nota.Caminho)).TrimStart('﻿');
+        }
+
+        // Chave que a SEFAZ indica no 562 (mesmo emitente, série e número; muda só o cNF/tpEmis): null se não houver.
+        static string ChaveDo562(string consultada, RespostaSefaz r)
+        {
+            if (r == null || r.CStat != "562" || r.XMotivo == null) return null;
+            var m = Regex.Match(r.XMotivo, @"(?<!\d)(\d{44})(?!\d)");
+            if (!m.Success || m.Value == consultada || m.Value.Substring(0, 34) != consultada.Substring(0, 34)) return null;
+            return m.Value;
+        }
+
+        // XMLs da chave no banco chefxml (só leitura): as tentativas do pedido das linhas de nota_saida com as chaves locais.
+        List<NotaXml> XmlsNoBanco(string chave, IEnumerable<string> chavesLocais)
+        {
+            var lista = new List<NotaXml>();
+            try
+            {
+                var ids = new List<string>();
+                using (var s = Banco.Sessao.Abrir(Cfg, x => Log.Info("Banco: " + x), true))
+                    foreach (var k in chavesLocais.Concat(new[] { chave }).Distinct()) ids.AddRange(Banco.IdsComChave(s, Cfg, k));
+                foreach (var id in ids.Distinct())
+                    foreach (var x in Banco.XmlsDaNota(Cfg, id, Log))
+                    {
+                        var n = NotaXml.LerConteudo(x.Key, x.Value);
+                        if (n.Erro == null && n.Chave == chave) lista.Add(n);
+                    }
+                Log.Info("  XMLs da chave " + chave + " no banco " + Cfg.DbBancoXml + ": " + lista.Count);
+            }
+            catch (Exception ex) { Log.Info("  banco não consultado para a chave " + chave + ": " + ex.Message); }
+            return lista;
         }
 
         static Entrega GerarEvento(string chave, EventoSefaz ev)
