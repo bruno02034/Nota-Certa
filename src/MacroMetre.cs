@@ -57,15 +57,10 @@ namespace DuplicidadeNfce
             return Regex.IsMatch(SemAcento(Normalizar(nome)), @"^CLIENTE CONTI?N?GENCIA$", RegexOptions.IgnoreCase);
         }
 
-        // Propriedades lidas numa só ida ao Metre (cada leitura avulsa de UI Automation no JavaFX é lenta).
-        static CacheRequest Cache(TreeScope escopo)
+        // Leituras sempre ao vivo (Current): o JavaFX do Metre devolve vazio no CacheRequest (cabeçalhos sem nome, 10/11).
+        static List<AutomationElement> Filhos(AutomationElement e)
         {
-            var cr = new CacheRequest { TreeFilter = Condition.TrueCondition, TreeScope = escopo };
-            cr.Add(AutomationElement.NameProperty);
-            cr.Add(AutomationElement.ControlTypeProperty);
-            cr.Add(AutomationElement.IsOffscreenProperty);
-            cr.Add(AutomationElement.BoundingRectangleProperty);
-            return cr;
+            return e.FindAll(TreeScope.Children, Condition.TrueCondition).Cast<AutomationElement>().ToList();
         }
 
         // Tabela da aba Contingência que está de fato na tela (o que está desenhado no centro dela é a própria tabela),
@@ -83,17 +78,15 @@ namespace DuplicidadeNfce
             foreach (var h in Janelas(p.Id))
             {
                 AutomationElementCollection tabelas;
-                try
-                {
-                    using (Cache(TreeScope.Element | TreeScope.Children).Activate())
-                        tabelas = AutomationElement.FromHandle(h).FindAll(TreeScope.Descendants, new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Table));
-                }
+                try { tabelas = AutomationElement.FromHandle(h).FindAll(TreeScope.Descendants, new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Table)); }
                 catch (ElementNotAvailableException) { continue; }
                 foreach (AutomationElement t in tabelas)
                 {
-                    var nomes = Filhos(t).Select(c => Normalizar(c.Cached.Name)).Where(s => s.Length > 0).ToList();
+                    List<string> nomes;
+                    try { nomes = Filhos(t).Select(c => Normalizar(c.Current.Name)).Where(s => s.Length > 0).ToList(); }
+                    catch (ElementNotAvailableException) { continue; }
                     if (!nomes.Any(EhColunaContingencia)) { cabecalhos.Add("[" + string.Join(", ", nomes.Take(6)) + "]"); continue; }
-                    var r = t.Cached.BoundingRectangle;
+                    var r = t.Current.BoundingRectangle;
                     if (r.IsEmpty || r.Width < 50 || r.Height < 50) { cabecalhos.Add("[aba Contingência fora da tela]"); continue; }
                     if (NaTela(t)) return t;
                     cabecalhos.Add("[aba Contingência coberta por outra janela]");
@@ -120,40 +113,21 @@ namespace DuplicidadeNfce
         public static List<LinhaMetre> Linhas(AutomationElement tabela)
         {
             var linhas = new List<LinhaMetre>();
-            AutomationElementCollection rows;
-            // A tabela inteira (linhas, células e o texto dentro delas) numa só leitura.
-            using (Cache(TreeScope.Element | TreeScope.Descendants).Activate())
-                rows = tabela.FindAll(TreeScope.Children, new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Custom));
-            foreach (AutomationElement row in rows)
+            foreach (AutomationElement row in tabela.FindAll(TreeScope.Children, new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Custom)))
             {
-                var cel = Filhos(row).ToList();
+                var cel = Filhos(row);
                 if (cel.Count < 5) continue;
-                var sn = Normalizar(cel[1].Cached.Name).Split(' ');
+                var sn = Normalizar(cel[1].Current.Name).Split(' ');
                 if (sn.Length != 2) continue;   // cabeçalho ou linha vazia
                 linhas.Add(new LinhaMetre
                 {
-                    Serie = sn[0], Numero = sn[1], Pedido = Normalizar(cel[2].Cached.Name),
-                    Cliente = Normalizar(string.Join(" ", Descendentes(cel[3]).Select(e => e.Cached.Name).Where(s => !string.IsNullOrEmpty(s)).Distinct())),
-                    Status = Normalizar(cel[4].Cached.Name), Elemento = row, Celula = cel[2]
+                    Serie = sn[0], Numero = sn[1], Pedido = Normalizar(cel[2].Current.Name),
+                    Cliente = Normalizar(string.Join(" ", cel[3].FindAll(TreeScope.Descendants, Condition.TrueCondition).Cast<AutomationElement>()
+                        .Select(e => e.Current.Name).Where(s => !string.IsNullOrEmpty(s)).Distinct())),
+                    Status = Normalizar(cel[4].Current.Name), Elemento = row, Celula = cel[2]
                 });
             }
             return linhas;
-        }
-
-        static IEnumerable<AutomationElement> Filhos(AutomationElement e)
-        {
-            AutomationElementCollection c = null;
-            try { c = e.CachedChildren; } catch (InvalidOperationException) { }
-            return c == null ? Enumerable.Empty<AutomationElement>() : c.Cast<AutomationElement>();
-        }
-
-        static IEnumerable<AutomationElement> Descendentes(AutomationElement e)
-        {
-            foreach (var f in Filhos(e))
-            {
-                yield return f;
-                foreach (var d in Descendentes(f)) yield return d;
-            }
         }
 
         // O Metre grava "Em Contigência" (sem o n); aceita também a grafia certa.
@@ -277,20 +251,16 @@ namespace DuplicidadeNfce
         {
             var l = new List<AutomationElement>();
             nao = new List<AutomationElement>();
-            // Só botões visíveis, filtrados no próprio Metre, com o nome já na resposta.
-            var visivel = new AndCondition(new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button),
-                new PropertyCondition(AutomationElement.IsOffscreenProperty, false));
             foreach (var h in Janelas(pid))
             {
                 try
                 {
-                    AutomationElementCollection achados;
-                    using (Cache(TreeScope.Element).Activate()) achados = AutomationElement.FromHandle(h).FindAll(TreeScope.Descendants, visivel);
-                    foreach (AutomationElement b in achados)
+                    foreach (AutomationElement b in AutomationElement.FromHandle(h).FindAll(TreeScope.Descendants,
+                        new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button)))
                     {
-                        string nome = Normalizar(b.Cached.Name);
-                        if (Confirmar.IsMatch(nome)) l.Add(b);
-                        else if (SemAcento(nome).ToLowerInvariant() == "nao" &&
+                        string nome = Normalizar(b.Current.Name);
+                        if (Confirmar.IsMatch(nome)) { if (!b.Current.IsOffscreen) l.Add(b); }
+                        else if (SemAcento(nome).ToLowerInvariant() == "nao" && !b.Current.IsOffscreen &&
                             Regex.IsMatch(SemAcento(TextoDaJanela(b)), @"pedido foi cancelad", RegexOptions.IgnoreCase)) nao.Add(b);
                     }
                 }
