@@ -211,6 +211,11 @@ O `REJEICAO_NOTA` é gravado quando a nota é transmitida, que pode ser dias dep
 além das pastas do período de emissão (+ `DiasExtrasCandidatos`, que só servem para achar o XML autorizado), são lidas
 as pastas dos dias de `dt_tentativa_emissao` das notas da contingência, e os REJEICAO desses dias valem.
 
+O período da tela ("De" / "até") filtra a lista do banco. Só entram as notas da contingência emitidas ou transmitidas
+nesse período; as outras são ignoradas, com aviso na tela. Para uma nota antiga, escolha o período dela. Das notas que
+entram, são lidas só as pastas dos dias delas (+ `DiasExtrasCandidatos` de cada uma), nunca a faixa inteira entre a
+mais antiga e a mais nova.
+
 ## Regras de segurança
 
 - Arquivos do emissor só são lidos; a cópia nunca move nem sobrescreve.

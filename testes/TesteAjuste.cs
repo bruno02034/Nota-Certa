@@ -29,7 +29,9 @@ namespace DuplicidadeNfce
         static Motor NovoMotor(string ini, string trabalho)
         {
             var cfg = Config.Carregar(ini);
-            cfg.DataInicial = DateTime.Today;
+            // O período da tela filtra a contingência: um que cubra todas as notas de teste.
+            cfg.DataInicial = DateTime.Today.AddYears(-2);
+            cfg.DataFinal = DateTime.Today;
             var m = new Motor(cfg, trabalho, false);
             m.Log.AoMostrar = s => { };
             m.Varrer();
@@ -122,6 +124,15 @@ namespace DuplicidadeNfce
             }
 
             // ---------- Processamento ----------
+            var cfgFora = Config.Carregar(ini);
+            cfgFora.DataInicial = cfgFora.DataFinal = new DateTime(2020, 1, 1);
+            var mFora = new Motor(cfgFora, trabalho, false);
+            mFora.Log.AoMostrar = s => { };
+            mFora.Varrer();
+            Verdade(mFora.Contingencia.Count == 0 && mFora.DiasNotas == null && mFora.Notas.Count == 0,
+                "período da tela filtra a contingência: nenhuma nota em 01/01/2020, nenhuma pasta de outro mês lida");
+            mFora.Log.Dispose();
+
             var m = NovoMotor(ini, trabalho);
             Verdade(m.Cfg.OrigemConexaoBanco != null && m.Cfg.DbPorta.ToString() == Environment.GetEnvironmentVariable("TESTE_PORTA"), "host/porta lidos do Conexao.ini (" + m.Cfg.DbHost + ":" + m.Cfg.DbPorta + ")");
             var linhas = Processar(m);

@@ -58,6 +58,7 @@ namespace DuplicidadeNfce
             {
                 return Cfg.TodasDatas ? "todas as datas" :
                     Cfg.DataInicial.Value.ToString("dd/MM/yyyy") + " a " + Cfg.DataFinal.Value.ToString("dd/MM/yyyy") +
+                    (DiasNotas != null ? ", só os " + DiasNotas.Count + " dia(s) das notas" : "") +
                     " (+" + Cfg.DiasExtrasCandidatos + " dia(s) para candidatos" +
                     (DiasTentativa.Count > 0 ? "; + dia(s) da tentativa de transmissão: " + string.Join(", ", DiasTentativa.Select(d => d.ToString("dd/MM/yyyy"))) : "") + ")";
             }
@@ -68,6 +69,8 @@ namespace DuplicidadeNfce
         // que pode ser dias depois da emissão. Entram como período principal (os dias extras de candidatos não valem
         // para REJEICAO); só as pastas desses dias, nunca o C:\Chef\NFCe inteiro.
         public List<DateTime> DiasTentativa = new List<DateTime>();
+        // Com a lista do Metre: os dias lidos (null = a faixa inteira do período escolhido na tela).
+        public List<DateTime> DiasNotas;
 
         public void Varrer()
         {
@@ -78,11 +81,24 @@ namespace DuplicidadeNfce
             catch (Exception ex) { Log.Info("ERRO ao ler a contingência do Metre: " + ex.Message); throw; }
             if (Contingencia != null && Contingencia.Count > 0 && !Cfg.TodasDatas)
             {
+                // O período da tela filtra a contingência (pedido de 11/11): entram as notas emitidas ou transmitidas nele.
+                DateTime de = Cfg.DataInicial.Value, ate = Cfg.DataFinal.Value;
+                Func<DateTime?, bool> dentro = d => d.HasValue && d.Value.Date >= de && d.Value.Date <= ate;
+                var fora = Contingencia.Where(c => !dentro(c.DtEmissao ?? c.DtContingencia) && !dentro(c.DtTentativa)).ToList();
+                if (fora.Count > 0)
+                {
+                    Contingencia = Contingencia.Except(fora).ToList();
+                    Log.Tela(fora.Count + " nota(s) da contingência fora do período " + de.ToString("dd/MM/yyyy") + " a " + ate.ToString("dd/MM/yyyy") +
+                        " (ignoradas): " + string.Join(", ", fora.Take(20).Select(c => c.Serie + "/" + c.Numero)) + (fora.Count > 20 ? "..." : ""));
+                }
                 var datas = Contingencia.Select(c => c.DtEmissao ?? c.DtContingencia).Where(d => d.HasValue).Select(d => d.Value.Date).ToList();
                 if (datas.Count > 0)
                 {
                     Cfg.DataInicial = datas.Min();
                     Cfg.DataFinal = datas.Max();
+                    // Só os dias das notas (e os extras de candidatos de cada um): uma nota antiga esticava a faixa por meses
+                    // e a leitura passava de 10 minutos no cliente (11/11: 25/03 a 06/10).
+                    DiasNotas = datas.SelectMany(d => Enumerable.Range(0, Cfg.DiasExtrasCandidatos + 1).Select(i => d.AddDays(i))).Distinct().OrderBy(d => d).ToList();
                     DiasTentativa = Contingencia.Where(c => c.DtTentativa.HasValue).Select(c => c.DtTentativa.Value.Date)
                         .Where(d => d < Cfg.DataInicial.Value || d > Cfg.DataFinal.Value).Distinct().OrderBy(d => d).ToList();
                     Log.Tela("Período ajustado pela contingência do Metre: " + DescricaoPeriodo);
@@ -106,7 +122,8 @@ namespace DuplicidadeNfce
                         continue;
                     }
                     bool diaTentativa = DiasTentativa.Contains(dia.Value);
-                    if ((dia < Cfg.DataInicial.Value || dia > fimCand) && !diaTentativa) { foraDoPeriodo++; continue; }
+                    bool noPeriodo = DiasNotas != null ? DiasNotas.Contains(dia.Value) : dia >= Cfg.DataInicial.Value && dia <= fimCand;
+                    if (!noPeriodo && !diaTentativa) { foraDoPeriodo++; continue; }
                     n.DataPasta = dia;
                     n.NaFaixaPrincipal = dia <= Cfg.DataFinal.Value || diaTentativa;
                     Notas.Add(n);
@@ -115,8 +132,9 @@ namespace DuplicidadeNfce
                 if (soltos + foraDoPeriodo > 0)
                     Log.Tela((soltos + foraDoPeriodo) + " XML(s) solto(s) na raiz " + Raiz + ": " + soltos + " no período (pela data de emissão), " + foraDoPeriodo + " fora");
 
-                var dias = new List<DateTime>();
-                for (var d = Cfg.DataInicial.Value; d <= fimCand; d = d.AddDays(1)) dias.Add(d);
+                var dias = DiasNotas != null ? new List<DateTime>(DiasNotas) : new List<DateTime>();
+                if (DiasNotas == null)
+                    for (var d = Cfg.DataInicial.Value; d <= fimCand; d = d.AddDays(1)) dias.Add(d);
                 // Dias da tentativa entram como o período principal: é onde pode estar o REJEICAO com a 539.
                 dias.AddRange(DiasTentativa.Where(d => !dias.Contains(d)));
                 foreach (var d in dias)
