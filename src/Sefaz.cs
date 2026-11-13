@@ -73,7 +73,11 @@ namespace DuplicidadeNfce
             this.cert = cert;
             Url = UrlConsulta(cfg);
             ServicePointManager.SecurityProtocol = (SecurityProtocolType)3072; // TLS 1.2
+            // Notas Faltantes consulta em paralelo; o padrão do .NET é 2 conexões por servidor.
+            if (ServicePointManager.DefaultConnectionLimit < ConsultasParalelas) ServicePointManager.DefaultConnectionLimit = ConsultasParalelas;
         }
+
+        public const int ConsultasParalelas = 4;
 
         // Desligar a validação do certificado do servidor só vale para o simulador local.
         static bool ValidacaoDesligada(Config cfg)
@@ -112,6 +116,7 @@ namespace DuplicidadeNfce
                 string cnpj = k.Substring(6, 14);
                 ClienteSefaz cli;
                 string erro;
+                lock (clientes)
                 if (!clientes.TryGetValue(cnpj, out cli) && !semCertificado.TryGetValue(cnpj, out erro))
                 {
                     log.Tela("Consulta SEFAZ: " + UrlConsulta(cfg) + " (ambiente " + cfg.Ambiente + ")");
@@ -132,7 +137,7 @@ namespace DuplicidadeNfce
                     }
                 }
                 if (cli == null)
-                    return new RespostaSefaz { Ok = false, NaoConsultada = true, Erro = semCertificado[cnpj] };
+                    lock (clientes) return new RespostaSefaz { Ok = false, NaoConsultada = true, Erro = semCertificado[cnpj] };
                 var r = cli.Consultar(k);
                 if (r.XmlBruto != null)
                 {
@@ -146,9 +151,9 @@ namespace DuplicidadeNfce
         public RespostaSefaz Consultar(string chave)
         {
             RespostaSefaz r;
-            if (cache.TryGetValue(chave, out r)) return r;
+            lock (cache) if (cache.TryGetValue(chave, out r)) return r;
             r = ConsultarSemCache(chave);
-            cache[chave] = r;
+            lock (cache) cache[chave] = r;
             return r;
         }
 

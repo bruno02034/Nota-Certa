@@ -280,35 +280,75 @@ namespace DuplicidadeNfce
             var candidatos = new Dictionary<string, List<NotaXml>>();
             var inuts = new List<InutilizacaoXml>();
             var eventos = new List<EventoXml>();
-            int examinados = 0;
-            foreach (string f in Directory.EnumerateFiles(Raiz, "*", SearchOption.AllDirectories))
+            int examinados = 0, pastasLidas = 0;
+            var relogio = System.Diagnostics.Stopwatch.StartNew();
+            var aLer = new List<KeyValuePair<string, string>>();   // número -> arquivo, lidos depois em paralelo
+            // Pasta a pasta: as excluídas (entregas, cópias, relatórios) nem são listadas.
+            var pastas = new Stack<string>();
+            pastas.Push(Raiz);
+            while (pastas.Count > 0)
             {
-                string ext = Path.GetExtension(f).ToLowerInvariant();
-                if (ext != ".xml" && ext != "") continue;
-                if (excluidas.Any(x => Motor.Dentro(f, x))) continue;
-                examinados++;
-                string nome = Path.GetFileName(f);
-                var m = ReNomeNota.Match(nome);
-                if (m.Success)
+                string dir = pastas.Pop();
+                if (excluidas.Any(x => Motor.Dentro(dir, x))) continue;
+                IEnumerable<string> arqs;
+                try
                 {
-                    // O nome só pré-filtra: série e número são confirmados pelo conteúdo.
-                    string k = int.Parse(m.Groups[2].Value) + "/" + long.Parse(m.Groups[1].Value);
-                    if (alvo.Contains(k))
-                    {
-                        List<NotaXml> l;
-                        if (!candidatos.TryGetValue(k, out l)) candidatos[k] = l = new List<NotaXml>();
-                        l.Add(NotaXml.Ler(f));
-                    }
-                    if (!Regex.IsMatch(nome, "CANC|INUT|EVENTO", RegexOptions.IgnoreCase)) continue;
+                    foreach (var d in Directory.EnumerateDirectories(dir)) pastas.Push(d);
+                    arqs = Directory.EnumerateFiles(dir).ToList();
                 }
-                Farejar(f, inuts, eventos);
+                catch (Exception ex) { Log.Info("Pasta não lida " + dir + ": " + ex.Message); continue; }
+                if (++pastasLidas % 50 == 0 && Log.AoMostrar != null)
+                    Log.AoMostrar("Varrendo " + Raiz + ": " + pastasLidas + " pasta(s), " + examinados + " XML(s), " + aLer.Count + " da lista...");
+                foreach (string f in arqs)
+                {
+                    string ext = Path.GetExtension(f).ToLowerInvariant();
+                    if (ext != ".xml" && ext != "") continue;
+                    examinados++;
+                    string nome = Path.GetFileName(f);
+                    var m = ReNomeNota.Match(nome);
+                    if (m.Success)
+                    {
+                        // O nome só pré-filtra: série e número são confirmados pelo conteúdo.
+                        string k = int.Parse(m.Groups[2].Value) + "/" + long.Parse(m.Groups[1].Value);
+                        if (alvo.Contains(k)) aLer.Add(new KeyValuePair<string, string>(k, f));
+                        if (!Regex.IsMatch(nome, "CANC|INUT|EVENTO", RegexOptions.IgnoreCase)) continue;
+                    }
+                    Farejar(f, inuts, eventos);
+                }
             }
+            Log.Info("Varredura: " + pastasLidas + " pasta(s) em " + relogio.Elapsed.TotalSeconds.ToString("0.0") + " s");
+            relogio.Restart();
+            var lidas = new NotaXml[aLer.Count];
+            System.Threading.Tasks.Parallel.For(0, aLer.Count, new System.Threading.Tasks.ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount },
+                i => lidas[i] = NotaXml.Ler(aLer[i].Value));
+            for (int i = 0; i < aLer.Count; i++)
+            {
+                List<NotaXml> l;
+                if (!candidatos.TryGetValue(aLer[i].Key, out l)) candidatos[aLer[i].Key] = l = new List<NotaXml>();
+                l.Add(lidas[i]);
+            }
+            Log.Info("Leitura dos " + aLer.Count + " arquivo(s) da lista em " + relogio.Elapsed.TotalSeconds.ToString("0.0") + " s");
             Log.Tela(examinados + " XML(s) examinado(s); " + candidatos.Values.Sum(l => l.Count) + " arquivo(s) com número da lista; " +
                 inuts.Count + " XML(s) de inutilização; " + eventos.Count + " XML(s) de evento");
             foreach (var i in inuts)
                 Log.Info("Inutilização: " + i.Caminho + " - CNPJ " + i.Cnpj + " mod " + i.Mod + " série " + i.Serie + " " + i.Inicial + " a " + i.Final + " cStat " + (i.CStat ?? "(sem retorno)"));
             foreach (var e in eventos)
                 Log.Info("Evento: " + e.Caminho + " - chave " + e.ChNFe + " tpEvento " + e.TpEvento + " cStat " + (e.CStat ?? "(sem retorno)"));
+
+            // As chaves que a análise vai consultar, consultadas antes em paralelo (a resposta fica no cache do cliente SEFAZ).
+            relogio.Restart();
+            var chaves = candidatos.Values
+                .Select(l => l.Where(a => a.Erro == null && a.Chave != null && a.Chave.Length == 44 && a.Chave.Substring(20, 2) == "65" && !Descartavel(a)).ToList())
+                .Where(l => l.Select(a => a.Cnpj).Distinct().Count() == 1)
+                .SelectMany(l => l.Select(a => a.Chave)).Distinct().ToList();
+            int consultadas = 0;
+            System.Threading.Tasks.Parallel.ForEach(chaves, new System.Threading.Tasks.ParallelOptions { MaxDegreeOfParallelism = ClienteSefaz.ConsultasParalelas }, k =>
+            {
+                consultar(k);
+                int c = System.Threading.Interlocked.Increment(ref consultadas);
+                if (c % 10 == 0 && Log.AoMostrar != null) Log.AoMostrar("Consultando a SEFAZ: " + c + " de " + chaves.Count + " chave(s)...");
+            });
+            Log.Info("Consulta à SEFAZ de " + chaves.Count + " chave(s) em " + relogio.Elapsed.TotalSeconds.ToString("0.0") + " s");
 
             Itens = new List<ItemFaltante>();
             int feitos = 0;
