@@ -123,6 +123,40 @@ namespace DuplicidadeNfce
                 else Console.WriteLine("AVISO pasta administrativa inacessível: Conexao.ini pela rede não testado");
             }
 
+            // ---------- Notas Faltantes: XML autorizado só no chefxml (o do disco foi regravado) ----------
+            {
+                var k = Sql("SELECT id_nota_saida, serie, chave_acesso FROM chef.nota_saida WHERE numero = 2011")[0];
+                var cfgF = Config.Carregar(ini);
+                var ptr = Banco.XmlDaLinha(cfgF, k[0], new Log(Path.Combine(trabalho, "falt_ptr.log")));
+                var aut = NotaXml.LerConteudo(ptr.Key, ptr.Value);
+                string texto = Encoding.UTF8.GetString(ptr.Value).TrimStart('﻿');
+                string regravado = texto.Replace("<vNF>22.00</vNF>", "<vNF>99.00</vNF>");
+                string raizF = Path.Combine(trabalho, "falt_raiz"), dia = Path.Combine(raizF, "10_2026", "19");
+                Directory.CreateDirectory(dia);
+                File.WriteAllText(Path.Combine(dia, "NOTA_2011_SERIE_" + k[1] + "_NFCE.xml"), regravado, new UTF8Encoding(false));
+                cfgF.PastaRaiz = raizF;
+                cfgF.PastaNotasFaltantes = Path.Combine(trabalho, "falt_entrega");
+                cfgF.PastaDestino = Path.Combine(trabalho, "falt_dup");
+                string prot = "<protNFe versao=\"4.00\"><infProt><tpAmb>1</tpAmb><verAplic>TESTE</verAplic><chNFe>" + k[2] + "</chNFe><dhRecbto>2026-10-19T14:05:00-03:00</dhRecbto>" +
+                    "<nProt>131260000002011</nProt><digVal>" + aut.DigestCalculado + "</digVal><cStat>150</cStat><xMotivo>Autorizado o uso da NF-e, autorizacao fora de prazo</xMotivo></infProt></protNFe>";
+                var mf = new MotorFaltantes(cfgF, trabalho, ch => ch == k[2]
+                    ? new RespostaSefaz { Ok = true, CStat = "100", XMotivo = "Autorizado o uso da NF-e", ProtNFeXml = prot,
+                        Prot = new ProtocoloXml { ChNFe = ch, CStat = "150", NProt = "131260000002011", DigVal = aut.DigestCalculado } }
+                    : new RespostaSefaz { Ok = true, CStat = "217", XMotivo = "Rejeição: NF-e não consta na base de dados da SEFAZ" });
+                mf.Log.AoMostrar = s => { };
+                var it = mf.Executar(int.Parse(k[1]), new List<long> { 2011 }, true, false, null)[0];
+                var entregues = Directory.Exists(mf.PastaExecucao) ? Directory.GetFiles(mf.PastaExecucao).Select(Path.GetFileName).OrderBy(x => x).ToList() : new List<string>();
+                Verdade(regravado != texto && it.Status == StatusFaltante.Encontrada && entregues.SequenceEqual(new[] { k[2] + "-NFe.xml", k[2] + "-procNFe.xml" }),
+                    "Faltantes: nenhum arquivo do disco confere com o digVal -> XML do chefxml entregue com o procNFe (" + it.Status + ": " + it.Motivo + " · " + string.Join(", ", entregues) + ")");
+                if (entregues.Count == 2)
+                {
+                    var g = NotaXml.Ler(Path.Combine(mf.PastaExecucao, k[2] + "-procNFe.xml"));
+                    Verdade(g.Erro == null && g.Chave == k[2] && g.DigestCalculado == aut.DigestCalculado && g.Prot != null && g.Prot.NProt == "131260000002011",
+                        "Faltantes: procNFe do banco com a NFe autorizada e o protocolo");
+                }
+                mf.Log.Dispose();
+            }
+
             // ---------- Processamento ----------
             var cfgFora = Config.Carregar(ini);
             cfgFora.DataInicial = cfgFora.DataFinal = new DateTime(2020, 1, 1);

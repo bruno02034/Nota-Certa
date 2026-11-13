@@ -655,6 +655,16 @@ namespace DuplicidadeNfce
             item.SituacaoSefaz = Situacao(r);
             // O arquivo certo é o de conteúdo igual ao autorizado: DigestValue (recalculado) = digVal da SEFAZ.
             var bons = arqs.Where(a => a.DigestCalculado == digVal && a.DigestDeclarado == digVal).ToList();
+            // Nenhum arquivo do disco com o conteúdo autorizado (o Metre regravou o XML depois de transmitir): o autorizado
+            // costuma estar nas tentativas do pedido no chefxml (pedido de 13/11).
+            if (bons.Count == 0 && !arqs.Any(a => a.Conteudo != null))
+            {
+                var doBanco = XmlsNoBanco(chave, arqs.Select(a => a.Chave)).Where(a => a.DigestCalculado == digVal && a.DigestDeclarado == digVal).ToList();
+                foreach (var a in doBanco)
+                    item.Arquivos.Add(new ArquivoFaltante { Caminho = a.Caminho, Nome = a.Nome, Tipo = a.Tipo.ToString() });
+                arqs = arqs.Concat(doBanco).ToList();
+                bons = doBanco;
+            }
             foreach (var a in arqs)
             {
                 var af = item.Arquivos.First(x => x.Caminho == a.Caminho);
@@ -685,7 +695,9 @@ namespace DuplicidadeNfce
                 item.Entregas.Add(new Entrega { Conteudo = Texto(escolhido), NomeDestino = chave + "-NFe.xml", Descricao = "XML da nota (banco " + escolhido.Caminho + ")" });
             else
                 item.Entregas.Add(new Entrega { Origem = escolhido.Caminho, Sha256 = escolhido.Sha256, Tamanho = escolhido.Tamanho, NomeDestino = escolhido.Nome, Descricao = "XML da nota" });
-            var motivo = new List<string> { "arquivo com o mesmo conteúdo autorizado (digest = digVal)" };
+            var motivo = new List<string> { escolhido.Conteudo != null
+                ? "XML do banco (" + escolhido.Caminho + ") com o mesmo conteúdo autorizado (digest = digVal)"
+                : "arquivo com o mesmo conteúdo autorizado (digest = digVal)" };
             if (!procCompleto(escolhido))
             {
                 if (r.ProtNFeXml != null)

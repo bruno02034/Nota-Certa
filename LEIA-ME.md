@@ -258,6 +258,10 @@ números (acha a nota autorizada daquele número, mesmo que a chave informada se
   em geral o primeiro envio. Essa chave vem na resposta e também é consultada. O XML dela é o `Temp_ANTES_ENVIO` do
   disco que tenha o DigestValue igual ao `digVal`. Se não houver arquivo, o XML vem do `chefxml` do pedido (só
   leitura). A entrega leva esse XML e o procNFe com o protocolo da SEFAZ.
+- Nota autorizada sem nenhum arquivo do disco com o DigestValue igual ao `digVal` (o Metre regravou o XML depois de
+  transmitir): o XML é procurado no `chefxml`, na linha de `nota_saida` com a chave e nas tentativas do pedido, sempre
+  só leitura. O que tiver o DigestValue igual ao `digVal` é entregue como `<chave>-NFe.xml`, junto do procNFe. Sem banco
+  ou sem XML que confira, a nota fica PENDENTE, como antes.
 - Não há mês de referência: a grade mostra a emissão (`dhEmi`) de cada nota e, se as notas encontradas forem de meses
   diferentes entre si, a tela destaca os meses e as notas fora do mês da maioria (a pasta do arquivo não conta).
 - Cada chave é consultada uma vez na SEFAZ; o arquivo certo é o de DigestValue (recalculado) igual ao `digVal`.
